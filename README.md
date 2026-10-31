@@ -150,13 +150,14 @@ Body:
 - A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
 - The request is first reserved against the shared budget. Only the request that creates the reservation is allowed to call OutLayer.
 
-Possible outcomes include:
+Current V1 behavior:
 
-- `200 executed`: the transfer handler reached its executed response path. Treat the transaction hash and final reconciliation result as the authoritative chain record.
-- `202 needs_review`: the reservation remains held. A timeout or ambiguous provider response must not be treated as proof that no transfer occurred.
+- `202 needs_review`: the provider response is not treated as final settlement. The reservation remains held while the transaction is reconciled against NEAR finality.
 - `403 blocked`: the per-transfer or shared-budget limit rejected the request.
 - `409`: replay or idempotency conflict; do not create a new request ID just to bypass an unresolved payment.
 - `401/503`: authentication or service availability issue.
+
+The current transfer handler does not return a successful settled-payment response directly. A provider response and transaction hash still require the separate reconciliation step.
 
 ### Check provider status
 
