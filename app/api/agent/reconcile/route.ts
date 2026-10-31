@@ -10,6 +10,9 @@ const schema = z.object({
   requestId: z.string().min(8).max(128)
 });
 
+// Public NEAR account identifier for the AgentGuard OutLayer testnet wallet.
+const signerId = "6d665ad261fc10ce705e4b10d107b9e8f40177266f937c6dff8f5a178126ae6e";
+
 function validToken(expected: string, supplied?: string) {
   if (!supplied) return false;
   const a = Buffer.from(expected);
@@ -27,7 +30,7 @@ type NearTxStatus = {
 
 export async function POST(request: NextRequest) {
   const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
   if (!expected || !validToken(expected, supplied)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -35,11 +38,6 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
-
-  const signerId = process.env.OUTLAYER_NEAR_ADDRESS;
-  if (!signerId) {
-    return NextResponse.json({ error: "signer_address_not_configured" }, { status: 503 });
   }
 
   const db = getSupabase();
