@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   requestId: z.string().min(8).max(128),
   to: z.string().min(2).max(64).regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/),
-  amountYocto: z.string().regex(/^[1-9][0-9]*$/)
+  amountYocto: z.string().max(78).regex(/^[1-9][0-9]*$/)
 });
 
 export async function POST(request: NextRequest) {
