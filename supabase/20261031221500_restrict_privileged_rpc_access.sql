@@ -27,3 +27,9 @@ revoke execute on function public.record_outlayer_submission(text, text, text, t
   from public, anon, authenticated;
 grant execute on function public.record_outlayer_submission(text, text, text, text)
   to service_role;
+
+
+revoke execute on function public.record_outlayer_submission(text, text, text, text)
+  from public, anon, authenticated;
+grant execute on function public.record_outlayer_submission(text, text, text, text)
+  to service_role;
