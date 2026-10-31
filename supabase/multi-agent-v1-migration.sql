@@ -13,6 +13,7 @@ on conflict (id) do nothing;
 alter table public.spend_reservations add column if not exists agent_id text;
 update public.spend_reservations set agent_id = 'primary' where agent_id is null;
 alter table public.spend_reservations alter column agent_id set not null;
+alter table public.spend_reservations alter column agent_id set default 'primary';
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'spend_reservations_agent_id_fkey') then
     alter table public.spend_reservations add constraint spend_reservations_agent_id_fkey foreign key (agent_id) references public.agents(id);
