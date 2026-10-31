@@ -14,9 +14,8 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");
-  if (!expected || !validToken(expected,supplied)) {
+  const identity = await authenticateAgent(request.headers.get("authorization"));
+  if (!identity) {
     return NextResponse.json({error:"unauthorized"},{status:401});
   }
 
