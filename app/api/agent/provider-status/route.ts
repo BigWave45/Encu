@@ -26,7 +26,7 @@ type ProviderRequest = {
 
 export async function POST(request: NextRequest) {
   const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const supplied = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
 
   if (!expected || !validToken(expected, supplied)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const baseUrl = process.env.OUTLAYER_BASE_URL?.replace(/\\/$/, "");
+  const baseUrl = process.env.OUTLAYER_BASE_URL?.replace(/\/$/, "");
   const apiKey = process.env.OUTLAYER_API_KEY;
   if (!baseUrl || !apiKey) {
     return NextResponse.json({ error: "outlayer_not_configured" }, { status: 503 });
