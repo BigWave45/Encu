@@ -52,75 +52,17 @@ const mock = createServer(async (req, res) => {
       return res.end();
     }
     if (req.method === "GET" && url.pathname === "/rest/v1/spend_reservations") {
-      const rows = [...reservations.entries()].map(([request_id, row]) => ({
+      let rows = [...reservations.entries()].map(([request_id, row]) => ({
         request_id, agent_id: row.agentId, recipient: row.recipient,
         amount_yocto: row.amount, status: row.status,
         outlayer_tx_hash: row.txHash ?? null, outlayer_request_id: row.providerRequestId ?? null,
         last_error: row.lastError ?? null, created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z"
       }));
+      const requestId = url.searchParams.get("request_id")?.replace(/^eq\\./, "");
+      if (requestId) rows = rows.filter(row => row.request_id === requestId);
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
-    }
-    if (req.method === "POST" && url.pathname === "/") {
-      const rpc = await readJson(req);
-      if (rpc.method === "status") return send(res, 200, { jsonrpc: "2.0", id: rpc.id, result: { chain_id: "testnet" } });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/agentguard_security_events") {
-      securityEvents.push(await readJson(req));
-      res.writeHead(201);
-      return res.end();
-    }
-    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { address: mockSignerAddress, executor_account_id: mockSignerAddress, asset_account_id: null });
-    if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
-      const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
-      const agent = agentsByHash.get(tokenHash);
-      return send(res, 200, agent ? [{ id: agent.id, active: agent.active }] : []);
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/update_agent_budget_limit") {
-      const body = await readJson(req);
-      const next = BigInt(body.p_new_limit_yocto);
-      if (next < BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto)) return send(res, 400, { message: "budget_below_committed_amounts" });
-      mockBudget.total_limit_yocto = next.toString();
-      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "budget_limit_updated", target_id: "default", details: {} });
-      return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_active") {
-      const body = await readJson(req);
-      if (body.p_agent_id === "primary") return send(res, 400, { message: "primary_agent_protected" });
-      const agent = mockAgents.find(item => item.id === body.p_agent_id);
-      if (!agent) return send(res, 400, { message: "agent_not_found" });
-      agent.active = body.p_active;
-      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: body.p_active ? "agent_activated" : "agent_deactivated", target_id: agent.id, details: {} });
-      return send(res, 200, { id: agent.id, name: agent.name, active: agent.active });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/reserve_agent_spend") {
-      counters.reserve++;
-      const body = await readJson(req);
-      const id = body.p_request_id;
-      const existing = reservations.get(id);
-      if (existing) {
-        if (existing.amount !== String(body.p_amount_yocto) ||
-            existing.recipient !== body.p_recipient ||
-            existing.agentId !== body.p_agent_id) {
-          return send(res, 400, { message: "idempotency_key_conflict" });
-        }
-        return send(res, 200, { created: false, status: existing.status, request_id: id, agent_id: existing.agentId });
-      }
-      const amount = BigInt(body.p_amount_yocto);
-      const reserved = [...reservations.values()].reduce((sum, item) => sum + (item.status === "reserved" || item.status === "needs_review" ? BigInt(item.amount) : 0n), 0n);
-      if (reserved + amount > budget) return send(res, 200, { created: false, status: "blocked", reason: "total_budget_exceeded" });
-      const row = { amount: String(body.p_amount_yocto), recipient: body.p_recipient, agentId: body.p_agent_id, status: "reserved" };
-      reservations.set(id, row);
-      return send(res, 200, { created: true, status: "reserved", request_id: id, agent_id: row.agentId });
-    }
-    if (req.method === "GET" && url.pathname === "/rest/v1/spend_reservations") {
-      const id = url.searchParams.get("request_id")?.replace("eq.", "");
-      const row = reservations.get(id);
-      return send(res, 200, row ? [{
-        request_id: id, status: row.status, outlayer_request_id: row.providerRequestId ?? null,
-        outlayer_tx_hash: row.txHash ?? null, agent_id: row.agentId
-      }] : []);
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
