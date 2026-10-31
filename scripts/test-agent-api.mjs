@@ -32,6 +32,10 @@ const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [{ id: "default" }]);
+    if (req.method === "POST" && url.pathname === "/") {
+      const rpc = await readJson(req);
+      if (rpc.method === "status") return send(res, 200, { jsonrpc: "2.0", id: rpc.id, result: { chain_id: "testnet" } });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/agentguard_security_events") {
       securityEvents.push(await readJson(req));
       res.writeHead(201);
@@ -200,11 +204,11 @@ try {
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
   payload = await response.json();
-  assert(response.status === 200 && payload.status === "ok" && payload.signerMatches === true, "health confirms provider wallet matches configured signer");
+  assert(response.status === 200 && payload.status === "ok" && payload.signerMatches === true && payload.nearRpc === "connected" && payload.network === "testnet", "health confirms testnet RPC and provider signer");
   mockSignerAddress = "unexpected.testnet";
   response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
   payload = await response.json();
-  assert(response.status === 503 && payload.outlayer === "signer_mismatch", "health fails closed when provider wallet signer differs");
+  assert(response.status === 503 && payload.outlayer === "signer_mismatch" && payload.nearRpc === "connected", "health fails closed when provider wallet signer differs");
   mockSignerAddress = "agentguard.testnet";
 
   const primaryId = "test-api-primary-001";
