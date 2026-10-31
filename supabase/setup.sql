@@ -45,7 +45,7 @@ begin
   if p_amount_yocto is null or p_amount_yocto <= 0 then
     raise exception 'amount_must_be_positive';
   end if;
-  if p_amount_yocto > 1e78 then
+  if p_amount_yocto >= 1e78 then
     raise exception 'amount_too_large';
   end if;
 
