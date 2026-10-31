@@ -20,14 +20,14 @@ export async function GET(request: NextRequest) {
     const db = getSupabase();
     const [budgetResult, agentsResult, reservationsResult] = await Promise.all([
       db.from("agent_budgets")
-        .select("id,total_limit_yocto,spent_yocto,reserved_yocto,updated_at")
+        .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
         .maybeSingle(),
       db.from("agents")
         .select("id,name,active,created_at")
         .order("created_at", { ascending: true }),
       db.from("spend_reservations")
-        .select("request_id,agent_id,recipient,amount_yocto,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at")
+        .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at")
         .order("created_at", { ascending: false })
         .limit(20)
     ]);
