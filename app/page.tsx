@@ -201,7 +201,7 @@ export default function Home() {
         <input id="agent-token" type="password" autoComplete="off" value={token}
           onChange={(event) => setToken(event.target.value)} placeholder="Enter your AGENTGUARD_AGENT_TOKEN"
           required style={inputStyle} />
-        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Use an agent token to check its wallet balance. The primary admin token is required for the dashboard, agent provisioning and credential rotation. The token stays in this page's memory and is not saved to browser storage. Never share it in chat.</p>
+        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Use an agent token to check its wallet balance. The primary admin token is required for the dashboard, agent provisioning and credential rotation. The token stays in this page&apos;s memory and is not saved to browser storage. Never share it in chat.</p>
         <button type="submit" disabled={loading || !token.trim()} style={buttonStyle}>{loading ? "Checking…" : "Check NEAR balance"}</button>
       </form>
 
