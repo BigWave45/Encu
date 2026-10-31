@@ -59,13 +59,13 @@ const mock = createServer(async (req, res) => {
         last_error: row.lastError ?? null, created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z"
       }));
-      const requestId = url.searchParams.get("request_id")?.replace(/^eq\\./, "");
+      const requestId = url.searchParams.get("request_id")?.replace(/^eq\./, "");
       if (requestId) rows = rows.filter(row => row.request_id === requestId);
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
     }
     if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
-      const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\\./, "");
+      const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
       if (tokenHash) {
         const agentId = agentsByHash.get(tokenHash);
         const agent = mockAgents.find(item => item.id === agentId);
@@ -84,7 +84,7 @@ const mock = createServer(async (req, res) => {
     }
     if (req.method === "PATCH" && url.pathname === "/rest/v1/agents") {
       const body = await readJson(req);
-      const id = url.searchParams.get("id")?.replace(/^eq\\./, "");
+      const id = url.searchParams.get("id")?.replace(/^eq\./, "");
       const agent = mockAgents.find(item => item.id === id && (!url.searchParams.has("active") || item.active === (url.searchParams.get("active") === "eq.true")));
       if (!agent) return send(res, 200, []);
       if (body.token_hash) agentsByHash.set(body.token_hash, agent.id);
