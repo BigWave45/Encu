@@ -37,14 +37,14 @@ Configure these in the deployment environment:
 | --- | --- |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase service-role key; never expose it to a browser |
-| `OUTLAYER_BASE_URL` | OutLayer API base URL, for example the testnet API |
-| `OUTLAYER_API_KEY` | OutLayer server-side API credential |\n| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID for the configured OutLayer testnet wallet; health verifies the provider-reported address matches |\n| `NEAR_RPC_URL` | Optional NEAR testnet RPC URL; defaults to `https://rpc.testnet.near.org` |\n| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID for the configured OutLayer testnet wallet; health verifies the provider-reported address matches |\n| `NEAR_RPC_URL` | Optional NEAR testnet RPC URL; defaults to `https://rpc.testnet.near.org` |
-| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer testnet wallet; must match the wallet address returned by OutLayer |
-| `NEAR_RPC_URL` | Optional NEAR testnet RPC URL; defaults to `https://rpc.testnet.near.org` and production deployments are restricted to that host |
+| `OUTLAYER_BASE_URL` | Must be the official OutLayer testnet API host: `https://testnet-api.outlayer.ai` |
+| `OUTLAYER_API_KEY` | OutLayer server-side API credential |
+| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer testnet wallet |
+| `NEAR_RPC_URL` | Optional; defaults to `https://rpc.testnet.near.org`. Production is restricted to that testnet host |
 | `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-`OUTLAYER_NEAR_ADDRESS` is mandatory. Health checks compare it with the wallet account ID returned by OutLayer, and reconciliation uses this configured value as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
+`OUTLAYER_NEAR_ADDRESS` is mandatory. The health endpoint compares it with the account ID returned by OutLayer. Reconciliation uses it as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
 
 Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
@@ -52,7 +52,7 @@ Never commit real credentials or send them in issue reports, screenshots, or cha
 
 ### Fresh Supabase project
 
-Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the current multi-agent schema and RPC functions and seeds a shared default budget of 5 NEAR.
+Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the current multi-agent schema, privileged RPCs, and a shared default budget of 5 NEAR.
 
 Do not run this fresh-install script on an existing database. It is not an upgrade migration and does not preserve or migrate an existing ledger.
 
@@ -62,12 +62,15 @@ Apply the upgrade scripts in this order, each once:
 
 1. `supabase/multi-agent-v1-migration.sql`
 2. `supabase/reconcile-migration.sql`
-3. `supabase/multi-agent-v1-cleanup.sql`\n4. `supabase/20261031221500_restrict_privileged_rpc_access.sql` (already applied on the current AgentGuard project)\n5. `supabase/20261101090000_atomic_outlayer_submission.sql`\n4. `supabase/20261031221500_restrict_privileged_rpc_access.sql` (already applied on the current AgentGuard project)\n5. `supabase/20261101090000_atomic_outlayer_submission.sql`
-4. `supabase/20261101090000_atomic_outlayer_submission.sql`
+3. `supabase/multi-agent-v1-cleanup.sql`
+4. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
+5. `supabase/20261101090000_atomic_outlayer_submission.sql`
 
-The multi-agent migration creates the agent table, attributes existing reservations to `primary`, and adds the four-argument reservation RPC. The reconciliation migration installs the settlement function used after chain verification. The cleanup script removes the legacy three-argument reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds a service-role-only RPC that atomically stores the OutLayer request ID and transaction hash while marking the reservation `needs_review`; it never settles budget. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds a service-role-only RPC that atomically stores the OutLayer request ID and transaction hash while marking the reservation `needs_review`; it never settles budget. The final migration adds a service-role-only RPC that atomically stores the OutLayer request ID and transaction hash while marking the reservation `needs_review`; it never settles budget.
+The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The reconciliation migration installs the settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds an RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget.
 
-Do not reset the database or rerun the fresh-install setup against a live project. Confirm the migration output and inspect the resulting tables/functions before deploying code that depends on them.
+The security migration has already been applied to the current AgentGuard Supabase project. Do not rerun unrelated setup scripts or reset the live database. The new atomic-submission migration still needs to be applied to that project before deploying the transfer-route changes.
+
+Do not reset the database or rerun the fresh-install setup against a live project. Confirm the migration output and inspect the resulting function before deploying code that depends on it.
 
 ## Authentication and agents
 
