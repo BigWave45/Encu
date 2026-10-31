@@ -44,7 +44,7 @@ export function getOutLayerConfig(): OutLayerConfig {
     !url.username && !url.password && !url.search && !url.hash &&
     (url.pathname === "/" || url.pathname === "");
 
-  const isLocalDevelopment = process.env.NODE_ENV !== "production" &&
+  const isLocalDevelopment = (process.env.NODE_ENV !== "production" || (process.env.CI === "true" && process.env.AGENTGUARD_TEST_MODE === "true")) &&
     (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") &&
     url.protocol === "http:" && !url.username && !url.password && !url.search && !url.hash;
 
@@ -72,7 +72,7 @@ export function getNearTestnetRpcUrl(): string {
     url.hostname === "rpc.testnet.near.org" &&
     !url.username && !url.password && !url.search && !url.hash;
 
-  const isLocalDevelopment = process.env.NODE_ENV !== "production" &&
+  const isLocalDevelopment = (process.env.NODE_ENV !== "production" || (process.env.CI === "true" && process.env.AGENTGUARD_TEST_MODE === "true")) &&
     (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") &&
     url.protocol === "http:" && !url.username && !url.password && !url.search && !url.hash;
 
