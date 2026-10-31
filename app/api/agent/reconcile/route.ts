@@ -117,9 +117,8 @@ export async function POST(request: NextRequest) {
     result.transaction?.signer_id === signerId &&
     result.transaction?.receiver_id === reservation.recipient &&
     Array.isArray(result.transaction?.actions) &&
-    result.transaction.actions.some(
-      (action) => action.Transfer?.deposit === String(reservation.amount_yocto)
-    );
+    result.transaction.actions.length === 1 &&
+    result.transaction.actions[0].Transfer?.deposit === String(reservation.amount_yocto);
 
   if (!transferMatches) {
     return NextResponse.json({
