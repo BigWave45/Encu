@@ -7,10 +7,12 @@ on:
     paths:
       - ".github/workflows/agentguard-api-tests.yml"
       - "app/api/agent/transfer/route.ts"
+      - "app/api/agent/reconcile/route.ts"
       - "lib/agent-auth.ts"
       - "lib/outlayer.ts"
       - "lib/supabase.ts"
       - "scripts/test-agent-api.mjs"
+      - "scripts/test-reconciliation.mjs"
       - "package.json"
       - "package-lock.json"
   workflow_dispatch:
@@ -40,3 +42,5 @@ jobs:
         run: npm run build
       - name: Run API security and transfer lifecycle tests
         run: npm run test:agent-api
+      - name: Run NEAR finality reconciliation tests
+        run: npm run test:reconciliation
