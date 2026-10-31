@@ -21,11 +21,6 @@ export async function authenticateAgent(authorization: string | null): Promise<A
     return { agentId: "primary", isAdmin: true };
   }
 
-  const secondaryToken = process.env.AGENTGUARD_AGENT_B_TOKEN;
-  if (secondaryToken && safeEqual(secondaryToken, supplied)) {
-    return { agentId: "agent_b", isAdmin: false };
-  }
-
   const tokenHash = createHash("sha256").update(supplied).digest("hex");
   const { data, error } = await getSupabase()
     .from("agents")
