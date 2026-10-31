@@ -108,4 +108,44 @@ jobs:
           test "$conflict_status" -ne 0
           grep -q "idempotency_key_conflict" /tmp/agentguard-conflict.out
           echo "PASS: same request ID with a changed amount was rejected."
+          # Verify settlement accounting and terminal-state idempotency.
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${winner}', 'executed', 'mock-final-tx-hash', NULL);" | jq -e '.status == "executed"' >/dev/null
+          echo "PASS: executed finalisation moves the reservation from reserved to spent."
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${winner}', 'failed', 'mock-final-tx-hash', NULL);" | jq -e '.status == "executed"' >/dev/null
+          echo "PASS: terminal executed reservation cannot be changed by a later failed finalisation."
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE reserved numeric; spent numeric; row_status text;
+          BEGIN
+            SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
+            SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${winner}';
+            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'executed' THEN
+              RAISE EXCEPTION 'executed_settlement_mismatch: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            END IF;
+          END
+          \$\$
+          SQL
+          req_failed="ag-concurrency-${suffix}-failed"
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_failed}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'failed', 'mock-failed-tx-hash', 'final_execution_failed');" | jq -e '.status == "failed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'executed', 'mock-failed-tx-hash', NULL);" | jq -e '.status == "failed"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE reserved numeric; spent numeric; row_status text;
+          BEGIN
+            SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
+            SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${req_failed}';
+            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'failed' THEN
+              RAISE EXCEPTION 'failed_settlement_mismatch: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            END IF;
+          END
+          \$\$
+          SQL
+          echo "PASS: failed finalisation releases reserved budget without increasing spent."
+          echo "PASS: terminal failed reservation cannot later become executed."
+          echo "PASS: final ledger counters preserve the shared budget invariant."
           echo "PASS: isolated PostgreSQL test complete. No Supabase project, production database, OutLayer, or NEAR transfer was used."
