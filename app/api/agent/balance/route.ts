@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { authenticateAgent } from "@/lib/agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function validToken(expected: string, supplied?: string) {
-  if (!supplied) return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(request: NextRequest) {
-  const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const authorization = request.headers.get("authorization");
-  const supplied = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-
-  if (!expected || !validToken(expected, supplied)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const identity = await authenticateAgent(request.headers.get("authorization"));
+  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const baseUrl = process.env.OUTLAYER_BASE_URL?.replace(/\/$/, "");
   const apiKey = process.env.OUTLAYER_API_KEY;
