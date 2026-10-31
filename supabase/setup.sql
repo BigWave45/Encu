@@ -1,5 +1,10 @@
--- AgentGuard database setup
--- Run on a fresh Supabase project. Do not run the older schema.sql or migration first.
+-- AgentGuard fresh database setup
+-- Run this on a NEW Supabase project only.
+-- Existing installations must use the documented upgrade migrations instead.
+--
+-- This schema includes multi-agent V1 from the start:
+-- one shared budget, independently authenticated agents, and reservations
+-- attributed to the authenticated agent identity.
 
 create table if not exists public.agent_budgets (
   id text primary key,
@@ -8,6 +13,18 @@ create table if not exists public.agent_budgets (
   reserved_yocto numeric(78, 0) not null default 0 check (reserved_yocto >= 0),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.agents (
+  id text primary key,
+  name text not null,
+  token_hash text unique,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+insert into public.agents (id, name, active)
+values ('primary', 'Primary Agent', true)
+on conflict (id) do nothing;
 
 create table if not exists public.spend_reservations (
   request_id text primary key,
@@ -18,9 +35,14 @@ create table if not exists public.spend_reservations (
   outlayer_tx_hash text,
   outlayer_request_id text,
   last_error text,
+  agent_id text not null default 'primary'
+    references public.agents(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create index if not exists spend_reservations_agent_id_created_at_idx
+  on public.spend_reservations (agent_id, created_at desc);
 
 insert into public.agent_budgets (id, total_limit_yocto)
 values ('default', 5000000000000000000000000)
@@ -29,7 +51,8 @@ on conflict (id) do nothing;
 create or replace function public.reserve_agent_spend(
   p_request_id text,
   p_amount_yocto numeric,
-  p_recipient text
+  p_recipient text,
+  p_agent_id text
 ) returns jsonb
 language plpgsql
 security definer
@@ -38,18 +61,26 @@ as $$
 declare
   budget public.agent_budgets%rowtype;
   existing public.spend_reservations%rowtype;
+  agent_active boolean;
 begin
   if p_request_id is null or length(p_request_id) < 8 then
     raise exception 'invalid_request_id';
   end if;
-  if p_amount_yocto is null or p_amount_yocto <= 0 then
-    raise exception 'amount_must_be_positive';
-  end if;
-  if p_amount_yocto >= 1e78 then
-    raise exception 'amount_too_large';
+
+  -- numeric(78,0) cannot store 10^78 or larger.
+  if p_amount_yocto is null or p_amount_yocto <= 0 or p_amount_yocto >= 1e78 then
+    raise exception 'invalid_amount';
   end if;
 
-  -- Lock the shared budget first. This serialises concurrent reservations.
+  select active into agent_active
+  from public.agents
+  where id = p_agent_id;
+
+  if not coalesce(agent_active, false) then
+    raise exception 'agent_not_active';
+  end if;
+
+  -- Serialises reservations across every agent sharing this budget.
   select * into budget
   from public.agent_budgets
   where id = 'default'
@@ -66,13 +97,16 @@ begin
 
   if found then
     if existing.amount_yocto <> p_amount_yocto
-       or existing.recipient <> p_recipient then
+       or existing.recipient <> p_recipient
+       or existing.agent_id <> p_agent_id then
       raise exception 'idempotency_key_conflict';
     end if;
+
     return jsonb_build_object(
       'created', false,
       'status', existing.status,
-      'request_id', existing.request_id
+      'request_id', existing.request_id,
+      'agent_id', existing.agent_id
     );
   end if;
 
@@ -86,9 +120,9 @@ begin
   end if;
 
   insert into public.spend_reservations
-    (request_id, amount_yocto, recipient, status)
+    (request_id, amount_yocto, recipient, status, agent_id)
   values
-    (p_request_id, p_amount_yocto, p_recipient, 'reserved');
+    (p_request_id, p_amount_yocto, p_recipient, 'reserved', p_agent_id);
 
   update public.agent_budgets
   set reserved_yocto = reserved_yocto + p_amount_yocto,
@@ -98,7 +132,8 @@ begin
   return jsonb_build_object(
     'created', true,
     'status', 'reserved',
-    'request_id', p_request_id
+    'request_id', p_request_id,
+    'agent_id', p_agent_id
   );
 end;
 $$;
@@ -120,7 +155,7 @@ begin
     raise exception 'invalid_outcome';
   end if;
 
-  -- Keep the same lock order as reserve_agent_spend to avoid deadlocks.
+  -- Keep the same lock order as reservation creation.
   perform 1
   from public.agent_budgets
   where id = 'default'
@@ -139,6 +174,7 @@ begin
     raise exception 'reservation_not_found';
   end if;
 
+  -- Terminal reservations cannot be settled twice.
   if reservation.status not in ('reserved', 'needs_review') then
     return jsonb_build_object(
       'status', reservation.status,
@@ -174,10 +210,11 @@ begin
 end;
 $$;
 
-revoke all on function public.reserve_agent_spend(text, numeric, text) from public;
+revoke all on function public.reserve_agent_spend(text, numeric, text, text) from public;
 revoke all on function public.finish_agent_spend(text, text, text, text) from public;
-grant execute on function public.reserve_agent_spend(text, numeric, text) to service_role;
+grant execute on function public.reserve_agent_spend(text, numeric, text, text) to service_role;
 grant execute on function public.finish_agent_spend(text, text, text, text) to service_role;
 
 alter table public.agent_budgets enable row level security;
+alter table public.agents enable row level security;
 alter table public.spend_reservations enable row level security;
