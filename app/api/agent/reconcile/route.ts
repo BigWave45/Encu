@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
   let rpc: NearRpcResponse;
   try {
-    const response = await fetch("https://rpc.testnet.near.org", {
+    const response = await fetch(process.env.NEAR_RPC_URL ?? "https://rpc.testnet.near.org", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
