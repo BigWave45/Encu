@@ -148,4 +148,33 @@ jobs:
           echo "PASS: failed finalisation releases reserved budget without increasing spent."
           echo "PASS: terminal failed reservation cannot later become executed."
           echo "PASS: final ledger counters preserve the shared budget invariant."
+          # Race two conflicting terminal outcomes against the same reservation.
+          req_race="ag-concurrency-${suffix}-finish-race"
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_race}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'executed', 'mock-race-tx', NULL);" > /tmp/finish-executed.json &
+          finish_a=$!
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'failed', 'mock-race-tx', 'simulated_failure');" > /tmp/finish-failed.json &
+          finish_b=$!
+          wait "$finish_a"
+          wait "$finish_b"
+          cat /tmp/finish-executed.json /tmp/finish-failed.json
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE reserved numeric; spent numeric; row_status text;
+          BEGIN
+            SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
+            SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${req_race}';
+            IF reserved <> 0 OR row_status NOT IN ('executed', 'failed') THEN
+              RAISE EXCEPTION 'concurrent_finish_status_invalid: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            END IF;
+            IF (row_status = 'executed' AND spent <> 6000000000000000000000000)
+               OR (row_status = 'failed' AND spent <> 5000000000000000000000000) THEN
+              RAISE EXCEPTION 'concurrent_finish_accounting_mismatch: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            END IF;
+          END
+          \$\$
+          SQL
+          echo "PASS: concurrent conflicting finalisations produce one terminal outcome and consistent budget accounting."
           echo "PASS: isolated PostgreSQL test complete. No Supabase project, production database, OutLayer, or NEAR transfer was used."
