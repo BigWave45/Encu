@@ -11,6 +11,7 @@ const tokens = {
   "inactive-agent-token": { id: "inactive-agent", active: false }
 };
 const reservations = new Map();
+const securityEvents = [];
 let mockSignerAddress = "agentguard.testnet";
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
@@ -31,6 +32,11 @@ const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [{ id: "default" }]);
+    if (req.method === "POST" && url.pathname === "/rest/v1/agentguard_security_events") {
+      securityEvents.push(await readJson(req));
+      res.writeHead(201);
+      return res.end();
+    }
     if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { address: mockSignerAddress, executor_account_id: mockSignerAddress, asset_account_id: null });
     if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
       const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
@@ -172,6 +178,7 @@ try {
   let response = await postTransfer({ requestId: "test-unauth-001" });
   assert(response.status === 401, "missing bearer token is rejected with 401");
   assert(counters.reserve === 0 && counters.provider === 0, "unauthenticated request never reaches reservation or provider");
+  assert(securityEvents.some(event => event.event_type === "transfer_unauthorized"), "unauthenticated transfer rejection is recorded as a security event");
 
   response = await postTransfer({ token: "not-a-valid-token", requestId: "test-invalid-auth-001" });
   assert(response.status === 401, "unknown bearer token is rejected");
@@ -189,6 +196,7 @@ try {
   response = await postTransfer({ token: "agent-one-token", requestId: "test-cap-001", amount: "6000000000000000000000000" });
   assert(response.status === 403, "transfer above configured per-transaction cap is blocked");
   assert(counters.reserve === reserveBeforeCap, "cap rejection occurs before a reservation is created");
+  assert(securityEvents.some(event => event.event_type === "transfer_per_transaction_limit_blocked"), "per-transaction cap rejection is recorded");
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
   payload = await response.json();
@@ -210,6 +218,7 @@ try {
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   assert(response.status === 409, "identical request replay is rejected by API");
   assert(counters.provider === 1, "identical replay does not invoke provider again");
+  assert(securityEvents.some(event => event.event_type === "transfer_replay_rejected" && event.request_id === primaryId), "duplicate transfer replay is recorded as a security event");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId, amount: "4000000000000000000000000" });
   assert(response.status === 409, "same request ID with changed amount is rejected");
