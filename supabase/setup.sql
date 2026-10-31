@@ -1,71 +1,25 @@
 -- AgentGuard database setup
--- Safe to run on a fresh Supabase project. Also upgrades the original schema.sql
--- if that older base schema was already applied.
+-- Run on a fresh Supabase project. Do not run the older schema.sql or migration first.
 
 create table if not exists public.agent_budgets (
   id text primary key,
-  total_limit_yocto numeric(78, 0),
+  total_limit_yocto numeric(78, 0) not null check (total_limit_yocto >= 0),
   spent_yocto numeric(78, 0) not null default 0 check (spent_yocto >= 0),
   reserved_yocto numeric(78, 0) not null default 0 check (reserved_yocto >= 0),
   updated_at timestamptz not null default now()
 );
 
-alter table public.agent_budgets
-  add column if not exists total_limit_yocto numeric(78, 0);
-
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'agent_budgets'
-      and column_name = 'daily_limit_yocto'
-  ) then
-    execute 'update public.agent_budgets
-             set total_limit_yocto = daily_limit_yocto
-             where total_limit_yocto is null';
-  end if;
-end
-$$;
-
-update public.agent_budgets
-set total_limit_yocto = 5000000000000000000000000
-where total_limit_yocto is null;
-
-alter table public.agent_budgets
-  alter column total_limit_yocto set not null;
-
-alter table public.agent_budgets
-  drop constraint if exists agent_budgets_total_limit_yocto_check;
-
-alter table public.agent_budgets
-  add constraint agent_budgets_total_limit_yocto_check
-  check (total_limit_yocto >= 0);
-
 create table if not exists public.spend_reservations (
   request_id text primary key,
   amount_yocto numeric(78, 0) not null check (amount_yocto > 0),
   recipient text not null,
-  status text not null default 'reserved',
+  status text not null default 'reserved'
+    check (status in ('reserved', 'executed', 'failed', 'needs_review')),
   outlayer_tx_hash text,
   last_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-alter table public.spend_reservations
-  add column if not exists last_error text;
-
-alter table public.spend_reservations
-  drop constraint if exists spend_reservations_status_check;
-
-update public.spend_reservations
-set status = 'failed'
-where status = 'released';
-
-alter table public.spend_reservations
-  add constraint spend_reservations_status_check
-  check (status in ('reserved', 'executed', 'failed', 'needs_review'));
 
 insert into public.agent_budgets (id, total_limit_yocto)
 values ('default', 5000000000000000000000000)
