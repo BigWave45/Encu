@@ -1,17 +1,20 @@
-export type OutLayerTransferResult = {
-  status?: string;
+export type OutLayerTransferBody = {
   tx_hash?: string;
   request_id?: string;
+  error?: string;
+  status?: string;
   [key: string]: unknown;
 };
 
-export async function transferNear(to: string, amount: string) {
+export type OutLayerTransferResult = {
+  httpStatus: number;
+  body: OutLayerTransferBody;
+};
+
+export async function transferNear(to: string, amount: string): Promise<OutLayerTransferResult> {
   const baseUrl = process.env.OUTLAYER_BASE_URL?.replace(/\/$/, "");
   const apiKey = process.env.OUTLAYER_API_KEY;
-
-  if (!baseUrl || !apiKey) {
-    throw new Error("OutLayer is not configured. Set its testnet URL and API key.");
-  }
+  if (!baseUrl || !apiKey) throw new Error("OutLayer is not configured.");
 
   const response = await fetch(`${baseUrl}/wallet/v1/transfer`, {
     method: "POST",
@@ -20,14 +23,16 @@ export async function transferNear(to: string, amount: string) {
       authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({ to, amount }),
-    cache: "no-store"
+    cache: "no-store",
+    signal: AbortSignal.timeout(30000)
   });
 
-  const body = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(`OutLayer rejected the transfer (${response.status}): ${JSON.stringify(body)}`);
+  const raw = await response.text();
+  let body: OutLayerTransferBody = {};
+  try {
+    body = raw ? JSON.parse(raw) as OutLayerTransferBody : {};
+  } catch {
+    body = { error: "unparseable_response" };
   }
-
-  return body as OutLayerTransferResult;
+  return { httpStatus: response.status, body };
 }
