@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getSupabase();
-    const [budgetResult, agentsResult, reservationsResult] = await Promise.all([
+    const [budgetResult, agentsResult, reservationsResult, auditResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
@@ -29,10 +29,14 @@ export async function GET(request: NextRequest) {
       db.from("spend_reservations")
         .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at")
         .order("created_at", { ascending: false })
-        .limit(20)
+        .limit(100),
+      db.from("agentguard_admin_audit")
+        .select("id,actor_agent_id,action,target_id,details,created_at")
+        .order("created_at", { ascending: false })
+        .limit(30)
     ]);
 
-    if (budgetResult.error || agentsResult.error || reservationsResult.error) {
+    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error) {
       return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
     }
     if (!budgetResult.data) {
@@ -67,6 +71,14 @@ export async function GET(request: NextRequest) {
         lastError: item.last_error,
         createdAt: item.created_at,
         updatedAt: item.updated_at
+      })),
+      audit: (auditResult.data ?? []).map((item) => ({
+        id: item.id,
+        actorAgentId: item.actor_agent_id,
+        action: item.action,
+        targetId: item.target_id,
+        details: item.details,
+        createdAt: item.created_at
       }))
     }, {
       headers: { "Cache-Control": "no-store, private" }
