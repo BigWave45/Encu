@@ -64,6 +64,50 @@ const mock = createServer(async (req, res) => {
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
     }
+    if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
+      const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\\./, "");
+      if (tokenHash) {
+        const agentId = agentsByHash.get(tokenHash);
+        const agent = mockAgents.find(item => item.id === agentId);
+        return send(res, 200, agent ? [{ id: agent.id, active: agent.active }] : []);
+      }
+      res.setHeader("content-range", `0-${Math.max(0, mockAgents.length - 1)}/${mockAgents.length}`);
+      return send(res, 200, mockAgents);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/agents") {
+      const body = await readJson(req);
+      if (mockAgents.some(agent => agent.id === body.id)) return send(res, 409, { code: "23505", message: "duplicate key" });
+      mockAgents.push({ id: body.id, name: body.name, active: true, created_at: new Date().toISOString() });
+      agentsByHash.set(body.token_hash, body.id);
+      res.writeHead(201);
+      return res.end();
+    }
+    if (req.method === "PATCH" && url.pathname === "/rest/v1/agents") {
+      const body = await readJson(req);
+      const id = url.searchParams.get("id")?.replace(/^eq\\./, "");
+      const agent = mockAgents.find(item => item.id === id && (!url.searchParams.has("active") || item.active === (url.searchParams.get("active") === "eq.true")));
+      if (!agent) return send(res, 200, []);
+      if (body.token_hash) agentsByHash.set(body.token_hash, agent.id);
+      if (typeof body.active === "boolean") agent.active = body.active;
+      return send(res, 200, [{ id: agent.id, name: agent.name, active: agent.active }]);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/update_agent_budget_limit") {
+      const body = await readJson(req);
+      const next = BigInt(body.p_new_limit_yocto);
+      if (next < BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto)) return send(res, 400, { message: "budget_below_committed_amounts" });
+      mockBudget.total_limit_yocto = next.toString();
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "budget_limit_updated", target_id: "default", details: {} });
+      return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_active") {
+      const body = await readJson(req);
+      if (body.p_agent_id === "primary") return send(res, 400, { message: "primary_agent_protected" });
+      const agent = mockAgents.find(item => item.id === body.p_agent_id);
+      if (!agent) return send(res, 400, { message: "agent_not_found" });
+      agent.active = body.p_active;
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: body.p_active ? "agent_activated" : "agent_deactivated", target_id: agent.id, details: {} });
+      return send(res, 200, { id: agent.id, name: agent.name, active: agent.active });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
       const body = await readJson(req);
@@ -172,7 +216,7 @@ try {
     headers: { authorization: "Bearer admin-token" }
   });
   payload = await response.json();
-  assert(response.status === 200 && payload.status === "ok" && payload.agents.length === 2, "admin dashboard loads budget and agent inventory");
+  assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2, `admin dashboard loads budget and agent inventory (HTTP ${response.status}: ${JSON.stringify(payload)})`);
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
     headers: { authorization: "Bearer agent-one-token" }
   });
