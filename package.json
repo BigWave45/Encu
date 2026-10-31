@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test:reservation-concurrency": "node scripts/test-reservation-concurrency.mjs",
-    "test:agent-api": "node scripts/test-agent-api.mjs"
+    "test:agent-api": "node scripts/test-agent-api.mjs",
+    "test:reconciliation": "node scripts/test-reconciliation.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
