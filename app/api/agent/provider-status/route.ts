@@ -44,7 +44,10 @@ export async function POST(request: NextRequest) {
   if (!reservation) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
   }
-  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {\n    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });\n  }\n  if (!reservation.outlayer_request_id) {
+  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {
+    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+  }
+  if (!reservation.outlayer_request_id) {
     return NextResponse.json({
       status: reservation.status,
       requestId: reservation.request_id,
