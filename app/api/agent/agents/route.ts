@@ -13,7 +13,7 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  let identity;
+  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
   try {
     identity = await authenticateAgent(request.headers.get("authorization"));
   } catch {
