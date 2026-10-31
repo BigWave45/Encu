@@ -189,11 +189,15 @@ AgentGuard queries NEAR testnet RPC for final execution and verifies the signer,
 
 A pending transaction, unavailable RPC, missing hash, or transaction mismatch leaves the reservation held for review. The route does not retry the transfer.
 
-### Admin dashboard data
+### Admin dashboard
+
+The homepage dashboard requires the primary administrator credential. It displays the shared budget, registered agents, and latest 20 reservations. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
+
+The dashboard data endpoint is:
 
 `GET /api/admin/dashboard`
 
-Requires the primary administrator credential. Returns the shared budget, registered agents, and the latest 20 reservations. It is read-only.
+It is admin-only and returns the shared budget, agents, and latest 20 reservations, including saved provider request IDs.
 
 ## Safety and recovery behavior
 
