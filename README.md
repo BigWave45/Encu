@@ -1,49 +1,90 @@
 # AgentGuard
 
-AgentGuard is a transaction-control gateway for AI agents. It evaluates transfer requests against policy and budget controls before they reach a custody/signing provider.
+AgentGuard is a transaction-control gateway for AI agents making NEAR testnet transfers through OutLayer. Multiple independently authenticated agents share one spending budget. AgentGuard reserves budget before calling the provider, attributes each reservation to the authenticated agent, blocks replayed requests, and reconciles submitted transfers against NEAR finality before settling the ledger.
 
-## Health check
+## Current scope
 
-The read-only endpoint is:
+- NEAR testnet native-token transfers through one configured OutLayer wallet.
+- Multiple agents with separate bearer credentials and one shared budget.
+- Atomic budget reservation in Supabase before a provider call.
+- Request-ID idempotency and conflict detection.
+- Per-agent reservation attribution.
+- NEAR FINAL transaction reconciliation.
+- Admin-only read dashboard and agent credential provisioning/rotation.
 
-`GET /api/health`
+This is a testnet V1. It is not a custody provider, smart contract, marketplace, or multi-chain gateway. A transfer has not been confirmed merely because OutLayer accepted a request or returned a transaction hash.
 
-It checks that the required Supabase environment variables are present and that the application can query the `agent_budgets` table for the default budget.
+## Architecture
 
-Possible responses include:
+```text
+Agent
+  -> AgentGuard API
+  -> authenticated agent identity
+  -> atomic shared-budget reservation (Supabase)
+  -> OutLayer transfer
+  -> NEAR testnet
+  -> NEAR FINAL reconciliation
+  -> settled shared ledger
+```
 
-- `200` with `status: "ok"` when the database check succeeds and the default budget exists.
-- `503` with `status: "configuration_missing"` when required Supabase environment variables are absent.
-- `503` with `status: "database_error"` and a database error code/message when the query fails.
-- `503` with `status: "database_connected"` and `budget: "missing"` when the query succeeds but no default budget row exists.
-- `503` with `status: "database_unavailable"` when the database client throws during the check.
+Supabase is the source of truth for the shared budget and reservation ledger. OutLayer is the configured transfer provider. NEAR RPC is used to independently verify final transaction execution.
 
-The endpoint is read-only. It does not initiate transfers or expose environment-variable values.
+## Environment variables
 
-## Transaction reconciliation
+Configure these in the deployment environment:
 
-After OutLayer returns a transaction hash, AgentGuard keeps the reservation in `needs_review` until NEAR testnet RPC confirms final execution. The protected endpoint is:
+| Variable | Purpose |
+| --- | --- |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase service-role key; never expose it to a browser |
+| `OUTLAYER_BASE_URL` | OutLayer API base URL, for example the testnet API |
+| `OUTLAYER_API_KEY` | OutLayer server-side API credential |
+| `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
+| `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-`POST /api/agent/reconcile`
+The reconciliation route currently uses the configured AgentGuard OutLayer testnet wallet's public signer account ID in code. There is no `OUTLAYER_NEAR_ADDRESS` environment variable requirement in the current implementation.
 
-Send a JSON body containing `requestId` and the same bearer token used for the transfer endpoint. Set `OUTLAYER_NEAR_ADDRESS` in Vercel to the wallet's NEAR account ID. A pending or unavailable chain result leaves the reservation held; it does not release budget or retry the transfer.
+Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
-For an existing Supabase installation, run `supabase/reconcile-migration.sql` once in the Supabase SQL Editor. Fresh installations should use the updated `supabase/setup.sql`.
+## Database setup
 
+### Fresh Supabase project
 
-## Multi-agent shared budget (V1)
+Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the current multi-agent schema and RPC functions and seeds a shared default budget of 5 NEAR.
 
-Existing installations must apply `supabase/multi-agent-v1-migration.sql` once in the Supabase SQL Editor before deploying the multi-agent API changes. The migration attributes existing reservations to `primary`, adds agent identities, and keeps the existing `default` shared budget and its balances intact. Do not rerun the fresh-install `setup.sql` on a live database.
+Do not run this fresh-install script on an existing database. It is not an upgrade migration and does not preserve or migrate an existing ledger.
 
-The primary credential remains `AGENTGUARD_AGENT_TOKEN` in Vercel. It authenticates the primary agent and is also the administrator credential for provisioning additional agents.
+### Existing AgentGuard database
 
-Create an agent with:
+Apply the upgrade scripts in this order, each once:
 
-`POST /api/agent/agents`
+1. `supabase/multi-agent-v1-migration.sql`
+2. `supabase/reconcile-migration.sql`
+3. `supabase/multi-agent-v1-cleanup.sql`
 
-Authorization: `Bearer <AGENTGUARD_AGENT_TOKEN>`
+The multi-agent migration creates the agent table, attributes existing reservations to `primary`, and adds the four-argument reservation RPC. The reconciliation migration installs the settlement function used after chain verification. The cleanup script removes the legacy three-argument reservation function.
 
-JSON body:
+Do not reset the database or rerun the fresh-install setup against a live project. Confirm the migration output and inspect the resulting tables/functions before deploying code that depends on them.
+
+## Authentication and agents
+
+All agent endpoints use bearer authentication:
+
+```http
+Authorization: Bearer <agent-token>
+```
+
+The primary credential is `AGENTGUARD_AGENT_TOKEN`. It authenticates the primary agent and grants administrator access to agent provisioning and the dashboard.
+
+### Create an agent
+
+```http
+POST /api/agent/agents
+Content-Type: application/json
+Authorization: Bearer <primary-admin-token>
+```
+
+Body:
 
 ```json
 {
@@ -52,8 +93,144 @@ JSON body:
 }
 ```
 
-The endpoint returns a randomly generated bearer token once. Store it securely; only its SHA-256 hash is persisted. If it is lost, provision a replacement agent with a new ID and deactivate the old identity through the database.
+The API returns a generated bearer token once. The database stores only its SHA-256 hash. Save the returned token securely; it cannot be retrieved later.
 
-Additional agents use their own bearer token for `/api/agent/transfer`, `/api/agent/balance`, `/api/agent/reconcile`, and `/api/agent/provider-status`. Each reservation is attributed to the authenticated identity. The API does not accept an agent ID from the transfer body. Agents share the same `default` budget; they do not receive separate budget allocations.
+### Rotate an agent credential
 
-The primary admin credential can inspect and reconcile any reservation. A non-admin agent can inspect or reconcile only reservations attributed to its own identity.
+```http
+POST /api/agent/agents/rotate
+Content-Type: application/json
+Authorization: Bearer <primary-admin-token>
+```
+
+Body:
+
+```json
+{
+  "id": "research-agent"
+}
+```
+
+Rotation immediately invalidates the previous token and returns a replacement once. Update the agent's secret store before it makes another request.
+
+Additional agents use their own tokens for balance, transfer, provider-status, and reconciliation endpoints. The agent identity is derived from the bearer token; clients cannot choose their identity in a transfer request. All active agents share the same default budget.
+
+## API
+
+### Health
+
+`GET /api/health`
+
+Read-only configuration and connectivity check. It does not initiate a transfer.
+
+### Read the OutLayer wallet balance
+
+`GET /api/agent/balance`
+
+Requires any active agent credential. Returns the configured OutLayer wallet's NEAR balance response.
+
+### Request a transfer
+
+`POST /api/agent/transfer`
+
+Body:
+
+```json
+{
+  "requestId": "research-job-000001",
+  "to": "recipient.testnet",
+  "amountYocto": "100000000000000000000000"
+}
+```
+
+- `requestId` must be a stable unique identifier for the intended payment and at least 8 characters long.
+- `to` is the NEAR recipient account.
+- `amountYocto` is a positive integer string in yoctoNEAR. Do not send a floating-point NEAR amount.
+- Reuse the same request ID only when retrying the same logical request with the same agent, recipient, and amount.
+- A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
+- The request is first reserved against the shared budget. Only the request that creates the reservation is allowed to call OutLayer.
+
+Possible outcomes include:
+
+- `200 executed`: the transfer handler reached its executed response path. Treat the transaction hash and final reconciliation result as the authoritative chain record.
+- `202 needs_review`: the reservation remains held. A timeout or ambiguous provider response must not be treated as proof that no transfer occurred.
+- `403 blocked`: the per-transfer or shared-budget limit rejected the request.
+- `409`: replay or idempotency conflict; do not create a new request ID just to bypass an unresolved payment.
+- `401/503`: authentication or service availability issue.
+
+### Check provider status
+
+`POST /api/agent/provider-status`
+
+Body:
+
+```json
+{
+  "requestId": "research-job-000001"
+}
+```
+
+This checks an OutLayer request when a provider request ID was saved. Provider status is informational; it does not settle the budget. If a transaction hash is recovered, use the reconciliation endpoint next.
+
+### Reconcile against NEAR finality
+
+`POST /api/agent/reconcile`
+
+Body:
+
+```json
+{
+  "requestId": "research-job-000001"
+}
+```
+
+AgentGuard queries NEAR testnet RPC for final execution and verifies the signer, recipient, and exact single transfer action against the reservation. Only a matching FINAL transaction can settle the reservation as executed or failed.
+
+A pending transaction, unavailable RPC, missing hash, or transaction mismatch leaves the reservation held for review. The route does not retry the transfer.
+
+### Admin dashboard data
+
+`GET /api/admin/dashboard`
+
+Requires the primary administrator credential. Returns the shared budget, registered agents, and the latest 20 reservations. It is read-only.
+
+## Safety and recovery behavior
+
+- The shared budget row is locked during reservation, serialising competing agents' budget checks.
+- The reservation is committed before the OutLayer call.
+- An idempotency replay cannot initiate a second provider call.
+- A provider response or transaction hash alone does not settle the budget.
+- Ambiguous timeouts remain reserved because the provider may have accepted the transfer.
+- There is no automatic transfer retry.
+- Only the primary administrator can provision or rotate agent credentials and read the admin dashboard.
+- Non-admin agents can access or reconcile only their own reservations.
+
+A reservation that has no provider request ID or transaction hash may require manual investigation. Do not release it or submit a replacement payment until the original request's outcome has been established.
+
+## Local development
+
+Install dependencies and run the development server:
+
+```bash
+npm install
+npm run dev
+```
+
+Run static linting:
+
+```bash
+npm run lint
+```
+
+Create a local `.env.local` with the required environment variables. Do not commit that file.
+
+## Known V1 limitations
+
+- Testnet only.
+- One OutLayer wallet/provider configuration.
+- One shared budget, rather than per-agent sub-budgets.
+- No automated recovery for a provider timeout that occurs before a provider request ID or transaction hash is persisted.
+- No automated transfer retries.
+- No automated end-to-end or concurrency test suite is included yet.
+
+A successful health check confirms service connectivity, not that a transfer lifecycle has been tested. A live transfer, concurrent budget test, replay test, and finality reconciliation test must be recorded separately before claiming end-to-end validation.
