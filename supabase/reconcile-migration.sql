@@ -71,7 +71,7 @@ create or replace function public.record_outlayer_submission(
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $agentguard$
 declare
   reservation public.spend_reservations%rowtype;
 begin
@@ -100,7 +100,7 @@ begin
   where request_id = p_request_id;
   return jsonb_build_object('status', 'needs_review', 'request_id', p_request_id);
 end;
-$$;
+$agentguard$;
 
 revoke all on function public.record_outlayer_submission(text, text, text, text) from public;
 revoke all on function public.record_outlayer_submission(text, text, text, text) from anon, authenticated;
