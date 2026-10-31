@@ -51,6 +51,11 @@ type Dashboard = {
   audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
   securityEvents?: Array<{ id: string; actorAgentId: string | null; eventType: string; requestId: string | null; details: unknown; createdAt: string }>;
   reservationPage?: { page: number; pageSize: number; total: number; totalPages: number; status: string; search: string };
+  activityPages?: {
+    pageSize: number;
+    audit: { page: number; total: number; totalPages: number };
+    security: { page: number; total: number; totalPages: number };
+  };
 };
 
 const YOCTO_PER_NEAR = 10n ** 24n;
@@ -130,6 +135,8 @@ export default function Home() {
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationFilter, setReservationFilter] = useState("all");
   const [reservationPage, setReservationPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
+  const [securityPage, setSecurityPage] = useState(1);
 
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
@@ -151,11 +158,11 @@ export default function Home() {
     }
   }
 
-  async function loadDashboard(page = reservationPage, status = reservationFilter, search = reservationSearch) {
+  async function loadDashboard(page = reservationPage, status = reservationFilter, search = reservationSearch, nextAuditPage = auditPage, nextSecurityPage = securityPage) {
     setDashboardLoading(true);
     setDashboardError("");
     try {
-      const params = new URLSearchParams({ page: String(page), pageSize: "20", status, q: search.trim() });
+      const params = new URLSearchParams({ page: String(page), pageSize: "20", status, q: search.trim(), auditPage: String(nextAuditPage), securityPage: String(nextSecurityPage) });
       const response = await fetch(`/api/admin/dashboard?${params.toString()}`, {
         headers: { authorization: `Bearer ${token.trim()}` },
         cache: "no-store"
@@ -167,6 +174,8 @@ export default function Home() {
       } else {
         setDashboard(body);
         setReservationPage(body.reservationPage?.page ?? page);
+        setAuditPage(body.activityPages?.audit?.page ?? nextAuditPage);
+        setSecurityPage(body.activityPages?.security?.page ?? nextSecurityPage);
         setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
       }
     } catch {
@@ -220,6 +229,8 @@ export default function Home() {
   }
 
   async function setAgentStatus(id: string, active: boolean) {
+    const action = active ? "activate" : "deactivate";
+    if (!window.confirm(`Are you sure you want to ${action} agent "${id}"? ${active ? "The agent will be allowed to submit requests again." : "New requests from this agent will be rejected."}`)) return;
     setAgentStatusBusy(id);
     setDashboardError("");
     try {
@@ -416,7 +427,14 @@ export default function Home() {
           <strong>System health</strong>
           <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
         </div>
-        {health && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, padding: 12, background: "#f8fafc", borderRadius: 8 }}>{JSON.stringify(health, null, 2)}</pre>}
+        {health && <div role="status" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
+          <div><strong>Overall</strong><div>{String(health.status ?? "unknown")}</div></div>
+          <div><strong>Network</strong><div>{String(health.network ?? "unknown")}</div></div>
+          <div><strong>Supabase</strong><div>{String(health.supabase ?? health.status ?? "unknown")}</div></div>
+          <div><strong>NEAR RPC</strong><div>{String(health.nearRpc ?? "unknown")}</div></div>
+          <div><strong>OutLayer</strong><div>{String(health.outlayer ?? "unknown")}</div></div>
+          <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
+        </div>}
         {dashboard?.budget && <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginTop: 20 }}>
             {[
@@ -451,7 +469,7 @@ export default function Home() {
           </div>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
-            <input aria-label="Search transactions" placeholder="Search exact request ID" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
+            <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
               <option value="all">All statuses</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option>
             </select>
@@ -490,19 +508,33 @@ export default function Home() {
               <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) >= (dashboard.reservationPage?.totalPages ?? 1)} onClick={() => loadDashboard((dashboard.reservationPage?.page ?? 1) + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
             </div>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Security and admin activity</h3>
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
               <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
               <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>{JSON.stringify(entry.details)}</div>
             </div>)}</div>}
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transfer security events (latest 50)</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.audit?.page ?? 1} of {dashboard.activityPages?.audit?.totalPages ?? 1}</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.audit?.page ?? 1) <= 1} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, Math.max(1, auditPage - 1), securityPage)} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.audit?.page ?? 1) >= (dashboard.activityPages?.audit?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage + 1, securityPage)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transfer security events ({dashboard.activityPages?.security?.total ?? dashboard.securityEvents?.length ?? 0})</h3>
           {!dashboard.securityEvents?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No transfer security events recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
               <strong>{event.eventType}</strong>
               <div style={{ color: "#64748b", marginTop: 4 }}>Agent: {event.actorAgentId ?? "Unauthenticated"} · {new Date(event.createdAt).toLocaleString()}</div>
               {event.requestId && <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>Request: {event.requestId}</div>}
             </div>)}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.security?.page ?? 1} of {dashboard.activityPages?.security?.totalPages ?? 1}</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.security?.page ?? 1) <= 1} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage, Math.max(1, securityPage - 1))} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.security?.page ?? 1) >= (dashboard.activityPages?.security?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage, securityPage + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
           <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
         </>}
       </section>
