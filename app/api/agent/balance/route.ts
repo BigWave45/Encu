@@ -5,7 +5,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const identity = await authenticateAgent(request.headers.get("authorization"));
+  let identity;
+  try {
+    identity = await authenticateAgent(request.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
+  }
   if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const baseUrl = process.env.OUTLAYER_BASE_URL?.replace(/\/$/, "");
