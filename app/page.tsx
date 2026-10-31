@@ -26,6 +26,8 @@ export default function Home() {
   const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const [rotationResult, setRotationResult] = useState<AgentResult | null>(null);
+  const [rotatingAgent, setRotatingAgent] = useState(false);
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,6 +45,29 @@ export default function Home() {
       setResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function rotateAgent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRotatingAgent(true);
+    setRotationResult(null);
+    try {
+      const response = await fetch("/api/agent/agents/rotate", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({ id: agentId.trim() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setRotationResult(body);
+    } catch {
+      setRotationResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
+    } finally {
+      setRotatingAgent(false);
     }
   }
 
@@ -129,6 +154,32 @@ export default function Home() {
             {creatingAgent ? "Creating…" : "Create agent credential"}
           </button>
         </form>
+
+        <form onSubmit={rotateAgent} style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
+          <strong>Rotate an agent credential</strong>
+          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
+            Revoke the existing credential for the Agent ID above and issue a replacement.
+          </p>
+          <button type="submit" disabled={rotatingAgent || !token.trim() || !agentId.trim()}
+            style={{ marginTop: 8, padding: "11px 18px", border: 0, borderRadius: 8, background: rotatingAgent ? "#64748b" : "#7f1d1d", color: "white", fontSize: 15 }}>
+            {rotatingAgent ? "Rotating…" : "Rotate agent credential"}
+          </button>
+        </form>
+        {rotationResult && (
+          <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+            {rotationResult.token ? (
+              <>
+                <strong>Credential rotated: {rotationResult.agent?.name} ({rotationResult.agent?.id})</strong>
+                <p style={{ color: "#b45309", fontSize: 13 }}>The previous credential is invalid. Save this replacement securely; it is shown once.</p>
+                <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#f1f5f9", borderRadius: 6 }}>{rotationResult.token}</pre>
+                <button type="button" onClick={() => navigator.clipboard?.writeText(rotationResult.token!)}
+                  style={{ padding: "9px 14px", border: 0, borderRadius: 6, background: "#0f172a", color: "white" }}>Copy replacement token</button>
+              </>
+            ) : (
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(rotationResult, null, 2)}</pre>
+            )}
+          </div>
+        )}
         {agentResult && (
           <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
             {agentResult.token ? (
