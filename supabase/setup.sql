@@ -32,19 +32,6 @@ update public.agent_budgets
 set total_limit_yocto = 5000000000000000000000000
 where total_limit_yocto is null;
 
-do $
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'agent_budgets'
-      and column_name = 'daily_limit_yocto'
-  ) then
-    execute 'alter table public.agent_budgets alter column daily_limit_yocto set default 5000000000000000000000000';
-  end if;
-end
-$;
-
 alter table public.agent_budgets
   alter column total_limit_yocto set not null;
 
