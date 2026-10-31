@@ -19,3 +19,13 @@ Possible responses include:
 - `503` with `status: "database_unavailable"` when the database client throws during the check.
 
 The endpoint is read-only. It does not initiate transfers or expose environment-variable values.
+
+## Transaction reconciliation
+
+After OutLayer returns a transaction hash, AgentGuard keeps the reservation in `needs_review` until NEAR testnet RPC confirms final execution. The protected endpoint is:
+
+`POST /api/agent/reconcile`
+
+Send a JSON body containing `requestId` and the same bearer token used for the transfer endpoint. Set `OUTLAYER_NEAR_ADDRESS` in Vercel to the wallet's NEAR account ID. A pending or unavailable chain result leaves the reservation held; it does not release budget or retry the transfer.
+
+For an existing Supabase installation, run `supabase/reconcile-migration.sql` once in the Supabase SQL Editor. Fresh installations should use the updated `supabase/setup.sql`.
