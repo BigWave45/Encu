@@ -227,9 +227,11 @@ try {
   response = await postTransfer({ token: payload.token, requestId: "test-new-demo-token-001" });
   assert(response.status === 202, "replacement credential authenticates successfully");
 
+  const beforeUnauthReserve = counters.reserve;
+  const beforeUnauthProvider = counters.provider;
   response = await postTransfer({ requestId: "test-unauth-001" });
   assert(response.status === 401, "missing bearer token is rejected with 401");
-  assert(counters.reserve === 0 && counters.provider === 0, "unauthenticated request never reaches reservation or provider");
+  assert(counters.reserve === beforeUnauthReserve && counters.provider === beforeUnauthProvider, "unauthenticated request never reaches reservation or provider");
   assert(securityEvents.some(event => event.event_type === "transfer_unauthorized"), "unauthenticated transfer rejection is recorded as a security event");
 
   response = await postTransfer({ token: "not-a-valid-token", requestId: "test-invalid-auth-001" });
