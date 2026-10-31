@@ -1,5 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-import { getSupabase } from "@/lib/supabase";
+import { timingSafeEqual } from "node:crypto";
 
 export type AgentIdentity = { agentId: string; isAdmin: boolean };
 
@@ -14,9 +13,7 @@ export async function authenticateAgent(authorization: string | null): Promise<A
   if (!supplied) return null;
   const primaryToken = process.env.AGENTGUARD_AGENT_TOKEN;
   if (primaryToken && safeEqual(primaryToken, supplied)) return { agentId: "primary", isAdmin: true };
-  const tokenHash = createHash("sha256").update(supplied).digest("hex");
-  const db = getSupabase();
-  const { data, error } = await db.from("agents").select("id").eq("token_hash", tokenHash).eq("active", true).maybeSingle();
-  if (error || !data) return null;
-  return { agentId: data.id, isAdmin: false };
+  const secondaryToken = process.env.AGENTGUARD_AGENT_B_TOKEN;
+  if (secondaryToken && safeEqual(secondaryToken, supplied)) return { agentId: "agent_b", isAdmin: false };
+  return null;
 }
