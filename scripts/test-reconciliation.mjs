@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const mockPort = 54322;
 const appPort = 3001;
-const signerId = "6d665ad261fc10ce705e4b10d107b9e8f40177266f937c6dff8f5a178126ae6e";
+const signerId = "agentguard.testnet";
 const tokens = {
   "agent-one-token": { id: "primary", active: true },
   "agent-two-token": { id: "research-agent", active: true }
@@ -96,6 +96,11 @@ const env = {
   SUPABASE_URL: `http://127.0.0.1:${mockPort}`,
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
   NEAR_RPC_URL: `http://127.0.0.1:${mockPort}/`,
+  OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
+  OUTLAYER_API_KEY: "test-outlayer-key",
+  OUTLAYER_NEAR_ADDRESS: signerId,
+  CI: "true",
+  AGENTGUARD_TEST_MODE: "true",
   OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
   OUTLAYER_API_KEY: "test-outlayer-key",
   OUTLAYER_NEAR_ADDRESS: signerId,
