@@ -1,0 +1,76 @@
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateAgent } from "@/lib/agent-auth";
+import { getSupabase } from "@/lib/supabase";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
+  try {
+    identity = await authenticateAgent(request.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
+  }
+  if (!identity?.isAdmin) {
+    return NextResponse.json({ error: "admin_required" }, { status: 403 });
+  }
+
+  try {
+    const db = getSupabase();
+    const [budgetResult, agentsResult, reservationsResult] = await Promise.all([
+      db.from("agent_budgets")
+        .select("id,total_limit_yocto,spent_yocto,reserved_yocto,updated_at")
+        .eq("id", "default")
+        .maybeSingle(),
+      db.from("agents")
+        .select("id,name,active,created_at")
+        .order("created_at", { ascending: true }),
+      db.from("spend_reservations")
+        .select("request_id,agent_id,recipient,amount_yocto,status,outlayer_tx_hash,last_error,created_at,updated_at")
+        .order("created_at", { ascending: false })
+        .limit(20)
+    ]);
+
+    if (budgetResult.error || agentsResult.error || reservationsResult.error) {
+      return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
+    }
+    if (!budgetResult.data) {
+      return NextResponse.json({ error: "budget_not_configured" }, { status: 503 });
+    }
+
+    const asString = (value: unknown) => value == null ? "0" : String(value);
+    return NextResponse.json({
+      status: "ok",
+      generatedAt: new Date().toISOString(),
+      budget: {
+        id: budgetResult.data.id,
+        totalLimitYocto: asString(budgetResult.data.total_limit_yocto),
+        spentYocto: asString(budgetResult.data.spent_yocto),
+        reservedYocto: asString(budgetResult.data.reserved_yocto),
+        updatedAt: budgetResult.data.updated_at
+      },
+      agents: (agentsResult.data ?? []).map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        active: agent.active,
+        createdAt: agent.created_at
+      })),
+      reservations: (reservationsResult.data ?? []).map((item) => ({
+        requestId: item.request_id,
+        agentId: item.agent_id,
+        recipient: item.recipient,
+        amountYocto: asString(item.amount_yocto),
+        status: item.status,
+        txHash: item.outlayer_tx_hash,
+        lastError: item.last_error,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }))
+    }, {
+      headers: { "Cache-Control": "no-store, private" }
+    });
+  } catch {
+    return NextResponse.json({ error: "dashboard_unavailable" }, { status: 503 });
+  }
+}
