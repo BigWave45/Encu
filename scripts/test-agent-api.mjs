@@ -31,7 +31,7 @@ const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [{ id: "default" }]);
-    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { near_address: mockSignerAddress });
+    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { address: mockSignerAddress, executor_account_id: mockSignerAddress, asset_account_id: null });
     if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
       const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
       const agent = agentsByHash.get(tokenHash);
