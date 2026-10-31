@@ -274,7 +274,8 @@ try {
   response = await postTransfer({ token: oldDemoToken, requestId: "test-old-demo-token-001" });
   assert(response.status === 401, "rotated credential is no longer accepted");
   response = await postTransfer({ token: payload.token, requestId: "test-new-demo-token-001" });
-  assert(response.status === 202, "replacement credential authenticates successfully");
+  const replacementBody = await response.json();
+  assert(response.status === 202, `replacement credential authenticates successfully (HTTP ${response.status}: ${JSON.stringify(replacementBody)})`);
 
   const beforeUnauthReserve = counters.reserve;
   const beforeUnauthProvider = counters.provider;
