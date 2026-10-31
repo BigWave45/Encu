@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { getOutLayerConfig } from "@/lib/outlayer";
+import { getOutLayerConfig, getNearRpcUrl } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +53,27 @@ async function checkOutLayer(): Promise<{
   }
 }
 
+async function checkNearRpc(): Promise<"connected" | "unavailable" | "configuration_invalid"> {
+  let rpcUrl: string;
+  try { rpcUrl = getNearRpcUrl(); }
+  catch { return "configuration_invalid"; }
+  try {
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "agentguard-health", method: "status", params: [] }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) return "unavailable";
+    const body = await response.json().catch(() => null);
+    return body?.result?.chain_id === (process.env.AGENTGUARD_NETWORK === "mainnet" ? "mainnet" : "testnet")
+      ? "connected" : "unavailable";
+  } catch {
+    return "unavailable";
+  }
+}
+
 export async function GET() {
   const missing = [
     !process.env.SUPABASE_URL && "SUPABASE_URL",
@@ -80,12 +101,15 @@ export async function GET() {
     }
     if (!data) return NextResponse.json({ status: "database_connected", budget: "missing" }, { status: 503 });
 
-    const outlayer = await checkOutLayer();
-    const ready = outlayer.status === "connected";
+    const [outlayer, nearRpc] = await Promise.all([checkOutLayer(), checkNearRpc()]);
+    const network = process.env.AGENTGUARD_NETWORK ?? "testnet";
+    const ready = outlayer.status === "connected" && nearRpc === "connected";
     return NextResponse.json({
       status: ready ? "ok" : "not_ready",
       supabase: "connected",
       budget: "configured",
+      network,
+      nearRpc,
       outlayer: outlayer.status,
       signerMatches: outlayer.signerMatches ?? false
     }, { status: ready ? 200 : 503 });
