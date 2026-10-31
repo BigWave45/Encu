@@ -54,3 +54,38 @@ $$;
 
 revoke all on function public.update_agent_budget_limit(numeric, text) from public, anon, authenticated;
 grant execute on function public.update_agent_budget_limit(numeric, text) to service_role;
+
+create or replace function public.set_agent_active(p_agent_id text, p_active boolean, p_actor_agent_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_agent public.agents%rowtype;
+begin
+  if p_agent_id = 'primary' then raise exception 'primary_agent_protected'; end if;
+
+  update public.agents
+  set active = p_active
+  where id = p_agent_id
+  returning * into v_agent;
+
+  if not found then raise exception 'agent_not_found'; end if;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id,
+          case when p_active then 'agent_activated' else 'agent_deactivated' end,
+          p_agent_id,
+          pg_catalog.jsonb_build_object('name', v_agent.name));
+
+  return pg_catalog.jsonb_build_object(
+    'id', v_agent.id,
+    'name', v_agent.name,
+    'active', v_agent.active
+  );
+end;
+$$;
+
+revoke all on function public.set_agent_active(text, boolean, text) from public, anon, authenticated;
+grant execute on function public.set_agent_active(text, boolean, text) to service_role;
