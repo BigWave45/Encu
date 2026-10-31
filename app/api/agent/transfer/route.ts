@@ -14,10 +14,13 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const identity = await authenticateAgent(request.headers.get("authorization"));
-  if (!identity) {
-    return NextResponse.json({error:"unauthorized"},{status:401});
+  let identity;
+  try {
+    identity = await authenticateAgent(request.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
+  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const parsed = schema.safeParse(await request.json().catch(()=>null));
   if (!parsed.success) {
