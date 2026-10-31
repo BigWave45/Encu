@@ -37,9 +37,6 @@ begin
       updated_at = now()
   where request_id = p_request_id;
   return jsonb_build_object('status', 'needs_review', 'request_id', p_request_id);
-end;
-$;
-
-revoke all on function public.record_outlayer_submission(text, text, text, text) from public;
+end;\n$;revoke all on function public.record_outlayer_submission(text, text, text, text) from public;
 revoke all on function public.record_outlayer_submission(text, text, text, text) from anon, authenticated;
 grant execute on function public.record_outlayer_submission(text, text, text, text) to service_role;
