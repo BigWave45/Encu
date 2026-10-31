@@ -69,6 +69,17 @@ function near(value: string) {
   }
 }
 
+function yoctoToInput(value: string) {
+  try {
+    const amount = BigInt(value);
+    const whole = amount / YOCTO_PER_NEAR;
+    const fraction = (amount % YOCTO_PER_NEAR).toString().padStart(24, "0").replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+  } catch {
+    return "";
+  }
+}
+
 function availableNear(budget: NonNullable<Dashboard["budget"]>) {
   try {
     return near(String(
@@ -151,7 +162,7 @@ export default function Home() {
         setDashboardError(body.error ?? "dashboard_request_failed");
       } else {
         setDashboard(body);
-        setBudgetLimit(near(body.budget.totalLimitYocto));
+        setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
       }
     } catch {
       setDashboard(null);
