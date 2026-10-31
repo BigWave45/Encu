@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
-    "next": "^15.5.0",
+    "next": "15.5.28",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.1.5"
@@ -20,7 +20,11 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "eslint": "^9.35.0",
-    "eslint-config-next": "^15.5.0",
+    "eslint-config-next": "15.5.28",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "minimatch": "^11.0.1"
   }
 }
