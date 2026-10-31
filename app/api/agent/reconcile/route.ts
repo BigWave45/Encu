@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { authenticateAgent } from "@/lib/agent-auth";
-import { getNearTestnetRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
+import { getNearRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const outlayer = getOutLayerConfig();
     signerId = outlayer.nearAddress;
-    rpcUrl = getNearTestnetRpcUrl();
+    rpcUrl = getNearRpcUrl();
   } catch (error) {
     return NextResponse.json({
       error: error instanceof Error ? error.message : "testnet_configuration_invalid"
