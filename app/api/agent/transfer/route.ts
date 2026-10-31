@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
 import { authenticateAgent } from "@/lib/agent-auth";
+import { recordSecurityEvent } from "@/lib/security-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +19,17 @@ export async function POST(request: NextRequest) {
   try {
     identity = await authenticateAgent(request.headers.get("authorization"));
   } catch {
+    await recordSecurityEvent({ eventType: "transfer_authentication_unavailable" });
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
-  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!identity) {
+    await recordSecurityEvent({ eventType: "transfer_unauthorized" });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_invalid_request" });
     return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
   }
 
@@ -33,6 +39,7 @@ export async function POST(request: NextRequest) {
     getOutLayerConfig();
   } catch (error) {
     const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_provider_configuration_blocked" });
     return NextResponse.json({ error: reason }, { status: 503 });
   }
 
@@ -40,6 +47,7 @@ export async function POST(request: NextRequest) {
   const amount = BigInt(amountYocto);
   const cap = BigInt(process.env.AGENTGUARD_MAX_TRANSFER_YOCTO ?? "0");
   if (cap <= 0n || amount > cap) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_per_transaction_limit_blocked", requestId });
     return NextResponse.json({ status: "blocked", reason: "per_transaction_limit" }, { status: 403 });
   }
 
@@ -52,15 +60,20 @@ export async function POST(request: NextRequest) {
   });
   if (error) {
     const conflict = error.message.includes("idempotency_key_conflict");
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: conflict ? "transfer_idempotency_conflict" : "transfer_reservation_error", requestId });
     return NextResponse.json(
       { error: conflict ? "idempotency_key_conflict" : "reservation_failed" },
       { status: conflict ? 409 : 500 }
     );
   }
-  if (reservation?.status === "blocked") return NextResponse.json(reservation, { status: 403 });
+  if (reservation?.status === "blocked") {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_shared_budget_blocked", requestId });
+    return NextResponse.json(reservation, { status: 403 });
+  }
 
   // Only the insert winner can contact OutLayer. Replays never submit twice.
   if (reservation?.created !== true) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
     return NextResponse.json({ status: reservation?.status ?? "already_processed", requestId }, { status: 409 });
   }
 
