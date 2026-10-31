@@ -202,7 +202,7 @@ export default function Home() {
       <section style={panel}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Shared budget dashboard</h2>
-            <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Read-only view of the common budget, agents and latest reservations.</p></div>
+            <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Shared budget, agent identities and recent payments. Pending payments can be checked and reconciled here.</p></div>
           <button type="button" onClick={loadDashboard} disabled={!token.trim() || dashboardLoading}
             style={{ ...buttonStyle, marginTop: 0, opacity: !token.trim() || dashboardLoading ? 0.55 : 1 }}>
             {dashboardLoading ? "Loading…" : dashboard ? "Refresh dashboard" : "Load dashboard"}
