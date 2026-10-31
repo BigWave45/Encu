@@ -11,6 +11,7 @@ do $$
 declare
   v_agent_id text := 'ag_probe_' || substr(md5(clock_timestamp()::text), 1, 12);
   v_other_agent_id text := 'ag_probe_other_' || substr(md5(clock_timestamp()::text), 1, 8);
+  v_inactive_agent_id text := 'ag_probe_inactive_' || substr(md5(clock_timestamp()::text), 1, 8);
   v_request_id text := 'agentguard-probe-' || substr(md5(random()::text), 1, 16);
   v_blocked_id text := 'agentguard-block-' || substr(md5(random()::text), 1, 16);
   v_amount numeric := 123;
@@ -30,7 +31,22 @@ begin
   insert into public.agents (id, name, active)
   values
     (v_agent_id, 'Temporary RPC verification agent', true),
-    (v_other_agent_id, 'Temporary second verification agent', true);
+    (v_other_agent_id, 'Temporary second verification agent', true),
+    (v_inactive_agent_id, 'Temporary inactive verification agent', false);
+
+  -- Inactive agents must not be able to reserve budget.
+  begin
+    perform public.reserve_agent_spend(
+      'agentguard-inactive-' || substr(md5(random()::text), 1, 16),
+      v_amount, 'probe.testnet', v_inactive_agent_id
+    );
+    raise exception 'verification_failed: inactive agent was allowed to reserve';
+  exception
+    when raise_exception then
+      if sqlerrm <> 'agent_not_active' then
+        raise;
+      end if;
+  end;
 
   -- First request must create one reservation.
   v_result := public.reserve_agent_spend(
