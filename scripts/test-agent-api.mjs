@@ -123,6 +123,7 @@ const env = {
   OUTLAYER_NEAR_ADDRESS: "agentguard.testnet",
   CI: "true",
   AGENTGUARD_TEST_MODE: "true",
+  AGENTGUARD_NETWORK: "testnet",
   AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000",
   AGENTGUARD_AGENT_TOKEN: "",
   PORT: String(appPort),
