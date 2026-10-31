@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { transferNear } from "@/lib/outlayer";
+import { authenticateAgent } from "@/lib/agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,13 +12,6 @@ const schema = z.object({
   to: z.string().min(2).max(64).regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/),
   amountYocto: z.string().regex(/^[1-9][0-9]*$/)
 });
-
-function validToken(expected: string, supplied?: string) {
-  if (!supplied) return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a,b);
-}
 
 export async function POST(request: NextRequest) {
   const expected = process.env.AGENTGUARD_AGENT_TOKEN;
@@ -41,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   const db = getSupabase();
   const {data: reservation,error} = await db.rpc("reserve_agent_spend",{
-    p_request_id:requestId,p_amount_yocto:amountYocto,p_recipient:to
+    p_request_id:requestId,p_amount_yocto:amountYocto,p_recipient:to,p_agent_id:identity.agentId
   });
   if (error) {
     const conflict = error.message.includes("idempotency_key_conflict");
