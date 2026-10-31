@@ -38,8 +38,9 @@ async function checkOutLayer(): Promise<{
 
     const body = await response.json().catch(() => null) as AddressResponse | null;
     const actualAddress = body && (
-      typeof body.near_address === "string" ? body.near_address :
+      typeof body.executor_account_id === "string" ? body.executor_account_id :
       typeof body.address === "string" ? body.address :
+      typeof body.near_address === "string" ? body.near_address :
       typeof body.account_id === "string" ? body.account_id : null
     );
     if (!actualAddress) return { status: "unavailable" };
