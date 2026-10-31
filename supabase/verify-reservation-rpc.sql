@@ -10,6 +10,7 @@ begin;
 do $$
 declare
   v_agent_id text := 'ag_probe_' || substr(md5(clock_timestamp()::text), 1, 12);
+  v_other_agent_id text := 'ag_probe_other_' || substr(md5(clock_timestamp()::text), 1, 8);
   v_request_id text := 'agentguard-probe-' || substr(md5(random()::text), 1, 16);
   v_blocked_id text := 'agentguard-block-' || substr(md5(random()::text), 1, 16);
   v_amount numeric := 123;
@@ -27,7 +28,9 @@ begin
   end if;
 
   insert into public.agents (id, name, active)
-  values (v_agent_id, 'Temporary RPC verification agent', true);
+  values
+    (v_agent_id, 'Temporary RPC verification agent', true),
+    (v_other_agent_id, 'Temporary second verification agent', true);
 
   -- First request must create one reservation.
   v_result := public.reserve_agent_spend(
@@ -76,6 +79,19 @@ begin
       end if;
   end;
 
+  -- The same idempotency key cannot be replayed by a different agent.
+  begin
+    perform public.reserve_agent_spend(
+      v_request_id, v_amount, 'probe.testnet', v_other_agent_id
+    );
+    raise exception 'verification_failed: cross-agent replay was not rejected';
+  exception
+    when raise_exception then
+      if sqlerrm <> 'idempotency_key_conflict' then
+        raise;
+      end if;
+  end;
+
   -- Set the limit to the current committed+reserved total inside this
   -- transaction. A further positive reservation must be blocked.
   update public.agent_budgets
@@ -116,6 +132,19 @@ begin
   if v_after.reserved_yocto <> v_before.reserved_yocto
      or v_after.spent_yocto <> v_before.spent_yocto + v_amount then
     raise exception 'verification_failed: executed settlement did not move balances exactly';
+  end if;
+
+  -- A failed reservation must release its reserved amount without increasing spend.
+  v_request_id := 'agentguard-fail-' || substr(md5(random()::text), 1, 16);
+  perform public.reserve_agent_spend(
+    v_request_id, v_amount, 'probe.testnet', v_agent_id
+  );
+  perform public.finish_agent_spend(v_request_id, 'failed', null, 'verification failure');
+
+  select * into v_after from public.agent_budgets where id = 'default';
+  if v_after.reserved_yocto <> v_before.reserved_yocto
+     or v_after.spent_yocto <> v_before.spent_yocto + v_amount then
+    raise exception 'verification_failed: failed settlement did not release reservation correctly';
   end if;
 
   -- A second settlement attempt must not change a terminal reservation.
