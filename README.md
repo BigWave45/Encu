@@ -61,8 +61,11 @@ Do not run this fresh-install script on an existing database. It is not an upgra
 Apply the upgrade scripts in this order, each once:
 
 1. `supabase/multi-agent-v1-migration.sql`
-2. `supabase/reconcile-migration.sql`
-3. `supabase/multi-agent-v1-cleanup.sql`
+2. `supabase/outlayer-request-id-migration.sql`
+3. `supabase/reconcile-migration.sql`
+4. `supabase/multi-agent-v1-cleanup.sql`
+5. `supabase/20261031221500_restrict_privileged_rpc_access.sql` (already applied on the current AgentGuard project)
+6. `supabase/20261101090000_atomic_outlayer_submission.sql`
 4. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
 5. `supabase/20261101090000_atomic_outlayer_submission.sql`
 
