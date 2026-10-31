@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     if (status !== "all") reservationsQuery = reservationsQuery.eq("status", status);
     if (search) reservationsQuery = reservationsQuery.ilike("request_id", `%${search}%`);
     reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
-    const [budgetResult, agentsResult, reservationsResult, auditResult] = await Promise.all([
+    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
@@ -47,10 +47,14 @@ export async function GET(request: NextRequest) {
       db.from("agentguard_admin_audit")
         .select("id,actor_agent_id,action,target_id,details,created_at")
         .order("created_at", { ascending: false })
-        .limit(30)
+        .limit(30),
+      db.from("agentguard_security_events")
+        .select("id,actor_agent_id,event_type,request_id,details,created_at")
+        .order("created_at", { ascending: false })
+        .limit(50)
     ]);
 
-    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error) {
+    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error) {
       return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
     }
     if (!budgetResult.data) {
@@ -94,6 +98,14 @@ export async function GET(request: NextRequest) {
         status,
         search
       },
+      securityEvents: (securityResult.data ?? []).map((item) => ({
+        id: item.id,
+        actorAgentId: item.actor_agent_id,
+        eventType: item.event_type,
+        requestId: item.request_id,
+        details: item.details,
+        createdAt: item.created_at
+      })),
       audit: (auditResult.data ?? []).map((item) => ({
         id: item.id,
         actorAgentId: item.actor_agent_id,
