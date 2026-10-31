@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
+import { authenticateAgent } from "@/lib/agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,13 +12,6 @@ const schema = z.object({
 
 // Public NEAR account identifier for the AgentGuard OutLayer testnet wallet.
 const signerId = "6d665ad261fc10ce705e4b10d107b9e8f40177266f937c6dff8f5a178126ae6e";
-
-function validToken(expected: string, supplied?: string) {
-  if (!supplied) return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 type NearTxResult = {
   final_execution_status?: string;
@@ -42,11 +35,13 @@ type NearRpcResponse = {
 };
 
 export async function POST(request: NextRequest) {
-  const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (!expected || !validToken(expected, supplied)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  let identity;
+  try {
+    identity = await authenticateAgent(request.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
+  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -56,7 +51,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabase();
   const { data: reservation, error } = await db
     .from("spend_reservations")
-    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto")
+    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto,agent_id")
     .eq("request_id", parsed.data.requestId)
     .maybeSingle();
 
@@ -66,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (!reservation) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
   }
-  if (reservation.status === "executed" || reservation.status === "failed") {
+  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {\n    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });\n  }\n  if (reservation.status === "executed" || reservation.status === "failed") {
     return NextResponse.json({ status: reservation.status, requestId: reservation.request_id });
   }
   if (!reservation.outlayer_tx_hash) {
