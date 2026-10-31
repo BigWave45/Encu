@@ -87,15 +87,17 @@ export async function POST(request: NextRequest) {
       // the transaction is independently confirmed.
       outcome="needs_review";
       reason="awaiting_onchain_confirmation";
-    } else if (result.httpStatus>=200 && result.httpStatus<300 && providerRequestId) {
-      // The provider accepted an asynchronous request. Hold the reservation;
-      // do not retry or release funds until provider status and chain finality
-      // can be independently established.
-      outcome="needs_review";
-      reason="awaiting_provider_request_completion";
     } else if (result.httpStatus===422 && result.body.error==="onchain_tx_failed" && txHash) {
-      outcome="failed";
-      reason="onchain_tx_failed";
+      // OutLayer confirms the transaction was broadcast. Do not release the
+      // reservation until NEAR finality independently confirms the failure.
+      outcome="needs_review";
+      reason="awaiting_onchain_confirmation_after_provider_revert";
+    } else if (result.httpStatus>=200 && result.httpStatus<300 && providerRequestId) {
+      // A request ID is not documented as an async result for native NEAR
+      // transfers. Preserve the reservation and require manual review.
+      outcome="needs_review";
+      reason="unverified_native_transfer_response";
+
     } else {
       reason=`unclassified_outlayer_response_${result.httpStatus}`;
     }
