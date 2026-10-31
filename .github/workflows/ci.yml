@@ -18,6 +18,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-only
       OUTLAYER_BASE_URL: https://testnet-api.outlayer.ai
       OUTLAYER_API_KEY: ci-placeholder-only
+      OUTLAYER_NEAR_ADDRESS: agentguard.testnet
       AGENTGUARD_AGENT_TOKEN: ci-placeholder-only
       AGENTGUARD_MAX_TRANSFER_YOCTO: "1000000000000000000000000"
     steps:
