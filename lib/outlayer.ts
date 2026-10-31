@@ -41,7 +41,7 @@ export function getOutLayerConfig(): OutLayerConfig {
 
   const isOfficialTestnet = url.protocol === "https:" &&
     url.hostname === "testnet-api.outlayer.ai" &&
-    !url.username && !url.password && !url.search && !url.hash &&
+    !url.username && !url.password && !url.search && !url.hash && !url.port &&
     (url.pathname === "/" || url.pathname === "");
 
   const isLocalDevelopment = (process.env.NODE_ENV !== "production" || (process.env.CI === "true" && process.env.AGENTGUARD_TEST_MODE === "true")) &&
