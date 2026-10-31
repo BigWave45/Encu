@@ -8,8 +8,7 @@ create table if not exists public.agents (
   created_at timestamptz not null default now()
 );
 insert into public.agents (id, name, active) values
-  ('primary', 'Primary Agent', true),
-  ('agent_b', 'Secondary Agent', true)
+  ('primary', 'Primary Agent', true)
 on conflict (id) do nothing;
 alter table public.spend_reservations add column if not exists agent_id text;
 update public.spend_reservations set agent_id = 'primary' where agent_id is null;
