@@ -18,6 +18,23 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getSupabase();
+    const url = new URL(request.url);
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    const requestedPageSize = Number(url.searchParams.get("pageSize") ?? "20");
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const pageSize = Number.isSafeInteger(requestedPageSize) ? Math.min(50, Math.max(1, requestedPageSize)) : 20;
+    const status = url.searchParams.get("status") ?? "all";
+    const allowedStatuses = ["all", "reserved", "needs_review", "executed", "failed"];
+    if (!allowedStatuses.includes(status)) {
+      return NextResponse.json({ error: "invalid_status_filter" }, { status: 400 });
+    }
+    const search = (url.searchParams.get("q") ?? "").trim().slice(0, 128);
+    let reservationsQuery = db.from("spend_reservations")
+      .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at", { count: "exact" })
+      .order("created_at", { ascending: false });
+    if (status !== "all") reservationsQuery = reservationsQuery.eq("status", status);
+    if (search) reservationsQuery = reservationsQuery.ilike("request_id", `%${search}%`);
+    reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
     const [budgetResult, agentsResult, reservationsResult, auditResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
@@ -26,10 +43,7 @@ export async function GET(request: NextRequest) {
       db.from("agents")
         .select("id,name,active,created_at")
         .order("created_at", { ascending: true }),
-      db.from("spend_reservations")
-        .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at")
-        .order("created_at", { ascending: false })
-        .limit(100),
+      reservationsQuery,
       db.from("agentguard_admin_audit")
         .select("id,actor_agent_id,action,target_id,details,created_at")
         .order("created_at", { ascending: false })
@@ -72,6 +86,14 @@ export async function GET(request: NextRequest) {
         createdAt: item.created_at,
         updatedAt: item.updated_at
       })),
+      reservationPage: {
+        page,
+        pageSize,
+        total: reservationsResult.count ?? 0,
+        totalPages: Math.max(1, Math.ceil((reservationsResult.count ?? 0) / pageSize)),
+        status,
+        search
+      },
       audit: (auditResult.data ?? []).map((item) => ({
         id: item.id,
         actorAgentId: item.actor_agent_id,
