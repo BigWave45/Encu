@@ -228,7 +228,7 @@ create or replace function public.record_outlayer_submission(
 language plpgsql
 security definer
 set search_path = public
-as $
+as $agentguard$
 declare
   reservation public.spend_reservations%rowtype;
 begin
