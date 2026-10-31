@@ -27,7 +27,11 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        { status: "database_error", message: "Supabase query failed." },
+        {
+          status: "database_error",
+          code: error.code ?? null,
+          message: error.message ?? "Supabase query failed.",
+        },
         { status: 503 }
       );
     }
