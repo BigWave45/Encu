@@ -13,7 +13,7 @@ function safeEqual(expected: string, supplied: string) {
 }
 
 export async function authenticateAgent(authorization: string | null): Promise<AgentIdentity | null> {
-  const supplied = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1];
+  const supplied = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!supplied) return null;
 
   const primaryToken = process.env.AGENTGUARD_AGENT_TOKEN;
