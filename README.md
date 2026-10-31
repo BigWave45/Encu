@@ -39,10 +39,12 @@ Configure these in the deployment environment:
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase service-role key; never expose it to a browser |
 | `OUTLAYER_BASE_URL` | OutLayer API base URL, for example the testnet API |
 | `OUTLAYER_API_KEY` | OutLayer server-side API credential |
+| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer testnet wallet; must match the wallet address returned by OutLayer |
+| `NEAR_RPC_URL` | Optional NEAR testnet RPC URL; defaults to `https://rpc.testnet.near.org` and production deployments are restricted to that host |
 | `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-The reconciliation route currently uses the configured AgentGuard OutLayer testnet wallet's public signer account ID in code. There is no `OUTLAYER_NEAR_ADDRESS` environment variable requirement in the current implementation.
+`OUTLAYER_NEAR_ADDRESS` is mandatory. Health checks compare it with the wallet account ID returned by OutLayer, and reconciliation uses this configured value as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
 
 Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
@@ -61,8 +63,9 @@ Apply the upgrade scripts in this order, each once:
 1. `supabase/multi-agent-v1-migration.sql`
 2. `supabase/reconcile-migration.sql`
 3. `supabase/multi-agent-v1-cleanup.sql`
+4. `supabase/20261101090000_atomic_outlayer_submission.sql`
 
-The multi-agent migration creates the agent table, attributes existing reservations to `primary`, and adds the four-argument reservation RPC. The reconciliation migration installs the settlement function used after chain verification. The cleanup script removes the legacy three-argument reservation function.
+The multi-agent migration creates the agent table, attributes existing reservations to `primary`, and adds the four-argument reservation RPC. The reconciliation migration installs the settlement function used after chain verification. The cleanup script removes the legacy three-argument reservation function. The final migration adds a service-role-only RPC that atomically stores the OutLayer request ID and transaction hash while marking the reservation `needs_review`; it never settles budget.
 
 Do not reset the database or rerun the fresh-install setup against a live project. Confirm the migration output and inspect the resulting tables/functions before deploying code that depends on them.
 
@@ -248,8 +251,8 @@ The script refuses to run without the explicit isolation flag and refuses a data
 - Testnet only.
 - One OutLayer wallet/provider configuration.
 - One shared budget, rather than per-agent sub-budgets.
-- No automated recovery for a provider timeout that occurs before a provider request ID or transaction hash is persisted.
+- A provider timeout before OutLayer returns a request ID or transaction hash still requires manual investigation.
 - No automated transfer retries.
-- No automated end-to-end or concurrency test suite is included yet.
+- CI covers mocked API and finality lifecycle behavior plus isolated PostgreSQL concurrency; it does not prove a live OutLayer transfer or a real NEAR testnet settlement.
 
 A successful health check confirms service connectivity, not that a transfer lifecycle has been tested. A live transfer, concurrent budget test, replay test, and finality reconciliation test must be recorded separately before claiming end-to-end validation.
