@@ -40,10 +40,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "agent_creation_failed" }, { status: 500 });
   }
 
+  const audit = await db.from("agentguard_admin_audit").insert({
+    actor_agent_id: identity.agentId,
+    action: "agent_credential_created",
+    target_id: parsed.data.id,
+    details: { name: parsed.data.name }
+  });
+  const auditWarning = audit.error ? "credential_created_but_audit_write_failed" : undefined;
+
   return NextResponse.json({
     status: "created",
     agent: { id: parsed.data.id, name: parsed.data.name },
     token,
-    warning: "Copy this token now. It cannot be retrieved again."
+    warning: "Copy this token now. It cannot be retrieved again.",
+    ...(auditWarning ? { auditWarning } : {})
   }, { status: 201 });
 }
