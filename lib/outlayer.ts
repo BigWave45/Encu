@@ -46,7 +46,7 @@ export function getOutLayerConfig(): OutLayerConfig {
 
   const isLocalDevelopment = (process.env.NODE_ENV !== "production" || (process.env.CI === "true" && process.env.AGENTGUARD_TEST_MODE === "true")) &&
     (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") &&
-    url.protocol === "http:" && !url.username && !url.password && !url.search && !url.hash;
+    url.protocol === "http:" && !url.username && !url.password && !url.search && !url.hash && !url.port;
 
   if (!isOfficialTestnet && !isLocalDevelopment) {
     throw new Error("outlayer_testnet_endpoint_required");
