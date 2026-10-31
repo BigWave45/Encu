@@ -9,6 +9,7 @@ on:
       - "supabase/setup.sql"
       - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "supabase/20261101120000_admin_dashboard_controls.sql"
+      - "supabase/20261101140000_security_event_log.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -57,6 +58,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261031221500_restrict_privileged_rpc_access.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO public.agents (id, name, active)
           VALUES ('research-agent', 'Research Agent', true);
