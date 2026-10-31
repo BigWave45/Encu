@@ -48,6 +48,7 @@ type Dashboard = {
     lastError: string | null;
     createdAt: string;
   }>;
+  audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
 };
 
 const YOCTO_PER_NEAR = 10n ** 24n;
@@ -107,6 +108,14 @@ export default function Home() {
   const [simulationAvailable, setSimulationAvailable] = useState<string | null>(null);
   const [simulationRun, setSimulationRun] = useState(0);
   const [simulationError, setSimulationError] = useState("");
+  const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [budgetLimit, setBudgetLimit] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
+  const [budgetMessage, setBudgetMessage] = useState("");
+  const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
+  const [reservationSearch, setReservationSearch] = useState("");
+  const [reservationFilter, setReservationFilter] = useState("all");
 
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
@@ -142,12 +151,75 @@ export default function Home() {
         setDashboardError(body.error ?? "dashboard_request_failed");
       } else {
         setDashboard(body);
+        setBudgetLimit(near(body.budget.totalLimitYocto));
       }
     } catch {
       setDashboard(null);
       setDashboardError("Could not reach AgentGuard. Check your connection and try again.");
     } finally {
       setDashboardLoading(false);
+    }
+  }
+
+  async function loadHealth() {
+    setHealthLoading(true);
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      const body = await response.json().catch(() => ({ status: "invalid_response" }));
+      setHealth(body);
+    } catch {
+      setHealth({ status: "unreachable" });
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
+  async function updateBudget(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const yocto = parseNearToYocto(budgetLimit);
+    if (yocto === null || yocto <= 0n) {
+      setBudgetMessage("Enter a positive NEAR limit with up to 24 decimal places.");
+      return;
+    }
+    setSavingBudget(true);
+    setBudgetMessage("");
+    try {
+      const response = await fetch("/api/admin/budget", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        body: JSON.stringify({ limitYocto: yocto.toString() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setBudgetMessage(body.error ?? "budget_update_failed");
+      else {
+        setBudgetMessage("Budget limit updated.");
+        await loadDashboard();
+      }
+    } catch {
+      setBudgetMessage("Could not reach AgentGuard. Budget update was not confirmed.");
+    } finally {
+      setSavingBudget(false);
+    }
+  }
+
+  async function setAgentStatus(id: string, active: boolean) {
+    setAgentStatusBusy(id);
+    setDashboardError("");
+    try {
+      const response = await fetch("/api/admin/agents/status", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        body: JSON.stringify({ id, active }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setDashboardError(body.error ?? "agent_status_update_failed");
+      await loadDashboard();
+    } catch {
+      setDashboardError("Could not reach AgentGuard. Agent status was not confirmed.");
+    } finally {
+      setAgentStatusBusy(null);
     }
   }
 
@@ -321,6 +393,11 @@ export default function Home() {
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
         {reservationActionError && <p role="alert" style={{ color: "#92400e", marginTop: 16 }}>{reservationActionError}</p>}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+          <strong>System health</strong>
+          <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
+        </div>
+        {health && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, padding: 12, background: "#f8fafc", borderRadius: 8 }}>{JSON.stringify(health, null, 2)}</pre>}
         {dashboard?.budget && <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginTop: 20 }}>
             {[
@@ -333,6 +410,15 @@ export default function Home() {
               <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
             </div>)}
           </div>
+          <form onSubmit={updateBudget} style={{ marginTop: 22, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            <strong>Shared budget limit</strong>
+            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
+              <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
+            </label>
+            <p style={{ color: "#64748b", fontSize: 12 }}>The limit cannot be reduced below spent plus reserved funds. Changes are recorded in the admin audit log.</p>
+            <button type="submit" disabled={savingBudget || !token.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
+            {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
+          </form>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -340,13 +426,19 @@ export default function Home() {
               <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.id}</td>
-                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"}</td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
               </tr>)}</tbody>
             </table>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Recent reservations</h3>
-          {!dashboard.reservations?.length ? <p style={{ color: "#64748b", fontSize: 14 }}>No reservations recorded yet.</p> :
-            <div style={{ display: "grid", gap: 10 }}>{dashboard.reservations.map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservations?.length ?? 0} latest)</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
+            <input aria-label="Search transactions" placeholder="Search request, agent, recipient or hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
+            <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
+              <option value="all">All statuses</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option>
+            </select>
+          </div>
+          {!dashboard.reservations?.filter(item => (reservationFilter === "all" || item.status === reservationFilter) && [item.requestId,item.agentId,item.recipient,item.txHash ?? ""].join(" ").toLowerCase().includes(reservationSearch.toLowerCase())).length ? <p style={{ color: "#64748b", fontSize: 14 }}>No matching reservations.</p> :
+            <div style={{ display: "grid", gap: 10 }}>{dashboard.reservations.filter(item => (reservationFilter === "all" || item.status === reservationFilter) && [item.requestId,item.agentId,item.recipient,item.txHash ?? ""].join(" ").toLowerCase().includes(reservationSearch.toLowerCase())).map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                 <strong>{item.agentId}</strong><strong>{item.status}</strong>
               </div>
@@ -370,6 +462,12 @@ export default function Home() {
                 </button>}
                 {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. Manual investigation required; do not retry this payment.</span>}
               </div>}
+            </div>)}</div>}
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Security and admin activity</h3>
+          {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
+            <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
+              <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
+              <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>{JSON.stringify(entry.details)}</div>
             </div>)}</div>}
           <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
         </>}
