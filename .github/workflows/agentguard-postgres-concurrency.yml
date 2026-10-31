@@ -8,6 +8,7 @@ on:
       - ".github/workflows/agentguard-postgres-concurrency.yml"
       - "supabase/setup.sql"
       - "supabase/20261101090000_atomic_outlayer_submission.sql"
+      - "supabase/20261101120000_admin_dashboard_controls.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
