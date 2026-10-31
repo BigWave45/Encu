@@ -87,7 +87,12 @@ const mock = createServer(async (req, res) => {
       const id = url.searchParams.get("id")?.replace(/^eq\./, "");
       const agent = mockAgents.find(item => item.id === id && (!url.searchParams.has("active") || item.active === (url.searchParams.get("active") === "eq.true")));
       if (!agent) return send(res, 200, []);
-      if (body.token_hash) agentsByHash.set(body.token_hash, agent.id);
+      if (body.token_hash) {
+        for (const [existingHash, existingAgentId] of agentsByHash) {
+          if (existingAgentId === agent.id) agentsByHash.delete(existingHash);
+        }
+        agentsByHash.set(body.token_hash, agent.id);
+      }
       if (typeof body.active === "boolean") agent.active = body.active;
       return send(res, 200, [{ id: agent.id, name: agent.name, active: agent.active }]);
     }
