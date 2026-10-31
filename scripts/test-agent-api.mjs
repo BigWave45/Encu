@@ -109,7 +109,7 @@ async function waitForApp() {
   }
   throw new Error("Next.js server did not become ready");
 }
-async function postTransfer({ token, requestId, to = "recipient.near", amount = "3000000000000000000000000", rawBody } = {}) {
+async function postTransfer({ token, requestId, to = "recipient.near", amount = "1000000000000000000000000", rawBody } = {}) {
   const headers = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
   return fetch(`http://127.0.0.1:${appPort}/api/agent/transfer`, {
@@ -170,14 +170,14 @@ try {
   assert(response.status === 409, "second agent cannot reuse another agent's request ID");
 
   const providerBeforeTimeout = counters.provider;
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test" });
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test", amount: "3000000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "ambiguous provider connection failure remains needs_review");
   assert(payload.reason === "outlayer_timeout_or_connection_error", "ambiguous provider failure is classified explicitly");
   assert(counters.provider === providerBeforeTimeout + 1, "timeout path invokes provider only once");
   assert(reservations.get("test-timeout-001")?.status === "needs_review", "timeout reservation remains held in the ledger");
 
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test" });
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test", amount: "1000000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is not treated as proof of transfer failure");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
