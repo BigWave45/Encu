@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (result.httpStatus>=200 && result.httpStatus<300 && txHash) {
+    if (providerRequestId && reason === "provider_request_reference_persistence_failed") {
+      outcome="needs_review";
+    } else if (result.httpStatus>=200 && result.httpStatus<300 && txHash) {
       // A provider response containing a transaction hash proves submission,
       // not necessarily on-chain finality. Keep the reservation held until
       // the transaction is independently confirmed.
