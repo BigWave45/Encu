@@ -64,16 +64,12 @@ Apply the upgrade scripts in this order, each once:
 2. `supabase/outlayer-request-id-migration.sql`
 3. `supabase/reconcile-migration.sql`
 4. `supabase/multi-agent-v1-cleanup.sql`
-5. `supabase/20261031221500_restrict_privileged_rpc_access.sql` (already applied on the current AgentGuard project)
+5. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
 6. `supabase/20261101090000_atomic_outlayer_submission.sql`
-4. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
-5. `supabase/20261101090000_atomic_outlayer_submission.sql`
 
-The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The reconciliation migration installs the settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds an RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget.
+The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget.
 
-The security migration has already been applied to the current AgentGuard Supabase project. Do not rerun unrelated setup scripts or reset the live database. The new atomic-submission migration still needs to be applied to that project before deploying the transfer-route changes.
-
-Do not reset the database or rerun the fresh-install setup against a live project. Confirm the migration output and inspect the resulting function before deploying code that depends on it.
+The security migration has already been applied to the current AgentGuard Supabase project. The new atomic-submission migration still needs to be applied to that project before deploying the updated transfer route. Do not reset the database or rerun the fresh-install setup against a live project.
 
 ## Authentication and agents
 
