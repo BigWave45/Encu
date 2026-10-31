@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/agentguard-postgres-concurrency.yml"
       - "supabase/setup.sql"
+      - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -148,6 +149,17 @@ jobs:
           echo "PASS: failed finalisation releases reserved budget without increasing spent."
           echo "PASS: terminal failed reservation cannot later become executed."
           echo "PASS: final ledger counters preserve the shared budget invariant."
+          # Verify provider request ID and transaction hash are stored atomically.
+          req_meta="ag-concurrency-${suffix}-provider-meta"
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_meta}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('${req_meta}', 'mock-provider-tx', 'mock-provider-request', 'awaiting_finality');" | jq -e '.status == "needs_review"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || outlayer_tx_hash || ':' || outlayer_request_id FROM public.spend_reservations WHERE request_id = '${req_meta}';" | grep -qx 'needs_review:mock-provider-tx:mock-provider-request'
+          echo "PASS: provider request ID and transaction hash are persisted atomically."
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_meta}', 'failed', 'mock-provider-tx', 'test_release');" | jq -e '.status == "failed"' >/dev/null
+          echo "PASS: atomic provider metadata recording does not settle budget; normal finality RPC remains the settlement path."
           # Race two conflicting terminal outcomes against the same reservation.
           req_race="ag-concurrency-${suffix}-finish-race"
           export PGPASSWORD=service_role_test_only
