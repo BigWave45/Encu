@@ -44,7 +44,7 @@ Configure these in the deployment environment:
 | `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-`OUTLAYER_NEAR_ADDRESS` is mandatory. The health endpoint compares it with the account ID returned by OutLayer. Reconciliation uses it as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
+`OUTLAYER_NEAR_ADDRESS` is mandatory. Set it to the OutLayer executor account ID that signs native NEAR transfers. The health endpoint compares it with OutLayer’s `executor_account_id` (falling back to the returned executor `address` when no binding is present). Reconciliation uses it as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
 
 Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
