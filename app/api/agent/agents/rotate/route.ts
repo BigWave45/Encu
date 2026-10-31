@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   id: z.string().min(2).max(48).regex(/^[a-z0-9_-]+$/)
+}).refine((value) => value.id !== "primary", {
+  message: "The primary admin identity cannot be rotated through this endpoint."
 });
 
 export async function POST(request: NextRequest) {
