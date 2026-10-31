@@ -11,7 +11,7 @@ on:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       SUPABASE_URL: https://example.supabase.co
@@ -29,6 +29,10 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Dependency audit report
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); for (const [name,v] of Object.entries(a.vulnerabilities || {})) console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,range:v.range,fixAvailable:v.fixAvailable,via:v.via.map(x=>typeof x === 'string' ? x : {title:x.title,url:x.url,range:x.range})})); console.log('TOTAL', JSON.stringify(a.metadata?.vulnerabilities || {}))"
       - name: Lint
         run: npm run lint
       - name: Type-check
