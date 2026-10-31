@@ -10,21 +10,14 @@ on:
       - "app/api/agent/reconcile/route.ts"
       - "app/api/agent/provider-status/route.ts"
       - "app/api/health/route.ts"
-      - "supabase/20261101090000_atomic_outlayer_submission.sql"
-      - "supabase/setup.sql"
-      - "supabase/reconcile-migration.sql"
-      - "app/api/agent/provider-status/route.ts"
-      - "app/api/health/route.ts"
-      - "supabase/20261101090000_atomic_outlayer_submission.sql"
-      - "supabase/setup.sql"
-      - "supabase/reconcile-migration.sql"
-      - "app/api/agent/provider-status/route.ts"
-      - "app/api/health/route.ts"
       - "lib/agent-auth.ts"
       - "lib/outlayer.ts"
       - "lib/supabase.ts"
       - "scripts/test-agent-api.mjs"
       - "scripts/test-reconciliation.mjs"
+      - "supabase/setup.sql"
+      - "supabase/reconcile-migration.sql"
+      - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "package.json"
       - "package-lock.json"
   workflow_dispatch:
@@ -50,8 +43,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
           OUTLAYER_BASE_URL: https://example.invalid
           OUTLAYER_API_KEY: build-only-placeholder
-          OUTLAYER_NEAR_ADDRESS: agentguard.testnet
-          OUTLAYER_NEAR_ADDRESS: agentguard.testnet
           OUTLAYER_NEAR_ADDRESS: agentguard.testnet
           AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000"
         run: npm run build
