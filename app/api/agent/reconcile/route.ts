@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { authenticateAgent } from "@/lib/agent-auth";
+import { getNearTestnetRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +11,7 @@ const schema = z.object({
   requestId: z.string().min(8).max(128)
 });
 
-// Public NEAR account identifier for the AgentGuard OutLayer testnet wallet.
-const signerId = "6d665ad261fc10ce705e4b10d107b9e8f40177266f937c6dff8f5a178126ae6e";
+
 
 type NearTxResult = {
   final_execution_status?: string;
@@ -48,6 +48,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
+  let signerId: string;
+  let rpcUrl: string;
+  try {
+    const outlayer = getOutLayerConfig();
+    signerId = outlayer.nearAddress;
+    rpcUrl = getNearTestnetRpcUrl();
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : "testnet_configuration_invalid"
+    }, { status: 503 });
+  }
+
   const db = getSupabase();
   const { data: reservation, error } = await db
     .from("spend_reservations")
@@ -78,7 +90,7 @@ export async function POST(request: NextRequest) {
 
   let rpc: NearRpcResponse;
   try {
-    const response = await fetch(process.env.NEAR_RPC_URL ?? "https://rpc.testnet.near.org", {
+    const response = await fetch(rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
