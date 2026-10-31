@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
+import { authenticateAgent } from "@/lib/agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,13 +9,6 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   requestId: z.string().min(8).max(128)
 });
-
-function validToken(expected: string, supplied?: string) {
-  if (!supplied) return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 type ProviderRequest = {
   status?: unknown;
@@ -25,12 +18,13 @@ type ProviderRequest = {
 };
 
 export async function POST(request: NextRequest) {
-  const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-
-  if (!expected || !validToken(expected, supplied)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  let identity;
+  try {
+    identity = await authenticateAgent(request.headers.get("authorization"));
+  } catch {
+    return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
+  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -40,7 +34,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabase();
   const { data: reservation, error: lookupError } = await db
     .from("spend_reservations")
-    .select("request_id,status,outlayer_request_id,outlayer_tx_hash")
+    .select("request_id,status,outlayer_request_id,outlayer_tx_hash,agent_id")
     .eq("request_id", parsed.data.requestId)
     .maybeSingle();
 
@@ -50,7 +44,7 @@ export async function POST(request: NextRequest) {
   if (!reservation) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
   }
-  if (!reservation.outlayer_request_id) {
+  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {\n    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });\n  }\n  if (!reservation.outlayer_request_id) {
     return NextResponse.json({
       status: reservation.status,
       requestId: reservation.request_id,
