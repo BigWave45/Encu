@@ -60,6 +60,18 @@ function near(value: string) {
   }
 }
 
+function availableNear(budget: NonNullable<Dashboard["budget"]>) {
+  try {
+    return near(String(
+      BigInt(budget.totalLimitYocto) -
+      BigInt(budget.spentYocto) -
+      BigInt(budget.reservedYocto)
+    ));
+  } catch {
+    return "Unavailable";
+  }
+}
+
 export default function Home() {
   const [token, setToken] = useState("");
   const [result, setResult] = useState<BalanceResult | null>(null);
@@ -227,7 +239,7 @@ export default function Home() {
               ["Total budget", near(dashboard.budget.totalLimitYocto)],
               ["Spent", near(dashboard.budget.spentYocto)],
               ["Reserved", near(dashboard.budget.reservedYocto)],
-              ["Available", near(String(BigInt(dashboard.budget.totalLimitYocto) - BigInt(dashboard.budget.spentYocto) - BigInt(dashboard.budget.reservedYocto)))]
+              ["Available", availableNear(dashboard.budget)]
             ].map(([label, value]) => <div key={label} style={{ padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9 }}>
               <div style={{ color: "#64748b", fontSize: 12 }}>{label}</div>
               <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
