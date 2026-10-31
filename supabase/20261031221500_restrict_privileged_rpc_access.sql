@@ -22,3 +22,8 @@ alter default privileges for role postgres in schema public
   revoke execute on functions from public, anon, authenticated;
 alter default privileges for role postgres in schema public
   revoke all on tables from anon, authenticated;
+
+revoke execute on function public.record_outlayer_submission(text, text, text, text)
+  from public, anon, authenticated;
+grant execute on function public.record_outlayer_submission(text, text, text, text)
+  to service_role;
