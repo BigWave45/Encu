@@ -61,7 +61,10 @@ export async function POST(request: NextRequest) {
   if (!reservation) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
   }
-  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {\n    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });\n  }\n  if (reservation.status === "executed" || reservation.status === "failed") {
+  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {
+    return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+  }
+  if (reservation.status === "executed" || reservation.status === "failed") {
     return NextResponse.json({ status: reservation.status, requestId: reservation.request_id });
   }
   if (!reservation.outlayer_tx_hash) {
