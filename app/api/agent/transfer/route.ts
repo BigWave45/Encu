@@ -64,8 +64,11 @@ export async function POST(request: NextRequest) {
     txHash = typeof result.body.tx_hash==="string" ? result.body.tx_hash : null;
 
     if (result.httpStatus>=200 && result.httpStatus<300 && txHash) {
-      outcome="executed";
-      reason="";
+      // A provider response containing a transaction hash proves submission,
+      // not necessarily on-chain finality. Keep the reservation held until
+      // the transaction is independently confirmed.
+      outcome="needs_review";
+      reason="awaiting_onchain_confirmation";
     } else if (result.httpStatus===422 && result.body.error==="onchain_tx_failed" && txHash) {
       outcome="failed";
       reason="onchain_tx_failed";
