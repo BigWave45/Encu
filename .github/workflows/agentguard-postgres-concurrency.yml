@@ -1,0 +1,111 @@
+name: AgentGuard PostgreSQL concurrency test
+
+on:
+  push:
+    branches:
+      - agentguard/build-v1
+    paths:
+      - ".github/workflows/agentguard-postgres-concurrency.yml"
+      - "supabase/setup.sql"
+      - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reservation-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: agentguard_test_only
+          POSTGRES_DB: agentguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentguard_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: agentguard_test
+      PGUSER: postgres
+      PGPASSWORD: agentguard_test_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+      - name: Build disposable schema
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE service_role LOGIN PASSWORD 'service_role_test_only';
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/setup.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261031221500_restrict_privileged_rpc_access.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.agents (id, name, active)
+          VALUES ('research-agent', 'Research Agent', true);
+          SQL
+      - name: Run two simultaneous reservations
+        run: |
+          set -euo pipefail
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          req_a="ag-concurrency-${suffix}-primary"
+          req_b="ag-concurrency-${suffix}-research"
+          amount="3000000000000000000000000"
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_a}', ${amount}, 'agentguard-test.near', 'primary');" > /tmp/agentguard-a.json &
+          pid_a=$!
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_b}', ${amount}, 'agentguard-test.near', 'research-agent');" > /tmp/agentguard-b.json &
+          pid_b=$!
+          wait "$pid_a"
+          wait "$pid_b"
+          cat /tmp/agentguard-a.json
+          cat /tmp/agentguard-b.json
+          created=$(cat /tmp/agentguard-a.json /tmp/agentguard-b.json | jq -s '[.[] | select(.created == true)] | length')
+          blocked=$(cat /tmp/agentguard-a.json /tmp/agentguard-b.json | jq -s '[.[] | select(.status == "blocked")] | length')
+          test "$created" = "1"
+          test "$blocked" = "1"
+          echo "PASS: exactly one concurrent request reserved 3 NEAR; the other was blocked."
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE
+            reserved numeric;
+            spent numeric;
+            rows_found integer;
+          BEGIN
+            SELECT reserved_yocto, spent_yocto INTO reserved, spent
+            FROM public.agent_budgets WHERE id = 'default';
+            SELECT count(*) INTO rows_found FROM public.spend_reservations
+            WHERE request_id IN ('${req_a}', '${req_b}');
+            IF reserved <> ${amount} OR spent <> 0 OR rows_found <> 1 THEN
+              RAISE EXCEPTION 'ledger_or_budget_mismatch: reserved=%, spent=%, rows=%', reserved, spent, rows_found;
+            END IF;
+          END
+          \$\$
+          SQL
+          winner=$(cat /tmp/agentguard-a.json /tmp/agentguard-b.json | jq -r 'select(.created == true) | .request_id')
+          export PGPASSWORD=service_role_test_only
+          replay=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${winner}', ${amount}, 'agentguard-test.near', CASE WHEN '${winner}' = '${req_a}' THEN 'primary' ELSE 'research-agent' END);")
+          echo "$replay" | jq -e '.created == false' >/dev/null
+          echo "PASS: identical request replay returned created=false."
+          set +e
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${winner}', 4000000000000000000000000, 'agentguard-test.near', CASE WHEN '${winner}' = '${req_a}' THEN 'primary' ELSE 'research-agent' END);" >/tmp/agentguard-conflict.out 2>&1
+          conflict_status=$?
+          set -e
+          test "$conflict_status" -ne 0
+          grep -q "idempotency_key_conflict" /tmp/agentguard-conflict.out
+          echo "PASS: same request ID with a changed amount was rejected."
+          echo "PASS: isolated PostgreSQL test complete. No Supabase project, production database, OutLayer, or NEAR transfer was used."
