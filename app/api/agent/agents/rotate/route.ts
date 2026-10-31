@@ -37,11 +37,19 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: "agent_rotation_failed" }, { status: 500 });
   if (!data) return NextResponse.json({ error: "active_agent_not_found" }, { status: 404 });
+  const audit = await getSupabase().from("agentguard_admin_audit").insert({
+    actor_agent_id: identity.agentId,
+    action: "agent_credential_rotated",
+    target_id: data.id,
+    details: { name: data.name }
+  });
+  const auditWarning = audit.error ? "credential_rotated_but_audit_write_failed" : undefined;
 
   return NextResponse.json({
     status: "rotated",
     agent: { id: data.id, name: data.name },
     token,
-    warning: "The previous credential is invalid. Copy this replacement now; it cannot be retrieved again."
+    warning: "The previous credential is invalid. Copy this replacement now; it cannot be retrieved again.",
+    ...(auditWarning ? { auditWarning } : {})
   }, { status: 200 });
 }
