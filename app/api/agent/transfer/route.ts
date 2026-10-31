@@ -57,11 +57,27 @@ export async function POST(request: NextRequest) {
 
   let outcome:"executed"|"failed"|"needs_review" = "needs_review";
   let txHash:string|null = null;
+  let providerRequestId:string|null = null;
   let reason = "outlayer_response_unknown";
 
   try {
     const result = await transferNear(to,amountYocto);
     txHash = typeof result.body.tx_hash==="string" ? result.body.tx_hash : null;
+    providerRequestId = typeof result.body.request_id==="string"
+      ? result.body.request_id
+      : typeof result.body.requestId==="string"
+        ? result.body.requestId
+        : null;
+
+    if (providerRequestId) {
+      const { error: referenceError } = await db
+        .from("spend_reservations")
+        .update({ outlayer_request_id: providerRequestId })
+        .eq("request_id", requestId);
+      if (referenceError) {
+        reason = "provider_request_reference_persistence_failed";
+      }
+    }
 
     if (result.httpStatus>=200 && result.httpStatus<300 && txHash) {
       // A provider response containing a transaction hash proves submission,
@@ -69,6 +85,12 @@ export async function POST(request: NextRequest) {
       // the transaction is independently confirmed.
       outcome="needs_review";
       reason="awaiting_onchain_confirmation";
+    } else if (result.httpStatus>=200 && result.httpStatus<300 && providerRequestId) {
+      // The provider accepted an asynchronous request. Hold the reservation;
+      // do not retry or release funds until provider status and chain finality
+      // can be independently established.
+      outcome="needs_review";
+      reason="awaiting_provider_request_completion";
     } else if (result.httpStatus===422 && result.body.error==="onchain_tx_failed" && txHash) {
       outcome="failed";
       reason="onchain_tx_failed";
@@ -84,13 +106,13 @@ export async function POST(request: NextRequest) {
     p_request_id:requestId,p_outcome:outcome,p_tx_hash:txHash,p_error:reason||null
   });
   if (finishError) {
-    return NextResponse.json({status:"needs_review",requestId,txHash,reason:"ledger_finalisation_failed"},{status:202});
+    return NextResponse.json({status:"needs_review",requestId,txHash,providerRequestId,reason:"ledger_finalisation_failed"},{status:202});
   }
   if (outcome==="needs_review") {
-    return NextResponse.json({status:outcome,requestId,txHash,reason},{status:202});
+    return NextResponse.json({status:outcome,requestId,txHash,providerRequestId,reason},{status:202});
   }
   if (outcome==="failed") {
-    return NextResponse.json({status:outcome,requestId,txHash,reason},{status:422});
+    return NextResponse.json({status:outcome,requestId,txHash,providerRequestId,reason},{status:422});
   }
-  return NextResponse.json({status:outcome,requestId,txHash});
+  return NextResponse.json({status:outcome,requestId,txHash,providerRequestId});
 }
