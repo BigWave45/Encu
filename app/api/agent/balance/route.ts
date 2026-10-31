@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  let identity;
+  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
   try {
     identity = await authenticateAgent(request.headers.get("authorization"));
   } catch {
