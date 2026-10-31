@@ -30,7 +30,7 @@ type NearTxStatus = {
 
 export async function POST(request: NextRequest) {
   const expected = process.env.AGENTGUARD_AGENT_TOKEN;
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "");
+  const supplied = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!expected || !validToken(expected, supplied)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
