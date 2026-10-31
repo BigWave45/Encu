@@ -482,6 +482,13 @@ export default function Home() {
                 {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. Manual investigation required; do not retry this payment.</span>}
               </div>}
             </div>)}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.reservationPage?.page ?? 1} of {dashboard.reservationPage?.totalPages ?? 1} · {dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} matching records</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) <= 1} onClick={() => loadDashboard(Math.max(1, (dashboard.reservationPage?.page ?? 1) - 1))} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) >= (dashboard.reservationPage?.totalPages ?? 1)} onClick={() => loadDashboard((dashboard.reservationPage?.page ?? 1) + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Security and admin activity</h3>
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
