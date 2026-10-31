@@ -11,7 +11,7 @@ const tokens = {
   "inactive-agent-token": { id: "inactive-agent", active: false }
 };
 const reservations = new Map();
-const counters = { reserve: 0, finish: 0, provider: 0 };
+const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const agentsByHash = new Map(Object.entries(tokens).map(([token, agent]) => [hash(token), agent]));
@@ -54,6 +54,27 @@ const mock = createServer(async (req, res) => {
       reservations.set(id, row);
       return send(res, 200, { created: true, status: "reserved", request_id: id, agent_id: row.agentId });
     }
+    if (req.method === "GET" && url.pathname === "/rest/v1/spend_reservations") {
+      const id = url.searchParams.get("request_id")?.replace(/^eq\\./, "");
+      const row = reservations.get(id);
+      return send(res, 200, row ? [{
+        request_id: id, status: row.status, outlayer_request_id: row.providerRequestId ?? null,
+        outlayer_tx_hash: row.txHash ?? null, agent_id: row.agentId
+      }] : []);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
+      counters.record++;
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row) return send(res, 400, { message: "reservation_not_found" });
+      if (row.txHash && body.p_tx_hash && row.txHash !== body.p_tx_hash) return send(res, 400, { message: "provider_transaction_hash_conflict" });
+      if (row.providerRequestId && body.p_provider_request_id && row.providerRequestId !== body.p_provider_request_id) return send(res, 400, { message: "provider_request_id_conflict" });
+      row.txHash = row.txHash ?? body.p_tx_hash ?? null;
+      row.providerRequestId = row.providerRequestId ?? body.p_provider_request_id ?? null;
+      row.lastError = body.p_error ?? null;
+      row.status = "needs_review";
+      return send(res, 200, { status: row.status, request_id: body.p_request_id });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/finish_agent_spend") {
       counters.finish++;
       const body = await readJson(req);
@@ -63,6 +84,14 @@ const mock = createServer(async (req, res) => {
       row.txHash = body.p_tx_hash ?? null;
       row.lastError = body.p_error ?? null;
       return send(res, 200, { status: row.status, request_id: body.p_request_id });
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/wallet/v1/requests/")) {
+      counters.providerStatus++;
+      const providerId = decodeURIComponent(url.pathname.split("/").pop());
+      if (providerId === "mock-provider-unavailable") return send(res, 503, { error: "provider_down" });
+      if (providerId === "mock-provider-nohash") return send(res, 200, { status: "pending" });
+      if (providerId === "mock-provider-conflict") return send(res, 200, { status: "executed", tx_hash: "conflicting-hash" });
+      return send(res, 200, { status: "executed", tx_hash: "recovered-hash" });
     }
     if (req.method === "PATCH" && url.pathname === "/rest/v1/spend_reservations") {
       await readJson(req);
@@ -88,6 +117,9 @@ const env = {
   SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
   OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
   OUTLAYER_API_KEY: "test-outlayer-key",
+  OUTLAYER_NEAR_ADDRESS: "agentguard.testnet",
+  CI: "true",
+  AGENTGUARD_TEST_MODE: "true",
   AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000",
   AGENTGUARD_AGENT_TOKEN: "",
   PORT: String(appPort),
@@ -157,7 +189,9 @@ try {
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   let payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider transaction hash is held for independent chain confirmation");
-  assert(counters.provider === 1 && counters.finish === 1, "first valid request invokes provider once and finalises reservation as needs_review");
+  assert(counters.provider === 1 && counters.record === 1, "first valid request invokes provider once and atomically records provider references");
+  assert(reservations.get(primaryId)?.providerRequestId === "mock-provider-1", "provider request ID is persisted atomically");
+  assert(reservations.get(primaryId)?.txHash === "mock-tx-1", "transaction hash is persisted atomically");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   assert(response.status === 409, "identical request replay is rejected by API");
