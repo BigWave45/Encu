@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabase();
   const { data: reservation, error } = await db
     .from("spend_reservations")
-    .select("request_id,status,outlayer_tx_hash,recipient,amount_yocto")
+    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto")
     .eq("request_id", parsed.data.requestId)
     .maybeSingle();
 
@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       status: reservation.status,
       requestId: reservation.request_id,
-      reason: "transaction_hash_not_available"
+      providerRequestId: reservation.outlayer_request_id,
+      reason: reservation.outlayer_request_id ? "provider_request_pending_chain_hash" : "transaction_hash_not_available"
     }, { status: 202 });
   }
 
