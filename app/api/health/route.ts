@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type AddressResponse = {
+  executor_account_id?: unknown;
   near_address?: unknown;
   address?: unknown;
   account_id?: unknown;
