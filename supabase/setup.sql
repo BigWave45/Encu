@@ -72,9 +72,11 @@ begin
     raise exception 'invalid_amount';
   end if;
 
+  -- Prevent an agent from being deactivated between authentication and reservation.
   select active into agent_active
   from public.agents
-  where id = p_agent_id;
+  where id = p_agent_id
+  for share;
 
   if not coalesce(agent_active, false) then
     raise exception 'agent_not_active';
