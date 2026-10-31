@@ -29,11 +29,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "invalid_status_filter" }, { status: 400 });
     }
     const search = (url.searchParams.get("q") ?? "").trim().slice(0, 128);
+    if (search && !/^[a-zA-Z0-9._:-]{2,128}$/.test(search)) {
+      return NextResponse.json({ error: "invalid_search_query" }, { status: 400 });
+    }
+    const auditPageInput = Number(url.searchParams.get("auditPage") ?? "1");
+    const securityPageInput = Number(url.searchParams.get("securityPage") ?? "1");
+    const auditPage = Number.isSafeInteger(auditPageInput) && auditPageInput > 0 ? auditPageInput : 1;
+    const securityPage = Number.isSafeInteger(securityPageInput) && securityPageInput > 0 ? securityPageInput : 1;
+    const activityPageSize = 20;
     let reservationsQuery = db.from("spend_reservations")
       .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at", { count: "exact" })
       .order("created_at", { ascending: false });
     if (status !== "all") reservationsQuery = reservationsQuery.eq("status", status);
-    if (search) reservationsQuery = reservationsQuery.ilike("request_id", `%${search}%`);
+    if (search) reservationsQuery = reservationsQuery.or(
+      `request_id.ilike.%${search}%,agent_id.ilike.%${search}%,recipient.ilike.%${search}%,outlayer_tx_hash.ilike.%${search}%,outlayer_request_id.ilike.%${search}%`
+    );
     reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
     const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult] = await Promise.all([
       db.from("agent_budgets")
@@ -45,13 +55,13 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: true }),
       reservationsQuery,
       db.from("agentguard_admin_audit")
-        .select("id,actor_agent_id,action,target_id,details,created_at")
+        .select("id,actor_agent_id,action,target_id,details,created_at", { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(30),
+        .range((auditPage - 1) * activityPageSize, auditPage * activityPageSize - 1),
       db.from("agentguard_security_events")
-        .select("id,actor_agent_id,event_type,request_id,details,created_at")
+        .select("id,actor_agent_id,event_type,request_id,details,created_at", { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(50)
+        .range((securityPage - 1) * activityPageSize, securityPage * activityPageSize - 1)
     ]);
 
     if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error) {
@@ -97,6 +107,11 @@ export async function GET(request: NextRequest) {
         totalPages: Math.max(1, Math.ceil((reservationsResult.count ?? 0) / pageSize)),
         status,
         search
+      },
+      activityPages: {
+        pageSize: activityPageSize,
+        audit: { page: auditPage, total: auditResult.count ?? 0, totalPages: Math.max(1, Math.ceil((auditResult.count ?? 0) / activityPageSize)) },
+        security: { page: securityPage, total: securityResult.count ?? 0, totalPages: Math.max(1, Math.ceil((securityResult.count ?? 0) / activityPageSize)) }
       },
       securityEvents: (securityResult.data ?? []).map((item) => ({
         id: item.id,
