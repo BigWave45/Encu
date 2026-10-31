@@ -16,6 +16,7 @@ create table if not exists public.spend_reservations (
   status text not null default 'reserved'
     check (status in ('reserved', 'executed', 'failed', 'needs_review')),
   outlayer_tx_hash text,
+  outlayer_request_id text,
   last_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
