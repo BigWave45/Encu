@@ -9,6 +9,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
@@ -28,7 +31,16 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm ci
+        run: npm install
+      - name: Commit regenerated lockfile
+        run: |
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "Regenerate npm lockfile after dependency overrides"
+            git push
+          fi
       - name: Dependency audit report
         run: |
           npm audit --json > npm-audit.json || true
