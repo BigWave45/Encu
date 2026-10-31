@@ -167,6 +167,7 @@ try {
   app.stderr.on("data", chunk => { appOutput += chunk.toString(); });
   await waitForApp();
 
+  let payload;
   let response = await postTransfer({ requestId: "test-unauth-001" });
   assert(response.status === 401, "missing bearer token is rejected with 401");
   assert(counters.reserve === 0 && counters.provider === 0, "unauthenticated request never reaches reservation or provider");
@@ -199,7 +200,7 @@ try {
 
   const primaryId = "test-api-primary-001";
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
-  let payload = await response.json();
+  payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider transaction hash is held for independent chain confirmation");
   assert(counters.provider === 1 && counters.record === 1, "first valid request invokes provider once and atomically records provider references");
   assert(reservations.get(primaryId)?.providerRequestId === "mock-provider-1", "provider request ID is persisted atomically");
@@ -227,6 +228,51 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is not treated as proof of transfer failure");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
+
+
+  const recoveryRow = {
+    amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
+    status: "needs_review", providerRequestId: "mock-provider-nohash", txHash: null
+  };
+  reservations.set("provider-recovery-001", recoveryRow);
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "provider-recovery-001" })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.providerStatus === "pending" && !payload.txHash, "provider pending response does not settle reservation");
+
+  recoveryRow.providerRequestId = "mock-provider-recover";
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "provider-recovery-001" })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.txHash === "recovered-hash" && payload.reconciliationRequired, "provider status recovers a missing transaction hash");
+  assert(recoveryRow.txHash === "recovered-hash" && recoveryRow.status === "needs_review", "recovered hash persists without budget settlement");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-two-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "provider-recovery-001" })
+  });
+  assert(response.status === 404, "cross-agent provider status lookup is hidden");
+
+  const unavailableRow = { ...recoveryRow, providerRequestId: "mock-provider-unavailable", txHash: null };
+  reservations.set("provider-unavailable-001", unavailableRow);
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "provider-unavailable-001" })
+  });
+  assert(response.status === 202 && unavailableRow.status === "needs_review", "provider status outage leaves reservation pending");
+
+  const conflictRow = { ...recoveryRow, providerRequestId: "mock-provider-conflict", txHash: "known-hash" };
+  reservations.set("provider-conflict-001", conflictRow);
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "provider-conflict-001" })
+  });
+  payload = await response.json();
+  assert(response.status === 202 && payload.reason === "provider_transaction_hash_conflict", "conflicting provider hash is not overwritten");
 
   process.stdout.write("\nAPI integration tests passed. Mock OutLayer and mock Supabase only; no credentials, production database, or NEAR transfer used.\n");
 } catch (error) {
