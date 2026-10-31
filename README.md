@@ -1,10 +1,10 @@
 # AgentGuard
 
-AgentGuard is a transaction-control gateway for AI agents making NEAR testnet transfers through OutLayer. Multiple independently authenticated agents share one spending budget. AgentGuard reserves budget before calling the provider, attributes each reservation to the authenticated agent, blocks replayed requests, and reconciles submitted transfers against NEAR finality before settling the ledger.
+AgentGuard is a transaction-control gateway for AI agents making NEAR transfers on the explicitly selected network through OutLayer. Multiple independently authenticated agents share one spending budget. AgentGuard reserves budget before calling the provider, attributes each reservation to the authenticated agent, blocks replayed requests, and reconciles submitted transfers against NEAR finality before settling the ledger.
 
 ## Current scope
 
-- NEAR testnet native-token transfers through one configured OutLayer wallet.
+- NEAR native-token transfers through one configured OutLayer wallet on the selected network (testnet by default; mainnet requires explicit configuration).
 - Multiple agents with separate bearer credentials and one shared budget.
 - Atomic budget reservation in Supabase before a provider call.
 - Request-ID idempotency and conflict detection.
@@ -37,14 +37,14 @@ Configure these in the deployment environment:
 | --- | --- |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side Supabase service-role key; never expose it to a browser |
-| `OUTLAYER_BASE_URL` | Must be the official OutLayer testnet API host: `https://testnet-api.outlayer.ai` |
+| `AGENTGUARD_NETWORK` | `testnet` (default) or explicitly `mainnet`; must match provider and RPC hosts |\n| `OUTLAYER_BASE_URL` | Testnet: `https://testnet-api.outlayer.ai`; mainnet: `https://api.outlayer.ai` |
 | `OUTLAYER_API_KEY` | OutLayer server-side API credential |
-| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer testnet wallet |
-| `NEAR_RPC_URL` | Optional; defaults to `https://rpc.testnet.near.org`. Production is restricted to that testnet host |
+| `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer wallet for the selected network |
+| `NEAR_RPC_URL` | Optional; defaults to the canonical RPC host for the selected network |
 | `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-`OUTLAYER_NEAR_ADDRESS` is mandatory. Set it to the OutLayer executor account ID that signs native NEAR transfers. The health endpoint compares it with OutLayer’s `executor_account_id` (falling back to the returned executor `address` when no binding is present). Reconciliation uses it as the expected transaction signer. A mismatch makes health return 503 and prevents reconciliation.
+`AGENTGUARD_NETWORK` defaults to `testnet`. Mainnet is supported by explicitly setting `AGENTGUARD_NETWORK=mainnet`, `OUTLAYER_BASE_URL=https://api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.mainnet.near.org`. The selected network must match the exact provider and RPC host allowlists. Local mock endpoints are accepted only outside production or in the explicit CI test harness. `OUTLAYER_NEAR_ADDRESS` is mandatory and must be the OutLayer executor account ID that signs native NEAR transfers. Health compares it with OutLayer’s reported executor account ID; reconciliation checks the same signer against chain transaction details.
 
 Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
