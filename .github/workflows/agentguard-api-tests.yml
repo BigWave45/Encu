@@ -8,6 +8,8 @@ on:
       - ".github/workflows/agentguard-api-tests.yml"
       - "app/api/agent/transfer/route.ts"
       - "app/api/agent/reconcile/route.ts"
+      - "app/api/agent/provider-status/route.ts"
+      - "app/api/health/route.ts"
       - "lib/agent-auth.ts"
       - "lib/outlayer.ts"
       - "lib/supabase.ts"
@@ -38,6 +40,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
           OUTLAYER_BASE_URL: https://example.invalid
           OUTLAYER_API_KEY: build-only-placeholder
+          OUTLAYER_NEAR_ADDRESS: agentguard.testnet
           AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000"
         run: npm run build
       - name: Run API security and transfer lifecycle tests
