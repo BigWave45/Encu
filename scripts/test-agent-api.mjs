@@ -1,0 +1,193 @@
+import { createServer } from "node:http";
+import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+
+const mockPort = 54321;
+const appPort = 3000;
+const tokens = {
+  "agent-one-token": { id: "primary", active: true },
+  "agent-two-token": { id: "research-agent", active: true },
+  "inactive-agent-token": { id: "inactive-agent", active: false }
+};
+const reservations = new Map();
+const counters = { reserve: 0, finish: 0, provider: 0 };
+const budget = 5n * 10n ** 24n;
+const hash = (value) => createHash("sha256").update(value).digest("hex");
+const agentsByHash = new Map(Object.entries(tokens).map(([token, agent]) => [hash(token), agent]));
+
+function send(res, status, body) {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(body === undefined ? "" : JSON.stringify(body));
+}
+async function readJson(req) {
+  let raw = "";
+  for await (const chunk of req) raw += chunk;
+  return raw ? JSON.parse(raw) : {};
+}
+
+const mock = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
+    if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
+      const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
+      const agent = agentsByHash.get(tokenHash);
+      return send(res, 200, agent ? [{ id: agent.id, active: agent.active }] : []);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/reserve_agent_spend") {
+      counters.reserve++;
+      const body = await readJson(req);
+      const id = body.p_request_id;
+      const existing = reservations.get(id);
+      if (existing) {
+        if (existing.amount !== String(body.p_amount_yocto) ||
+            existing.recipient !== body.p_recipient ||
+            existing.agentId !== body.p_agent_id) {
+          return send(res, 400, { message: "idempotency_key_conflict" });
+        }
+        return send(res, 200, { created: false, status: existing.status, request_id: id, agent_id: existing.agentId });
+      }
+      const amount = BigInt(body.p_amount_yocto);
+      const reserved = [...reservations.values()].reduce((sum, item) => sum + (item.status === "reserved" || item.status === "needs_review" ? BigInt(item.amount) : 0n), 0n);
+      if (reserved + amount > budget) return send(res, 200, { created: false, status: "blocked", reason: "total_budget_exceeded" });
+      const row = { amount: String(body.p_amount_yocto), recipient: body.p_recipient, agentId: body.p_agent_id, status: "reserved" };
+      reservations.set(id, row);
+      return send(res, 200, { created: true, status: "reserved", request_id: id, agent_id: row.agentId });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/finish_agent_spend") {
+      counters.finish++;
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row) return send(res, 400, { message: "reservation_not_found" });
+      row.status = body.p_outcome;
+      row.txHash = body.p_tx_hash ?? null;
+      row.lastError = body.p_error ?? null;
+      return send(res, 200, { status: row.status, request_id: body.p_request_id });
+    }
+    if (req.method === "PATCH" && url.pathname === "/rest/v1/spend_reservations") {
+      await readJson(req);
+      res.writeHead(204);
+      return res.end();
+    }
+    if (req.method === "POST" && url.pathname === "/wallet/v1/transfer") {
+      counters.provider++;
+      const body = await readJson(req);
+      if (body.to === "timeout.test") return req.socket.destroy();
+      if (body.to === "provider-error.test") return send(res, 502, { error: "provider_unavailable" });
+      return send(res, 200, { tx_hash: `mock-tx-${counters.provider}`, request_id: `mock-provider-${counters.provider}` });
+    }
+    return send(res, 404, { error: "mock_route_not_found", path: url.pathname });
+  } catch (error) {
+    return send(res, 500, { error: String(error) });
+  }
+});
+
+const env = {
+  ...process.env,
+  SUPABASE_URL: `http://127.0.0.1:${mockPort}`,
+  SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+  OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
+  OUTLAYER_API_KEY: "test-outlayer-key",
+  AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000",
+  AGENTGUARD_AGENT_TOKEN: "",
+  PORT: String(appPort),
+  HOSTNAME: "127.0.0.1"
+};
+let app;
+let failed = false;
+const assert = (condition, message) => {
+  if (!condition) throw new Error(`ASSERTION FAILED: ${message}`);
+  process.stdout.write(`PASS: ${message}\n`);
+};
+async function waitForApp() {
+  for (let i = 0; i < 60; i++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${appPort}/api/agent/transfer`, { method: "GET" });
+      if (response.status) return;
+    } catch {}
+    await delay(500);
+  }
+  throw new Error("Next.js server did not become ready");
+}
+async function postTransfer({ token, requestId, to = "recipient.near", amount = "3000000000000000000000000", rawBody } = {}) {
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  return fetch(`http://127.0.0.1:${appPort}/api/agent/transfer`, {
+    method: "POST",
+    headers,
+    body: rawBody ?? JSON.stringify({ requestId, to, amountYocto: amount })
+  });
+}
+
+try {
+  await new Promise((resolve, reject) => {
+    mock.once("error", reject);
+    mock.listen(mockPort, "127.0.0.1", resolve);
+  });
+  app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(appPort)], {
+    cwd: process.cwd(), env, stdio: ["ignore", "pipe", "pipe"]
+  });
+  let appOutput = "";
+  app.stdout.on("data", chunk => { appOutput += chunk.toString(); });
+  app.stderr.on("data", chunk => { appOutput += chunk.toString(); });
+  await waitForApp();
+
+  let response = await postTransfer({ requestId: "test-unauth-001" });
+  assert(response.status === 401, "missing bearer token is rejected with 401");
+  assert(counters.reserve === 0 && counters.provider === 0, "unauthenticated request never reaches reservation or provider");
+
+  response = await postTransfer({ token: "not-a-valid-token", requestId: "test-invalid-auth-001" });
+  assert(response.status === 401, "unknown bearer token is rejected");
+
+  response = await postTransfer({ token: "inactive-agent-token", requestId: "test-inactive-001" });
+  assert(response.status === 401, "inactive agent token is rejected");
+
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-malformed-001", rawBody: "{" });
+  assert(response.status === 400, "malformed JSON is rejected with 400");
+
+  response = await postTransfer({ token: "agent-one-token", requestId: "short" });
+  assert(response.status === 400, "invalid request ID is rejected with 400");
+
+  const reserveBeforeCap = counters.reserve;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-cap-001", amount: "6000000000000000000000000" });
+  assert(response.status === 403, "transfer above configured per-transaction cap is blocked");
+  assert(counters.reserve === reserveBeforeCap, "cap rejection occurs before a reservation is created");
+
+  const primaryId = "test-api-primary-001";
+  response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
+  let payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review", "provider transaction hash is held for independent chain confirmation");
+  assert(counters.provider === 1 && counters.finish === 1, "first valid request invokes provider once and finalises reservation as needs_review");
+
+  response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
+  assert(response.status === 409, "identical request replay is rejected by API");
+  assert(counters.provider === 1, "identical replay does not invoke provider again");
+
+  response = await postTransfer({ token: "agent-one-token", requestId: primaryId, amount: "4000000000000000000000000" });
+  assert(response.status === 409, "same request ID with changed amount is rejected");
+
+  response = await postTransfer({ token: "agent-two-token", requestId: primaryId });
+  assert(response.status === 409, "second agent cannot reuse another agent's request ID");
+
+  const providerBeforeTimeout = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review", "ambiguous provider connection failure remains needs_review");
+  assert(payload.reason === "outlayer_timeout_or_connection_error", "ambiguous provider failure is classified explicitly");
+  assert(counters.provider === providerBeforeTimeout + 1, "timeout path invokes provider only once");
+  assert(reservations.get("test-timeout-001")?.status === "needs_review", "timeout reservation remains held in the ledger");
+
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is not treated as proof of transfer failure");
+  assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
+
+  process.stdout.write("\nAPI integration tests passed. Mock OutLayer and mock Supabase only; no credentials, production database, or NEAR transfer used.\n");
+} catch (error) {
+  failed = true;
+  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
+} finally {
+  if (app && !app.killed) app.kill("SIGTERM");
+  await new Promise(resolve => mock.close(resolve));
+}
+if (failed) process.exitCode = 1;
