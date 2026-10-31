@@ -274,6 +274,42 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.reason === "provider_transaction_hash_conflict", "conflicting provider hash is not overwritten");
 
+
+  // A second app process runs with a mainnet provider URL. The route must
+  // refuse before reservation or provider execution, even in CI test mode.
+  const guardPort = 3002;
+  const guardEnv = { ...env, OUTLAYER_BASE_URL: "https://api.outlayer.ai", PORT: String(guardPort) };
+  const guardApp = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(guardPort)], {
+    cwd: process.cwd(), env: guardEnv, stdio: ["ignore", "pipe", "pipe"]
+  });
+  try {
+    let ready = false;
+    for (let i = 0; i < 60; i++) {
+      try {
+        const probe = await fetch(`http://127.0.0.1:${guardPort}/api/agent/transfer`, { method: "GET" });
+        if (probe.status) { ready = true; break; }
+      } catch {}
+      await delay(500);
+    }
+    assert(ready, "isolated guard server starts for provider network test");
+    const reserveCount = counters.reserve;
+    const providerCount = counters.provider;
+    response = await fetch(`http://127.0.0.1:${guardPort}/api/agent/transfer`, {
+      method: "POST",
+      headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+      body: JSON.stringify({
+        requestId: "test-mainnet-block-001",
+        to: "recipient.near",
+        amountYocto: "1000000000000000000000000"
+      })
+    });
+    payload = await response.json();
+    assert(response.status === 503 && payload.error === "outlayer_testnet_endpoint_required", "mainnet OutLayer endpoint is refused");
+    assert(counters.reserve === reserveCount && counters.provider === providerCount, "mainnet endpoint refusal happens before reservation and provider call");
+  } finally {
+    if (!guardApp.killed) guardApp.kill("SIGTERM");
+  }
+
   process.stdout.write("\nAPI integration tests passed. Mock OutLayer and mock Supabase only; no credentials, production database, or NEAR transfer used.\n");
 } catch (error) {
   failed = true;
