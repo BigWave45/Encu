@@ -11,6 +11,7 @@ const tokens = {
   "inactive-agent-token": { id: "inactive-agent", active: false }
 };
 const reservations = new Map();
+let mockSignerAddress = "agentguard.testnet";
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -29,6 +30,8 @@ async function readJson(req) {
 const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
+    if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [{ id: "default" }]);
+    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { near_address: mockSignerAddress });
     if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
       const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
       const agent = agentsByHash.get(tokenHash);
@@ -55,7 +58,7 @@ const mock = createServer(async (req, res) => {
       return send(res, 200, { created: true, status: "reserved", request_id: id, agent_id: row.agentId });
     }
     if (req.method === "GET" && url.pathname === "/rest/v1/spend_reservations") {
-      const id = url.searchParams.get("request_id")?.replace(/^eq\\./, "");
+      const id = url.searchParams.get("request_id")?.replace("eq.", "");
       const row = reservations.get(id);
       return send(res, 200, row ? [{
         request_id: id, status: row.status, outlayer_request_id: row.providerRequestId ?? null,
@@ -184,6 +187,15 @@ try {
   response = await postTransfer({ token: "agent-one-token", requestId: "test-cap-001", amount: "6000000000000000000000000" });
   assert(response.status === 403, "transfer above configured per-transaction cap is blocked");
   assert(counters.reserve === reserveBeforeCap, "cap rejection occurs before a reservation is created");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "ok" && payload.signerMatches === true, "health confirms provider wallet matches configured signer");
+  mockSignerAddress = "unexpected.testnet";
+  response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
+  payload = await response.json();
+  assert(response.status === 503 && payload.outlayer === "signer_mismatch", "health fails closed when provider wallet signer differs");
+  mockSignerAddress = "agentguard.testnet";
 
   const primaryId = "test-api-primary-001";
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
