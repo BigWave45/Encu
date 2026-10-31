@@ -36,6 +36,7 @@ type Dashboard = {
     amountYocto: string;
     status: string;
     txHash: string | null;
+    providerRequestId: string | null;
     lastError: string | null;
     createdAt: string;
   }>;
@@ -61,6 +62,8 @@ export default function Home() {
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [rotationResult, setRotationResult] = useState<AgentResult | null>(null);
   const [rotatingAgent, setRotatingAgent] = useState(false);
+  const [reservationAction, setReservationAction] = useState<string | null>(null);
+  const [reservationActionError, setReservationActionError] = useState("");
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,6 +104,34 @@ export default function Home() {
       setDashboardError("Could not reach AgentGuard. Check your connection and try again.");
     } finally {
       setDashboardLoading(false);
+    }
+  }
+
+  async function inspectReservation(requestId: string, action: "provider-status" | "reconcile") {
+    setReservationAction(requestId + ":" + action);
+    setReservationActionError("");
+    try {
+      const response = await fetch(`/api/agent/${action}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({ requestId }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      if (!response.ok && response.status !== 202) {
+        setReservationActionError(body.error ?? body.reason ?? `${action}_failed`);
+      }
+      await loadDashboard();
+      if (body.reason && body.status === "needs_review") {
+        setReservationActionError(`${requestId}: ${body.reason}`);
+      }
+    } catch {
+      setReservationActionError(`${requestId}: Could not reach AgentGuard. The reservation state has not been verified.`);
+    } finally {
+      setReservationAction(null);
     }
   }
 
@@ -178,6 +209,7 @@ export default function Home() {
           </button>
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
+        {reservationActionError && <p role="alert" style={{ color: "#92400e", marginTop: 16 }}>{reservationActionError}</p>}
         {dashboard?.budget && <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginTop: 20 }}>
             {[
@@ -210,7 +242,23 @@ export default function Home() {
               <div style={{ marginTop: 6 }}>{near(item.amountYocto)} NEAR → {item.recipient}</div>
               <div style={{ color: "#64748b", marginTop: 5, overflowWrap: "anywhere" }}>Request: {item.requestId}</div>
               {item.txHash && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Tx: {item.txHash}</div>}
+              {item.providerRequestId && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Provider request: {item.providerRequestId}</div>}
               {item.lastError && <div style={{ color: "#92400e", marginTop: 4 }}>Review: {item.lastError}</div>}
+              {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                {item.providerRequestId && <button type="button"
+                  disabled={reservationAction !== null}
+                  onClick={() => inspectReservation(item.requestId, "provider-status")}
+                  style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
+                  {reservationAction === item.requestId + ":provider-status" ? "Checking provider…" : "Check provider"}
+                </button>}
+                {item.txHash && <button type="button"
+                  disabled={reservationAction !== null}
+                  onClick={() => inspectReservation(item.requestId, "reconcile")}
+                  style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
+                  {reservationAction === item.requestId + ":reconcile" ? "Checking NEAR…" : "Reconcile on NEAR"}
+                </button>}
+                {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. Manual investigation required; do not retry this payment.</span>}
+              </div>}
             </div>)}</div>}
           <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
         </>}
