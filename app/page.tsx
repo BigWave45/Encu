@@ -49,6 +49,7 @@ type Dashboard = {
     createdAt: string;
   }>;
   audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
+  reservationPage?: { page: number; pageSize: number; total: number; totalPages: number; status: string; search: string };
 };
 
 const YOCTO_PER_NEAR = 10n ** 24n;
@@ -127,6 +128,7 @@ export default function Home() {
   const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationFilter, setReservationFilter] = useState("all");
+  const [reservationPage, setReservationPage] = useState(1);
 
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
@@ -148,11 +150,12 @@ export default function Home() {
     }
   }
 
-  async function loadDashboard() {
+  async function loadDashboard(page = reservationPage, status = reservationFilter, search = reservationSearch) {
     setDashboardLoading(true);
     setDashboardError("");
     try {
-      const response = await fetch("/api/admin/dashboard", {
+      const params = new URLSearchParams({ page: String(page), pageSize: "20", status, q: search.trim() });
+      const response = await fetch(`/api/admin/dashboard?${params.toString()}`, {
         headers: { authorization: `Bearer ${token.trim()}` },
         cache: "no-store"
       });
@@ -162,6 +165,7 @@ export default function Home() {
         setDashboardError(body.error ?? "dashboard_request_failed");
       } else {
         setDashboard(body);
+        setReservationPage(body.reservationPage?.page ?? page);
         setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
       }
     } catch {
@@ -225,8 +229,11 @@ export default function Home() {
         cache: "no-store"
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) setDashboardError(body.error ?? "agent_status_update_failed");
-      await loadDashboard();
+      if (!response.ok) {
+        setDashboardError(body.error ?? "agent_status_update_failed");
+      } else {
+        await loadDashboard();
+      }
     } catch {
       setDashboardError("Could not reach AgentGuard. Agent status was not confirmed.");
     } finally {
@@ -441,15 +448,16 @@ export default function Home() {
               </tr>)}</tbody>
             </table>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservations?.length ?? 0} latest)</h3>
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
-            <input aria-label="Search transactions" placeholder="Search request, agent, recipient or hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
+            <input aria-label="Search transactions" placeholder="Search exact request ID" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
               <option value="all">All statuses</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option>
             </select>
+            <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
           </div>
-          {!dashboard.reservations?.filter(item => (reservationFilter === "all" || item.status === reservationFilter) && [item.requestId,item.agentId,item.recipient,item.txHash ?? ""].join(" ").toLowerCase().includes(reservationSearch.toLowerCase())).length ? <p style={{ color: "#64748b", fontSize: 14 }}>No matching reservations.</p> :
-            <div style={{ display: "grid", gap: 10 }}>{dashboard.reservations.filter(item => (reservationFilter === "all" || item.status === reservationFilter) && [item.requestId,item.agentId,item.recipient,item.txHash ?? ""].join(" ").toLowerCase().includes(reservationSearch.toLowerCase())).map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
+          {!dashboard.reservations?.length ? <p style={{ color: "#64748b", fontSize: 14 }}>No matching reservations.</p> :
+            <div style={{ display: "grid", gap: 10 }}>{dashboard.reservations.map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                 <strong>{item.agentId}</strong><strong>{item.status}</strong>
               </div>
