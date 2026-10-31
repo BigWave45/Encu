@@ -101,11 +101,6 @@ const env = {
   OUTLAYER_NEAR_ADDRESS: signerId,
   CI: "true",
   AGENTGUARD_TEST_MODE: "true",
-  OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
-  OUTLAYER_API_KEY: "test-outlayer-key",
-  OUTLAYER_NEAR_ADDRESS: signerId,
-  CI: "true",
-  AGENTGUARD_TEST_MODE: "true",
   PORT: String(appPort),
   HOSTNAME: "127.0.0.1"
 };
