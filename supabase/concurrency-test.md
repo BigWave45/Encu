@@ -115,8 +115,13 @@ where request_id in (
 -- set total_limit_yocto = <ORIGINAL_TOTAL_LIMIT_YOCTO>
 -- where id = 'default';
 
--- Delete only the test reservation rows after confirming they are failed/blocked.
--- Delete the test agents after their reservations have been removed.
+-- After the winner has status = 'failed' and the blocked request has no row,
+-- uncomment these exact cleanup statements:
+-- delete from public.spend_reservations
+-- where request_id in ('ag-concurrency-a-20261031', 'ag-concurrency-b-20261031')
+--   and status = 'failed';
+-- delete from public.agents
+-- where id in ('ag_concurrency_a_20261031', 'ag_concurrency_b_20261031');
 commit;
 ```
 
