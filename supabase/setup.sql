@@ -138,7 +138,7 @@ begin
     raise exception 'reservation_not_found';
   end if;
 
-  if reservation.status <> 'reserved' then
+  if reservation.status not in ('reserved', 'needs_review') then
     return jsonb_build_object(
       'status', reservation.status,
       'request_id', p_request_id
