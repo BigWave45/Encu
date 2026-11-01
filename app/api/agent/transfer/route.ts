@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
+import { getOutLayerConfig } from "@/lib/outlayer";
 import { authenticateAgent } from "@/lib/agent-auth";
 import { recordSecurityEvent } from "@/lib/security-audit";
 import { consumeRateLimit } from "@/lib/rate-limit";
@@ -46,6 +47,16 @@ export async function POST(request: NextRequest) {
       { error: "rate_limit_exceeded", retryAfterSeconds: rateLimit.retryAfterSeconds },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
     );
+  }
+
+  // Reject malformed provider/network configuration before reserving funds.
+  // This only validates configuration; the provider is called after admin approval.
+  try {
+    getOutLayerConfig();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_provider_configuration_blocked" });
+    return NextResponse.json({ error: reason }, { status: 503 });
   }
 
   const { requestId, to, amountYocto } = parsed.data;
