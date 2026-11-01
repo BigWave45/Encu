@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
+import { adminRateLimitResponse } from "@/lib/admin-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,9 @@ export async function PATCH(request: NextRequest) {
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+
+  const limited = await adminRateLimitResponse(identity.agentId, "emergency_stop_update", 10, 60);
+  if (limited) return limited;
 
   const { data, error } = await getSupabase().rpc("set_agentguard_transfers_enabled", {
     p_enabled: parsed.data.enabled,
