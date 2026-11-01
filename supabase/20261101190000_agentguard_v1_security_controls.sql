@@ -110,6 +110,10 @@ begin
   if p_actor_agent_id is null or p_agent_id is null then
     raise exception 'invalid_policy_update';
   end if;
+
+  -- Serialize policy edits with reservations and approvals.
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   if (p_max_transfer_yocto is not null and (p_max_transfer_yocto <= 0 or p_max_transfer_yocto <> pg_catalog.trunc(p_max_transfer_yocto)))
      or (p_daily_limit_yocto is not null and (p_daily_limit_yocto <= 0 or p_daily_limit_yocto <> pg_catalog.trunc(p_daily_limit_yocto)))
      or (p_weekly_limit_yocto is not null and (p_weekly_limit_yocto <= 0 or p_weekly_limit_yocto <> pg_catalog.trunc(p_weekly_limit_yocto))) then
@@ -490,6 +494,9 @@ declare
   v_reservation public.spend_reservations%rowtype;
   v_enabled boolean;
   v_active boolean;
+  v_policy public.agent_policies%rowtype;
+  v_daily_total numeric;
+  v_weekly_total numeric;
 begin
   perform 1 from public.agent_budgets where id = 'default' for update;
   if not found then raise exception 'budget_not_configured'; end if;
@@ -508,6 +515,36 @@ begin
 
   select active into v_active from public.agents where id = v_reservation.agent_id for share;
   if not coalesce(v_active, false) then raise exception 'agent_not_active'; end if;
+
+  -- Revalidate current policy at approval time. A policy tightened after a
+  -- request was queued must not be bypassed by approving the older request.
+  select * into v_policy from public.agent_policies
+  where agent_id = v_reservation.agent_id for share;
+  if not found then raise exception 'agent_policy_not_configured'; end if;
+  if v_policy.max_transfer_yocto is not null
+     and v_reservation.amount_yocto > v_policy.max_transfer_yocto then
+    raise exception 'agent_per_transfer_limit';
+  end if;
+  if v_policy.allowed_recipients is not null
+     and not (v_reservation.recipient = any(v_policy.allowed_recipients)) then
+    raise exception 'recipient_not_allowed';
+  end if;
+  if v_policy.daily_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_daily_total
+    from public.spend_reservations
+    where agent_id = v_reservation.agent_id
+      and created_at >= pg_catalog.now() - interval '24 hours'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_daily_total > v_policy.daily_limit_yocto then raise exception 'agent_daily_limit'; end if;
+  end if;
+  if v_policy.weekly_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_weekly_total
+    from public.spend_reservations
+    where agent_id = v_reservation.agent_id
+      and created_at >= pg_catalog.now() - interval '7 days'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_weekly_total > v_policy.weekly_limit_yocto then raise exception 'agent_weekly_limit'; end if;
+  end if;
 
   update public.spend_reservations
   set status = 'reserved',
