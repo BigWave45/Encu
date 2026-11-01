@@ -299,26 +299,6 @@ begin
 end;
 $$;
 
-create or replace function public.claim_agent_transfer_submission(p_request_id text,p_agent_id text)
-returns jsonb language plpgsql security definer set search_path = ''
-as $$
-declare v_reservation public.spend_reservations%rowtype; v_enabled boolean;
-begin
-  perform 1 from public.agent_budgets where id='default' for update;
-  if not found then raise exception 'budget_not_configured'; end if;
-  select transfers_enabled into v_enabled from public.agentguard_system_controls where id='default' for share;
-  if not coalesce(v_enabled,false) then return pg_catalog.jsonb_build_object('claimed',false,'reason','emergency_stop'); end if;
-  select * into v_reservation from public.spend_reservations
-  where request_id=p_request_id and agent_id=p_agent_id for update;
-  if not found then raise exception 'reservation_not_found'; end if;
-  if v_reservation.status<>'reserved' or v_reservation.submission_claimed_at is not null then
-    return pg_catalog.jsonb_build_object('claimed',false,'reason','already_claimed_or_processed');
-  end if;
-  update public.spend_reservations set submission_claimed_at=pg_catalog.now(),updated_at=pg_catalog.now() where request_id=p_request_id;
-  return pg_catalog.jsonb_build_object('claimed',true,'request_id',p_request_id);
-end;
-$$;
-
 create or replace function public.rotate_agent_credential(p_agent_id text,p_token_hash text,p_actor_agent_id text)
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
@@ -342,7 +322,6 @@ revoke all on function public.consume_agentguard_rate_limit(text,text,integer,in
 revoke all on function public.reserve_agent_spend(text,numeric,text,text) from public,anon,authenticated;
 revoke all on function public.approve_agent_transfer(text,text) from public,anon,authenticated;
 revoke all on function public.reject_agent_transfer(text,text,text) from public,anon,authenticated;
-revoke all on function public.claim_agent_transfer_submission(text,text) from public,anon,authenticated;
 revoke all on function public.rotate_agent_credential(text,text,text) from public,anon,authenticated;
 grant execute on function public.set_agentguard_transfers_enabled(boolean,text) to service_role;
 grant execute on function public.set_agent_policy(text,numeric,numeric,numeric,text[],text) to service_role;
@@ -350,7 +329,6 @@ grant execute on function public.consume_agentguard_rate_limit(text,text,integer
 grant execute on function public.reserve_agent_spend(text,numeric,text,text) to service_role;
 grant execute on function public.approve_agent_transfer(text,text) to service_role;
 grant execute on function public.reject_agent_transfer(text,text,text) to service_role;
-grant execute on function public.claim_agent_transfer_submission(text,text) to service_role;
 grant execute on function public.rotate_agent_credential(text,text,text) to service_role;
 
 
