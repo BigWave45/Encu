@@ -572,6 +572,39 @@ export default function Home() {
             <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
             {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
           </form>
+          <section style={{ marginTop: 22, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div><strong>Global transfer control</strong><p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 0" }}>{dashboard.transfersEnabled ? "Transfers are enabled. The stop blocks new reservations and unclaimed submissions." : "Emergency stop is active. New reservations and unclaimed submissions are blocked."}</p></div>
+              <button type="button" onClick={() => setTransfersEnabled(!dashboard.transfersEnabled)} disabled={controlBusy || !adminToken.trim()} style={{ ...buttonStyle, background: dashboard.transfersEnabled ? "#b91c1c" : "#166534", marginTop: 0 }}>
+                {controlBusy ? "Updating…" : dashboard.transfersEnabled ? "Emergency stop" : "Enable transfers"}
+              </button>
+            </div>
+            {controlMessage && <p role="status" style={{ fontSize: 13 }}>{controlMessage}</p>}
+          </section>
+          <form onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            <strong>Per-agent spending policy</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. Blank recipient list means unrestricted.</p>
+            <label style={{ display: "block", fontSize: 13 }}>Agent
+              <select value={policyAgent} onChange={e => {
+                const id = e.target.value; setPolicyAgent(id);
+                const policy = dashboard.policies?.find(item => item.agentId === id);
+                setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
+                setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
+                setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
+                setPolicyRecipients(policy?.allowedRecipients?.join("\n") ?? "");
+              }} style={{ ...inputStyle, marginTop: 5 }}>
+                {dashboard.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+              </select>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginTop: 10 }}>
+              <label style={{ fontSize: 13 }}>Max per transfer (NEAR)<input value={policyMax} onChange={e => setPolicyMax(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+            </div>
+            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>Allowed NEAR recipients, one account ID per line<textarea value={policyRecipients} onChange={e => setPolicyRecipients(e.target.value)} rows={3} placeholder="Leave blank to allow any valid recipient" style={{ ...inputStyle, marginTop: 5 }} /></label>
+            <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
+            {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
+          </form>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -583,6 +616,20 @@ export default function Home() {
               </tr>)}</tbody>
             </table>
           </div>
+          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
+          {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
+            <div style={{ display: "grid", gap: 10 }}>
+              {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #f59e0b", borderRadius: 8, fontSize: 13 }}>
+                <strong>{item.agentId}</strong> requests {near(item.amountYocto)} NEAR
+                <p style={{ margin: "6px 0" }}>Recipient: <code>{item.recipient}</code></p>
+                <p style={{ margin: "6px 0", color: "#64748b" }}>Request ID: {item.requestId}</p>
+                <p style={{ margin: "6px 0", color: "#64748b" }}>Expires: {item.approvalExpiresAt ? new Date(item.approvalExpiresAt).toLocaleString() : "Not available"}</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
+                  <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
+                </div>
+              </div>)}
+            </div>}
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
