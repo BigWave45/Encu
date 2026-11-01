@@ -12,13 +12,19 @@ function safeEqual(expected: string, supplied: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function bearerToken(authorization: string | null) {
+  return authorization?.match(/^Bearer\\s+(.+)$/i)?.[1] ?? null;
+}
+
 export async function authenticateAgent(authorization: string | null): Promise<AgentIdentity | null> {
-  const supplied = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const supplied = bearerToken(authorization);
   if (!supplied) return null;
 
+  // The primary agent credential is an agent credential only. It never grants
+  // administrator privileges.
   const primaryToken = process.env.AGENTGUARD_AGENT_TOKEN;
   if (primaryToken && safeEqual(primaryToken, supplied)) {
-    return { agentId: "primary", isAdmin: true };
+    return { agentId: "primary", isAdmin: false };
   }
 
   const tokenHash = createHash("sha256").update(supplied).digest("hex");
@@ -31,4 +37,14 @@ export async function authenticateAgent(authorization: string | null): Promise<A
   if (error) throw new Error("agent_authentication_lookup_failed");
   if (!data || data.active !== true) return null;
   return { agentId: data.id, isAdmin: false };
+}
+
+export function authenticateAdmin(authorization: string | null): AgentIdentity | null {
+  const supplied = bearerToken(authorization);
+  const adminToken = process.env.AGENTGUARD_ADMIN_TOKEN;
+  if (!supplied || !adminToken || !safeEqual(adminToken, supplied)) return null;
+
+  // Keep the existing primary audit actor identity, but this credential cannot
+  // be used by agent endpoints.
+  return { agentId: "primary", isAdmin: true };
 }
