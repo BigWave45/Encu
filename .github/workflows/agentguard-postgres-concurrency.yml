@@ -64,6 +64,7 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 <<'SQL'
+          export PGPASSWORD=agentguard_test_only
           INSERT INTO public.agents (id, name, active)
           VALUES ('research-agent', 'Research Agent', true);
           SQL
