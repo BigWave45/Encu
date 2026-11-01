@@ -1394,3 +1394,165 @@ $$;
 
 revoke all on function public.rotate_agent_credential(text,text,text) from public, anon, authenticated;
 grant execute on function public.rotate_agent_credential(text,text,text) to service_role;
+
+
+-- Re-apply serialized policy edits and approval-time policy validation.
+create or replace function public.set_agent_policy(
+  p_agent_id text,
+  p_max_transfer_yocto numeric default null,
+  p_daily_limit_yocto numeric default null,
+  p_weekly_limit_yocto numeric default null,
+  p_allowed_recipients text[] default null,
+  p_actor_agent_id text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_policy public.agent_policies%rowtype;
+begin
+  if p_actor_agent_id is null or p_agent_id is null then
+    raise exception 'invalid_policy_update';
+  end if;
+
+  -- Serialize policy edits with reservations and approvals.
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  if (p_max_transfer_yocto is not null and (p_max_transfer_yocto <= 0 or p_max_transfer_yocto <> pg_catalog.trunc(p_max_transfer_yocto)))
+     or (p_daily_limit_yocto is not null and (p_daily_limit_yocto <= 0 or p_daily_limit_yocto <> pg_catalog.trunc(p_daily_limit_yocto)))
+     or (p_weekly_limit_yocto is not null and (p_weekly_limit_yocto <= 0 or p_weekly_limit_yocto <> pg_catalog.trunc(p_weekly_limit_yocto))) then
+    raise exception 'invalid_policy_limit';
+  end if;
+  if not exists (select 1 from public.agents where id = p_agent_id) then
+    raise exception 'agent_not_found';
+  end if;
+  if p_allowed_recipients is not null and exists (
+    select 1 from pg_catalog.unnest(p_allowed_recipients) as recipients(value)
+    where value !~ '^[a-z0-9]+([._-][a-z0-9]+)*
+  ) then
+    raise exception 'invalid_allowed_recipient';
+  end if;
+
+  insert into public.agent_policies(
+    agent_id, max_transfer_yocto, daily_limit_yocto, weekly_limit_yocto,
+    allowed_recipients, updated_at, updated_by
+  ) values (
+    p_agent_id, p_max_transfer_yocto, p_daily_limit_yocto, p_weekly_limit_yocto,
+    p_allowed_recipients, pg_catalog.now(), p_actor_agent_id
+  )
+  on conflict (agent_id) do update set
+    max_transfer_yocto = excluded.max_transfer_yocto,
+    daily_limit_yocto = excluded.daily_limit_yocto,
+    weekly_limit_yocto = excluded.weekly_limit_yocto,
+    allowed_recipients = excluded.allowed_recipients,
+    updated_at = excluded.updated_at,
+    updated_by = excluded.updated_by
+  returning * into v_policy;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id, 'agent_policy_updated', p_agent_id,
+    pg_catalog.jsonb_build_object(
+      'max_transfer_yocto', v_policy.max_transfer_yocto::text,
+      'daily_limit_yocto', v_policy.daily_limit_yocto::text,
+      'weekly_limit_yocto', v_policy.weekly_limit_yocto::text,
+      'allowed_recipients', v_policy.allowed_recipients
+    ));
+
+  return pg_catalog.jsonb_build_object(
+    'agent_id', p_agent_id,
+    'max_transfer_yocto', v_policy.max_transfer_yocto::text,
+    'daily_limit_yocto', v_policy.daily_limit_yocto::text,
+    'weekly_limit_yocto', v_policy.weekly_limit_yocto::text,
+    'allowed_recipients', v_policy.allowed_recipients
+  );
+end;
+$$;
+
+-- Fixed UTC minute windows. Upsert/increment is atomic across serverless instances.
+
+create or replace function public.approve_agent_transfer(
+  p_request_id text,
+  p_actor_agent_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_reservation public.spend_reservations%rowtype;
+  v_enabled boolean;
+  v_active boolean;
+  v_policy public.agent_policies%rowtype;
+  v_daily_total numeric;
+  v_weekly_total numeric;
+begin
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select transfers_enabled into v_enabled from public.agentguard_system_controls where id = 'default' for share;
+  if not coalesce(v_enabled, false) then raise exception 'emergency_stop'; end if;
+
+  select * into v_reservation from public.spend_reservations
+  where request_id = p_request_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status <> 'awaiting_approval' or v_reservation.submission_claimed_at is not null then
+    raise exception 'approval_not_pending';
+  end if;
+  if v_reservation.approval_expires_at is null or v_reservation.approval_expires_at <= pg_catalog.now() then
+    raise exception 'approval_expired';
+  end if;
+
+  select active into v_active from public.agents where id = v_reservation.agent_id for share;
+  if not coalesce(v_active, false) then raise exception 'agent_not_active'; end if;
+
+  -- Revalidate current policy at approval time. A policy tightened after a
+  -- request was queued must not be bypassed by approving the older request.
+  select * into v_policy from public.agent_policies
+  where agent_id = v_reservation.agent_id for share;
+  if not found then raise exception 'agent_policy_not_configured'; end if;
+  if v_policy.max_transfer_yocto is not null
+     and v_reservation.amount_yocto > v_policy.max_transfer_yocto then
+    raise exception 'agent_per_transfer_limit';
+  end if;
+  if v_policy.allowed_recipients is not null
+     and not (v_reservation.recipient = any(v_policy.allowed_recipients)) then
+    raise exception 'recipient_not_allowed';
+  end if;
+  if v_policy.daily_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_daily_total
+    from public.spend_reservations
+    where agent_id = v_reservation.agent_id
+      and created_at >= pg_catalog.now() - interval '24 hours'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_daily_total > v_policy.daily_limit_yocto then raise exception 'agent_daily_limit'; end if;
+  end if;
+  if v_policy.weekly_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_weekly_total
+    from public.spend_reservations
+    where agent_id = v_reservation.agent_id
+      and created_at >= pg_catalog.now() - interval '7 days'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_weekly_total > v_policy.weekly_limit_yocto then raise exception 'agent_weekly_limit'; end if;
+  end if;
+
+  update public.spend_reservations
+  set status = 'reserved',
+      approved_at = pg_catalog.now(),
+      approved_by = p_actor_agent_id,
+      submission_claimed_at = pg_catalog.now(),
+      updated_at = pg_catalog.now()
+  where request_id = p_request_id;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id, 'transfer_approved', p_request_id,
+    pg_catalog.jsonb_build_object('agent_id', v_reservation.agent_id,
+      'recipient', v_reservation.recipient, 'amount_yocto', v_reservation.amount_yocto::text));
+
+  return pg_catalog.jsonb_build_object(
+    'request_id', p_request_id, 'agent_id', v_reservation.agent_id,
+    'recipient', v_reservation.recipient, 'amount_yocto', v_reservation.amount_yocto::text,
+    'status', 'reserved'
+  );
+end;
+$$;
+
