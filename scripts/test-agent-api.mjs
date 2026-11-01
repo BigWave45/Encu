@@ -175,6 +175,17 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "budget_limit_updated", target_id: "default", details: {} });
       return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/rotate_agent_credential") {
+      const body = await readJson(req);
+      const agent = mockAgents.find(item => item.id === body.p_agent_id && item.active);
+      if (!agent || agent.id === "primary") return send(res, 400, { message: "active_agent_not_found" });
+      for (const [existingHash, existingAgentId] of agentsByHash) {
+        if (existingAgentId === agent.id) agentsByHash.delete(existingHash);
+      }
+      agentsByHash.set(body.p_token_hash, agent.id);
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_credential_rotated", target_id: agent.id, details: { name: agent.name } });
+      return send(res, 200, { id: agent.id, name: agent.name });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_active") {
       const body = await readJson(req);
       if (body.p_agent_id === "primary") return send(res, 400, { message: "primary_agent_protected" });
