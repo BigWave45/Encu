@@ -389,7 +389,12 @@ begin
     return pg_catalog.jsonb_build_object('created',false,'status',v_existing.status,'request_id',p_request_id,'agent_id',p_agent_id);
   end if;
   select transfers_enabled into v_enabled from public.agentguard_system_controls where id='default' for share;
-  if not coalesce(v_enabled,false) then return pg_catalog.jsonb_build_object('created',false,'status','blocked','reason','emergency_stop'); end if;
+  if not coalesce(v_enabled,false) then
+    insert into public.agentguard_security_events(actor_agent_id,event_type,request_id,details)
+    values(p_agent_id,'transfer_emergency_stop_blocked',p_request_id,
+      pg_catalog.jsonb_build_object('amount_yocto',p_amount_yocto::text,'recipient',p_recipient));
+    return pg_catalog.jsonb_build_object('created',false,'status','blocked','reason','emergency_stop');
+  end if;
   select * into v_policy from public.agent_policies where agent_id=p_agent_id for share;
   if not found then raise exception 'agent_policy_not_configured'; end if;
   if v_policy.max_transfer_yocto is not null and p_amount_yocto>v_policy.max_transfer_yocto then
@@ -439,10 +444,17 @@ begin
   if p_actor_agent_id is null then raise exception 'invalid_approval_actor'; end if;
   perform 1 from public.agent_budgets where id='default' for update;
   if not found then raise exception 'budget_not_configured'; end if;
-  select transfers_enabled into v_enabled from public.agentguard_system_controls where id='default' for share;
-  if not coalesce(v_enabled,false) then raise exception 'emergency_stop'; end if;
   select * into v_reservation from public.spend_reservations where request_id=p_request_id for update;
   if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status<>'awaiting_approval' or v_reservation.submission_claimed_at is not null then raise exception 'approval_not_pending'; end if;
+  if v_reservation.approval_expires_at is null or v_reservation.approval_expires_at<=pg_catalog.now() then raise exception 'approval_expired'; end if;
+  select transfers_enabled into v_enabled from public.agentguard_system_controls where id='default' for share;
+  if not coalesce(v_enabled,false) then
+    insert into public.agentguard_security_events(actor_agent_id,event_type,request_id,details)
+    values(v_reservation.agent_id,'transfer_approval_blocked_emergency_stop',p_request_id,
+      pg_catalog.jsonb_build_object('recipient',v_reservation.recipient,'amount_yocto',v_reservation.amount_yocto::text));
+    return pg_catalog.jsonb_build_object('approved',false,'reason','emergency_stop','request_id',p_request_id);
+  end if;
   if v_reservation.status<>'awaiting_approval' or v_reservation.submission_claimed_at is not null then raise exception 'approval_not_pending'; end if;
   if v_reservation.approval_expires_at is null or v_reservation.approval_expires_at<=pg_catalog.now() then raise exception 'approval_expired'; end if;
   select active into v_active from public.agents where id=v_reservation.agent_id for share;
