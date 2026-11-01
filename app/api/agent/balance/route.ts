@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { agentRateLimitResponse } from "@/lib/agent-rate-limit";
 import { authenticateAgent } from "@/lib/agent-auth";
 import { getOutLayerConfig } from "@/lib/outlayer";
 
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
   if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const limited = await agentRateLimitResponse(identity.agentId, "wallet_balance_lookup", 20, 60);
+  if (limited) return limited;
 
   let config;
   try {
