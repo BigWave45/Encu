@@ -13,7 +13,7 @@ function safeEqual(expected: string, supplied: string) {
 }
 
 function bearerToken(authorization: string | null) {
-  return authorization?.match(/^Bearer\\s+(.+)$/i)?.[1] ?? null;
+  return authorization?.match(/^Bearer\s+(.+)$/i)?.[1] ?? null;
 }
 
 export async function authenticateAgent(authorization: string | null): Promise<AgentIdentity | null> {
