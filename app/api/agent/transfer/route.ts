@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
-import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
 import { authenticateAgent } from "@/lib/agent-auth";
 import { recordSecurityEvent } from "@/lib/security-audit";
 import { consumeRateLimit } from "@/lib/rate-limit";
@@ -34,32 +33,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Persistent DB-backed rate limiting works across independent Vercel instances.
   let rateLimit: Awaited<ReturnType<typeof consumeRateLimit>>;
   try {
-    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 10, 60);
+    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 60, 60);
   } catch {
     rateLimit = null;
   }
-  if (!rateLimit) {
-    return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
-  }
+  if (!rateLimit) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
   if (!rateLimit.allowed) {
     await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_rate_limited" });
     return NextResponse.json(
       { error: "rate_limit_exceeded", retryAfterSeconds: rateLimit.retryAfterSeconds },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
     );
-  }
-
-  // Fail closed before reserving budget if the configured provider is not the
-  // official OutLayer testnet endpoint or the expected signer is not configured.
-  try {
-    getOutLayerConfig();
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
-    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_provider_configuration_blocked" });
-    return NextResponse.json({ error: reason }, { status: 503 });
   }
 
   const { requestId, to, amountYocto } = parsed.data;
@@ -79,105 +65,40 @@ export async function POST(request: NextRequest) {
   });
   if (error) {
     const conflict = error.message.includes("idempotency_key_conflict");
-    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: conflict ? "transfer_idempotency_conflict" : "transfer_reservation_error", requestId });
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: conflict ? "transfer_idempotency_conflict" : "transfer_reservation_error",
+      requestId
+    });
     return NextResponse.json(
       { error: conflict ? "idempotency_key_conflict" : "reservation_failed" },
       { status: conflict ? 409 : 500 }
     );
   }
+
   if (reservation?.status === "blocked") {
-    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_shared_budget_blocked", requestId });
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: "transfer_policy_blocked",
+      requestId,
+      details: { reason: reservation.reason ?? "policy_denied" }
+    });
     return NextResponse.json(reservation, { status: 403 });
   }
 
-  // Only the insert winner can contact OutLayer. Replays never submit twice.
-  if (reservation?.created !== true) {
-    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
-    return NextResponse.json({ status: reservation?.status ?? "already_processed", requestId }, { status: 409 });
-  }
-
-  // A second atomic check closes the race between reservation and provider
-  // submission. If the emergency stop was activated meanwhile, do not call OutLayer.
-  const { data: submissionClaim, error: claimError } = await db.rpc("claim_agent_transfer_submission", {
-    p_request_id: requestId,
-    p_agent_id: identity.agentId
-  });
-  if (claimError || submissionClaim?.claimed !== true) {
-    await recordSecurityEvent({
-      actorAgentId: identity.agentId,
-      eventType: "transfer_submission_claim_blocked",
-      requestId,
-      details: { reason: submissionClaim?.reason ?? "claim_unavailable" }
-    });
-    return NextResponse.json(
-      { status: "blocked", reason: submissionClaim?.reason ?? "submission_claim_failed", requestId },
-      { status: submissionClaim?.reason === "emergency_stop" ? 423 : 503 }
-    );
-  }
-
-  let txHash: string | null = null;
-  let providerRequestId: string | null = null;
-  let reason = "outlayer_response_unknown";
-
-  try {
-    const result = await transferNear(to, amountYocto);
-    txHash = typeof result.body.tx_hash === "string" ? result.body.tx_hash : null;
-    providerRequestId = typeof result.body.request_id === "string"
-      ? result.body.request_id
-      : typeof result.body.requestId === "string"
-        ? result.body.requestId
-        : null;
-
-    if (result.httpStatus >= 200 && result.httpStatus < 300 && txHash) {
-      reason = "awaiting_onchain_confirmation";
-    } else if (result.httpStatus === 422 && result.body.error === "onchain_tx_failed" && txHash) {
-      reason = "awaiting_onchain_confirmation_after_provider_revert";
-    } else if (result.httpStatus >= 200 && result.httpStatus < 300 && providerRequestId) {
-      reason = "unverified_native_transfer_response";
-    } else {
-      reason = `unclassified_outlayer_response_${result.httpStatus}`;
-    }
-  } catch {
-    // A timeout is ambiguous: keep the reservation held and never auto-retry.
-    reason = "outlayer_timeout_or_connection_error";
-  }
-
-  let finishError: { message: string } | null = null;
-  if (txHash || providerRequestId) {
-    // One atomic DB operation stores provider references and marks the
-    // reservation needs_review. No split update can lose one reference.
-    const { error } = await db.rpc("record_outlayer_submission", {
-      p_request_id: requestId,
-      p_tx_hash: txHash,
-      p_provider_request_id: providerRequestId,
-      p_error: reason
-    });
-    finishError = error;
-  } else {
-    const { error } = await db.rpc("finish_agent_spend", {
-      p_request_id: requestId,
-      p_outcome: "needs_review",
-      p_tx_hash: null,
-      p_error: reason
-    });
-    finishError = error;
-  }
-
-  if (finishError) {
+  // V1 never calls OutLayer from an agent request. Every transfer waits for
+  // administrator approval; only the admin approval endpoint can submit it.
+  if (reservation?.created === true && reservation.status === "awaiting_approval") {
     return NextResponse.json({
-      status: "needs_review",
+      status: "awaiting_approval",
       requestId,
-      txHash,
-      providerRequestId,
-      reason: "ledger_finalisation_failed"
+      approvalExpiresAt: reservation.approval_expires_at ?? null
     }, { status: 202 });
   }
 
+  await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
   return NextResponse.json({
-    status: "needs_review",
-    requestId,
-    txHash,
-    providerRequestId,
-    reason
-  }, { status: 202 });
+    status: reservation?.status ?? "already_processed",
+    requestId
+  }, { status: 409 });
 }
