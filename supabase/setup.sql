@@ -48,6 +48,44 @@ insert into public.agent_budgets (id, total_limit_yocto)
 values ('default', 5000000000000000000000000)
 on conflict (id) do nothing;
 
+alter table public.spend_reservations
+  add column if not exists submission_claimed_at timestamptz;
+
+create or replace function public.claim_agent_transfer_submission(
+  p_request_id text,
+  p_agent_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_enabled boolean;
+  v_reservation public.spend_reservations%rowtype;
+begin
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select transfers_enabled into v_enabled
+  from public.agentguard_system_controls where id = 'default' for share;
+  if not coalesce(v_enabled, false) then
+    return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'emergency_stop');
+  end if;
+  select * into v_reservation from public.spend_reservations
+  where request_id = p_request_id and agent_id = p_agent_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status <> 'reserved' or v_reservation.submission_claimed_at is not null then
+    return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'already_claimed_or_processed');
+  end if;
+  update public.spend_reservations
+  set submission_claimed_at = pg_catalog.now(), updated_at = pg_catalog.now()
+  where request_id = p_request_id;
+  return pg_catalog.jsonb_build_object('claimed', true, 'request_id', p_request_id);
+end;
+$;
+
+revoke all on function public.claim_agent_transfer_submission(text,text) from public, anon, authenticated;
+grant execute on function public.claim_agent_transfer_submission(text,text) to service_role;
+
 create or replace function public.reserve_agent_spend(
   p_request_id text,
   p_amount_yocto numeric,
