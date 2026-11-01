@@ -52,13 +52,16 @@ export async function POST(request: NextRequest) {
     target_id: parsed.data.id,
     details: { name: parsed.data.name }
   });
-  const auditWarning = audit.error ? "credential_created_but_audit_write_failed" : undefined;
+  if (audit.error) {
+    await db.from("agent_policies").delete().eq("agent_id", parsed.data.id);
+    await db.from("agents").delete().eq("id", parsed.data.id);
+    return NextResponse.json({ error: "agent_creation_audit_failed" }, { status: 500 });
+  }
 
   return NextResponse.json({
     status: "created",
     agent: { id: parsed.data.id, name: parsed.data.name },
     token,
-    warning: "Copy this token now. It cannot be retrieved again.",
-    ...(auditWarning ? { auditWarning } : {})
+    warning: "Copy this token now. It cannot be retrieved again."
   }, { status: 201 });
 }
