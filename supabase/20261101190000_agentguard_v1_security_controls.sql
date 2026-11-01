@@ -352,3 +352,40 @@ grant execute on function public.approve_agent_transfer(text,text) to service_ro
 grant execute on function public.reject_agent_transfer(text,text,text) to service_role;
 grant execute on function public.claim_agent_transfer_submission(text,text) to service_role;
 grant execute on function public.rotate_agent_credential(text,text,text) to service_role;
+
+
+-- Agent creation, initial policy, and audit are a single transaction.
+create or replace function public.create_agent_with_audit(
+  p_agent_id text,
+  p_name text,
+  p_token_hash text,
+  p_actor_agent_id text
+) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare v_agent public.agents%rowtype;
+begin
+  if p_agent_id is null or p_agent_id = 'primary'
+     or p_agent_id !~ '^[a-z0-9_-]{2,48}$'
+     or p_name is null or pg_catalog.length(pg_catalog.btrim(p_name)) < 2
+     or pg_catalog.length(p_name) > 80
+     or p_token_hash is null or p_token_hash !~ '^[a-f0-9]{64}$'
+     or p_actor_agent_id is null then
+    raise exception 'invalid_agent_creation';
+  end if;
+
+  insert into public.agents(id,name,token_hash,active)
+  values(p_agent_id,pg_catalog.btrim(p_name),p_token_hash,true)
+  returning * into v_agent;
+
+  insert into public.agent_policies(agent_id) values(p_agent_id);
+
+  insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
+  values(p_actor_agent_id,'agent_credential_created',p_agent_id,
+    pg_catalog.jsonb_build_object('name',v_agent.name));
+
+  return pg_catalog.jsonb_build_object('id',v_agent.id,'name',v_agent.name);
+end;
+$$;
+revoke all on function public.create_agent_with_audit(text,text,text,text) from public,anon,authenticated;
+grant execute on function public.create_agent_with_audit(text,text,text,text) to service_role;
