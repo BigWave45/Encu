@@ -37,6 +37,11 @@ async function readJson(req) {
 const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
+    if (req.method === "POST" && url.pathname === "/") {
+      const body = await readJson(req);
+      if (body.method === "status") return send(res, 200, { jsonrpc: "2.0", id: body.id, result: { chain_id: "testnet" } });
+    }
+    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [mockBudget]);
     if (req.method === "GET" && url.pathname === "/rest/v1/agentguard_admin_audit") {
       res.setHeader("content-range", `0-${Math.max(0, adminAudit.length - 1)}/${adminAudit.length}`);
@@ -197,6 +202,7 @@ const env = {
   OUTLAYER_BASE_URL: `http://127.0.0.1:${mockPort}`,
   OUTLAYER_API_KEY: "test-outlayer-key",
   OUTLAYER_NEAR_ADDRESS: "agentguard.testnet",
+  NEAR_RPC_URL: `http://127.0.0.1:${mockPort}`,
   CI: "true",
   AGENTGUARD_TEST_MODE: "true",
   AGENTGUARD_NETWORK: "testnet",
