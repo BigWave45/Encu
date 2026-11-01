@@ -172,7 +172,7 @@ Current V1 behavior:
 
 The current transfer handler does not return a successful settled-payment response directly. A provider response and transaction hash still require the separate reconciliation step.
 
-Rate limits use the shared PostgreSQL counter: agent transfer preparation is limited to 60 requests per agent per minute; admin mutations are limited to 20 per action per minute, with budget, emergency-stop, provisioning, credential-rotation, and reservation-resolution actions limited to 10 per minute. These application limits are not DDoS protection.
+Rate limits use the shared PostgreSQL counter: agent transfer preparation is limited to 20 requests per agent per minute; admin mutations are limited to 20 per action per minute, with budget, emergency-stop, provisioning, credential-rotation, and reservation-resolution actions limited to 10 per minute. These application limits are not DDoS protection.
 
 ### Check provider status
 
