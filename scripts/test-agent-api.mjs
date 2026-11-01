@@ -299,6 +299,16 @@ async function postTransfer({ token, requestId, to = "recipient.near", amount = 
   });
 }
 
+async function approveTransfer(requestId, action = "approve") {
+  return fetch(`http://127.0.0.1:${appPort}/api/admin/approvals`, {
+    method: "POST",
+    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify(action === "approve"
+      ? { action, requestId }
+      : { action, requestId, reason: "Rejected by integration test" })
+  });
+}
+
 try {
   await new Promise((resolve, reject) => {
     mock.once("error", reject);
@@ -418,8 +428,12 @@ try {
   const recordCountBeforePrimary = counters.record;
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   payload = await response.json();
-  assert(response.status === 202 && payload.status === "needs_review", "provider transaction hash is held for independent chain confirmation");
-  assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "first valid request invokes provider once and atomically records provider references");
+  assert(response.status === 202 && payload.status === "awaiting_approval", "agent transfer creates a pending approval request");
+  assert(counters.provider === providerCountBeforePrimary, "agent request cannot contact provider before admin approval");
+  response = await approveTransfer(primaryId);
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review", "admin approval submits transfer and holds it for chain confirmation");
+  assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "approved request invokes provider once and atomically records provider references");
   assert(reservations.get(primaryId)?.providerRequestId === `mock-provider-${providerCountBeforePrimary + 1}`, "provider request ID is persisted atomically");
   assert(reservations.get(primaryId)?.txHash === `mock-tx-${providerCountBeforePrimary + 1}`, "transaction hash is persisted atomically");
 
@@ -437,6 +451,9 @@ try {
   const providerBeforeTimeout = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test", amount: "3000000000000000000000000" });
   payload = await response.json();
+  assert(response.status === 202 && payload.status === "awaiting_approval", "timeout test transfer waits for administrator approval");
+  response = await approveTransfer("test-timeout-001");
+  payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "ambiguous provider connection failure remains needs_review");
   assert(payload.reason === "outlayer_timeout_or_connection_error", "ambiguous provider failure is classified explicitly");
   assert(counters.provider === providerBeforeTimeout + 1, "timeout path invokes provider only once");
@@ -444,9 +461,18 @@ try {
 
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test", amount: "1000000000000000000000000" });
   payload = await response.json();
+  assert(response.status === 202 && payload.status === "awaiting_approval", "provider-error test transfer waits for approval");
+  response = await approveTransfer("test-provider-error-001");
+  payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is not treated as proof of transfer failure");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
 
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-reject-001" });
+  assert(response.status === 202, "rejection test creates pending approval");
+  response = await approveTransfer("test-reject-001", "reject");
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "rejected", "administrator can reject a pending transfer");
+  assert(reservations.get("test-reject-001")?.status === "rejected", "rejected transfer is terminal in the ledger");
 
   const recoveryRow = {
     amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
