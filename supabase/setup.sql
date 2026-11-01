@@ -1356,3 +1356,41 @@ revoke all on function public.approve_agent_transfer(text,text) from public, ano
 revoke all on function public.reject_agent_transfer(text,text,text) from public, anon, authenticated;
 grant execute on function public.approve_agent_transfer(text,text) to service_role;
 grant execute on function public.reject_agent_transfer(text,text,text) to service_role;
+
+
+-- Credential rotation and its audit record are one transaction. The raw token
+-- is never passed to SQL; only its one-way hash is stored.
+create or replace function public.rotate_agent_credential(
+  p_agent_id text,
+  p_token_hash text,
+  p_actor_agent_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_agent public.agents%rowtype;
+begin
+  if p_agent_id is null or p_agent_id = 'primary'
+     or p_token_hash is null or p_token_hash !~ '^[a-f0-9]{64}$'
+     or p_actor_agent_id is null then
+    raise exception 'invalid_agent_rotation';
+  end if;
+
+  update public.agents
+  set token_hash = p_token_hash
+  where id = p_agent_id and active = true
+  returning * into v_agent;
+  if not found then raise exception 'active_agent_not_found'; end if;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id, 'agent_credential_rotated', p_agent_id,
+    pg_catalog.jsonb_build_object('name', v_agent.name));
+
+  return pg_catalog.jsonb_build_object('id', v_agent.id, 'name', v_agent.name);
+end;
+$$;
+
+revoke all on function public.rotate_agent_credential(text,text,text) from public, anon, authenticated;
+grant execute on function public.rotate_agent_credential(text,text,text) to service_role;
