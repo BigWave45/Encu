@@ -66,13 +66,15 @@ Apply the upgrade scripts in this order, each once:
 2. `supabase/outlayer-request-id-migration.sql`
 3. `supabase/reconcile-migration.sql`
 4. `supabase/multi-agent-v1-cleanup.sql`
-5. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
-6. `supabase/20261101090000_atomic_outlayer_submission.sql`
-7. `supabase/20261101190000_agentguard_v1_security_controls.sql`
+5. `supabase/20261101120000_admin_dashboard_controls.sql`
+6. `supabase/20261101140000_security_event_log.sql`
+7. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
+8. `supabase/20261101090000_atomic_outlayer_submission.sql`
+9. `supabase/20261101190000_agentguard_v1_security_controls.sql`
 
-The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget. The V1 security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, explicit recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory 15-minute administrator approval before provider submission. It also adds safe cancellation for expired unapproved requests and evidence-checked resolution for matching NEAR FINAL failures. Apply this migration only after the preceding scripts.
+The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The admin-dashboard migration creates the audit table and budget/agent control RPCs. The security-event migration creates the server-only security event log. The privileged-access migration restricts ledger RPCs and tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`; it does not settle or release budget. The V1 security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, explicit recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory 15-minute administrator approval before provider submission. It also adds safe cancellation for expired unapproved requests and evidence-checked resolution for matching NEAR FINAL failures. The admin-audit and security-event tables must exist before the atomic-submission and V1 security-controls migrations are applied.
 
-The security migration has already been applied to the current AgentGuard Supabase project. The atomic-submission migration and the new V1 security-controls migration still need to be applied to that project before deploying this branch. Do not reset the database or rerun the fresh-install setup against a live project.
+Do not run this sequence against the connected live database as part of development. The current database has not been upgraded to the full V1 schema in this work session. Do not reset it or rerun the fresh-install setup against a live project.
 
 ## Authentication and agents
 
