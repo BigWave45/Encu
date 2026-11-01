@@ -27,29 +27,21 @@ export async function POST(request: NextRequest) {
 
   const token = `ag_${randomBytes(32).toString("base64url")}`;
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const { data, error } = await getSupabase()
-    .from("agents")
-    .update({ token_hash: tokenHash })
-    .eq("id", parsed.data.id)
-    .eq("active", true)
-    .select("id,name")
-    .maybeSingle();
-
-  if (error) return NextResponse.json({ error: "agent_rotation_failed" }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "active_agent_not_found" }, { status: 404 });
-  const audit = await getSupabase().from("agentguard_admin_audit").insert({
-    actor_agent_id: identity.agentId,
-    action: "agent_credential_rotated",
-    target_id: data.id,
-    details: { name: data.name }
+  const { data, error } = await getSupabase().rpc("rotate_agent_credential", {
+    p_agent_id: parsed.data.id,
+    p_token_hash: tokenHash,
+    p_actor_agent_id: identity.agentId
   });
-  const auditWarning = audit.error ? "credential_rotated_but_audit_write_failed" : undefined;
+
+  if (error) {
+    const status = error.message.includes("active_agent_not_found") ? 404 : 500;
+    return NextResponse.json({ error: "agent_rotation_failed" }, { status });
+  }
 
   return NextResponse.json({
     status: "rotated",
     agent: { id: data.id, name: data.name },
     token,
-    warning: "The previous credential is invalid. Copy this replacement now; it cannot be retrieved again.",
-    ...(auditWarning ? { auditWarning } : {})
+    warning: "The previous credential is invalid. Copy this replacement now; it cannot be retrieved again."
   }, { status: 200 });
 }
