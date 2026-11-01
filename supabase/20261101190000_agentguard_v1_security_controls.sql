@@ -1,6 +1,7 @@
 -- AgentGuard V1 security controls.
 -- One canonical definition per function. Apply only after the core ledger,
--- agents, budget, and agentguard_admin_audit tables exist.
+-- agents, budget, admin audit, and security event tables exist.
+-- Denied emergency-stop attempts are recorded without consuming approval state.
 
 create table if not exists public.agentguard_system_controls (
   id text primary key check (id = 'default'),
