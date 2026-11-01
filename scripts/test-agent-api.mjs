@@ -148,6 +148,25 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_policy_updated", target_id: body.p_agent_id, details: {} });
       return send(res, 200, { agent_id: body.p_agent_id });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/approve_agent_transfer") {
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
+      if (!systemControls.transfers_enabled) return send(res, 400, { message: "emergency_stop" });
+      row.status = "reserved";
+      row.claimed = true;
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_approved", target_id: body.p_request_id, details: {} });
+      return send(res, 200, { request_id: body.p_request_id, agent_id: row.agentId, recipient: row.recipient, amount_yocto: row.amount, status: "reserved" });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/reject_agent_transfer") {
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
+      row.status = "rejected";
+      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_rejected", target_id: body.p_request_id, details: {} });
+      return send(res, 200, { request_id: body.p_request_id, status: "rejected" });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/update_agent_budget_limit") {
       const body = await readJson(req);
       const next = BigInt(body.p_new_limit_yocto);
@@ -183,10 +202,10 @@ const mock = createServer(async (req, res) => {
       }
       reservations.set(body.p_request_id, {
         amount: body.p_amount_yocto, recipient: body.p_recipient,
-        agentId: body.p_agent_id, status: "reserved", txHash: null, providerRequestId: null
+        agentId: body.p_agent_id, status: "awaiting_approval", txHash: null, providerRequestId: null, approvalExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
-      return send(res, 200, { created: true, status: "reserved", request_id: body.p_request_id });
+      return send(res, 200, { created: true, status: "awaiting_approval", request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
