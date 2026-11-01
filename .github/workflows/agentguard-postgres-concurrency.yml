@@ -61,6 +61,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
+          export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO public.agents (id, name, active)
