@@ -44,6 +44,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "rejected", result: data });
   }
 
+  // Validate the current provider/network configuration and global transfer
+  // cap before consuming the one-time approval.
+  try {
+    getOutLayerConfig();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
+    return NextResponse.json({ error: reason }, { status: 503 });
+  }
+
+  const { data: pending, error: pendingError } = await db.from("spend_reservations")
+    .select("amount_yocto::text,status")
+    .eq("request_id", parsed.data.requestId)
+    .maybeSingle();
+  if (pendingError || !pending) return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+  if (pending.status !== "awaiting_approval") return NextResponse.json({ error: "approval_not_pending" }, { status: 409 });
+  const globalCap = BigInt(process.env.AGENTGUARD_MAX_TRANSFER_YOCTO ?? "0");
+  const pendingAmount = BigInt(pending.amount_yocto);
+  if (globalCap <= 0n || pendingAmount > globalCap) {
+    return NextResponse.json({ error: "global_per_transaction_limit" }, { status: 403 });
+  }
+
   const { data: approved, error: approvalError } = await db.rpc("approve_agent_transfer", {
     p_request_id: parsed.data.requestId,
     p_actor_agent_id: identity.agentId
@@ -59,7 +80,6 @@ export async function POST(request: NextRequest) {
   let reason = "outlayer_response_unknown";
 
   try {
-    getOutLayerConfig();
     const result = await transferNear(recipient, amountYocto);
     txHash = typeof result.body.tx_hash === "string" ? result.body.tx_hash : null;
     providerRequestId = typeof result.body.request_id === "string"
