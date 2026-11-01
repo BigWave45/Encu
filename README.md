@@ -41,7 +41,7 @@ Configure these in the deployment environment:
 | `OUTLAYER_API_KEY` | OutLayer server-side API credential |
 | `OUTLAYER_NEAR_ADDRESS` | Exact NEAR account ID of the configured OutLayer wallet for the selected network |
 | `NEAR_RPC_URL` | Optional; defaults to the canonical RPC host for the selected network |
-| `AGENTGUARD_AGENT_TOKEN` | Primary agent and administrator bearer credential |
+| `AGENTGUARD_AGENT_TOKEN` | Primary agent bearer credential; no administrator privileges |\n| `AGENTGUARD_ADMIN_TOKEN` | Separate administrator bearer credential for dashboard and management operations |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
 `AGENTGUARD_NETWORK` defaults to `testnet`. Mainnet is supported by explicitly setting `AGENTGUARD_NETWORK=mainnet`, `OUTLAYER_BASE_URL=https://api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.mainnet.near.org`. The selected network must match the exact provider and RPC host allowlists. Local mock endpoints are accepted only outside production or in the explicit CI test harness. `OUTLAYER_NEAR_ADDRESS` is mandatory and must be the OutLayer executor account ID that signs native NEAR transfers. Health compares it with OutLayer’s reported executor account ID; reconciliation checks the same signer against chain transaction details.
@@ -79,14 +79,14 @@ All agent endpoints use bearer authentication:
 Authorization: Bearer <agent-token>
 ```
 
-The primary credential is `AGENTGUARD_AGENT_TOKEN`. It authenticates the primary agent and grants administrator access to agent provisioning and the dashboard.
+The primary agent credential is `AGENTGUARD_AGENT_TOKEN`. It authenticates the primary agent for agent endpoints and does not grant administrator privileges. Configure a separate high-entropy `AGENTGUARD_ADMIN_TOKEN` for the dashboard, budget changes, agent provisioning, credential rotation and agent activation controls. The administrator credential is not accepted by agent transfer endpoints. Do not give it to autonomous agents.
 
 ### Create an agent
 
 ```http
 POST /api/agent/agents
 Content-Type: application/json
-Authorization: Bearer <primary-admin-token>
+Authorization: Bearer <admin-token>
 ```
 
 Body:
@@ -105,7 +105,7 @@ The API returns a generated bearer token once. The database stores only its SHA-
 ```http
 POST /api/agent/agents/rotate
 Content-Type: application/json
-Authorization: Bearer <primary-admin-token>
+Authorization: Bearer <admin-token>
 ```
 
 Body:
@@ -196,7 +196,7 @@ A pending transaction, unavailable RPC, missing hash, or transaction mismatch le
 
 ### Admin dashboard
 
-The homepage dashboard requires the primary administrator credential. It displays the shared budget, registered agents, and latest 20 reservations. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
+The homepage dashboard requires the separate administrator credential. The agent balance and reconciliation actions require an agent credential. It displays the shared budget, registered agents, and latest 20 reservations. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
 
 The dashboard data endpoint is:
 
@@ -212,7 +212,7 @@ It is admin-only and returns the shared budget, agents, and latest 20 reservatio
 - A provider response or transaction hash alone does not settle the budget.
 - Ambiguous timeouts remain reserved because the provider may have accepted the transfer.
 - There is no automatic transfer retry.
-- Only the primary administrator can provision or rotate agent credentials and read the admin dashboard.
+- Only the separate administrator credential can provision or rotate agent credentials, change the shared budget, change agent status or read the admin dashboard.
 - Non-admin agents can access or reconcile only their own reservations.
 
 A reservation that has no provider request ID or transaction hash may require manual investigation. Do not release it or submit a replacement payment until the original request's outcome has been established.
