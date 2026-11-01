@@ -14,11 +14,14 @@ export async function adminRateLimitResponse(
   }
   if (result.allowed) return null;
 
-  await recordSecurityEvent({
+  const recorded = await recordSecurityEvent({
     actorAgentId,
     eventType: "admin_rate_limited",
     details: { action, retryAfterSeconds: result.retryAfterSeconds }
   });
+  if (!recorded) {
+    return NextResponse.json({ error: "security_event_unavailable" }, { status: 503 });
+  }
 
   return NextResponse.json(
     { error: "rate_limit_exceeded", retryAfterSeconds: result.retryAfterSeconds },
