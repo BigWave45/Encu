@@ -70,6 +70,33 @@ jobs:
           INSERT INTO public.agent_policies (agent_id)
           VALUES ('research-agent');
           SQL
+          # Emergency stop must block both new reservations and pending approvals,
+          # and both denials must create durable security events.
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-emergency-stop-pending',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(false,'primary');" | jq -e '.transfers_enabled == false' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-emergency-stop-blocked',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.status == "blocked" and .reason == "emergency_stop"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','primary');" | jq -e '.approved == false and .reason == "emergency_stop"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
+          DO \$\$
+          DECLARE event_count integer; blocked_reservation_count integer;
+          BEGIN
+            SELECT count(*) INTO event_count FROM public.agentguard_security_events
+              WHERE event_type IN ('transfer_emergency_stop_blocked','transfer_approval_blocked_emergency_stop');
+            SELECT count(*) INTO blocked_reservation_count FROM public.spend_reservations
+              WHERE request_id='ag-emergency-stop-blocked';
+            IF event_count<>2 OR blocked_reservation_count<>0 THEN
+              RAISE EXCEPTION 'emergency_stop_audit_mismatch: events=%, reservation=%',event_count,blocked_reservation_count;
+            END IF;
+          END
+          \$\$
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('ag-emergency-stop-pending','failed',NULL,'test_cleanup');" | jq -e '.status == "failed"' >/dev/null
+          echo "PASS: emergency stop blocks reservations and approval submissions and audits both denials."
       - name: Run two simultaneous reservations
         run: |
           set -euo pipefail
