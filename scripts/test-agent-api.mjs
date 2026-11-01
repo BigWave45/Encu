@@ -668,6 +668,19 @@ try {
   });
   assert(response.status === 202 && unavailableRow.status === "needs_review", "provider status outage leaves reservation pending");
 
+  // Exercise the shared fail-closed rate-limit helper on the balance route.
+  const balanceWindow = Math.floor(Date.now() / 60000);
+  rateWindows.set(`agent:primary:wallet_balance_lookup:${balanceWindow}`, 20);
+  const balanceProviderCount = counters.providerStatus;
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/balance`, {
+    method: "GET", headers: { authorization: "Bearer agent-one-token" }
+  });
+  payload = await response.json();
+  assert(response.status === 429 && payload.error === "rate_limit_exceeded", "agent balance lookup is rate limited before provider access");
+  assert(response.headers.get("retry-after") !== null, "rate-limited response includes Retry-After");
+  assert(securityEvents.some(event => event.event_type === "agent_rate_limited" && event.details?.action === "wallet_balance_lookup"), "rate-limit denial is written to security events");
+  assert(counters.providerStatus === balanceProviderCount, "rate-limited balance lookup does not call the provider");
+
   const conflictRow = { ...recoveryRow, providerRequestId: "mock-provider-conflict", txHash: "known-hash" };
   reservations.set("provider-conflict-001", conflictRow);
   response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
