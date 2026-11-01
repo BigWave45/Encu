@@ -96,6 +96,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: reservation?.status ?? "already_processed", requestId }, { status: 409 });
   }
 
+  // A second atomic check closes the race between reservation and provider
+  // submission. If the emergency stop was activated meanwhile, do not call OutLayer.
+  const { data: submissionClaim, error: claimError } = await db.rpc("claim_agent_transfer_submission", {
+    p_request_id: requestId,
+    p_agent_id: identity.agentId
+  });
+  if (claimError || submissionClaim?.claimed !== true) {
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: "transfer_submission_claim_blocked",
+      requestId,
+      details: { reason: submissionClaim?.reason ?? "claim_unavailable" }
+    });
+    return NextResponse.json(
+      { status: "blocked", reason: submissionClaim?.reason ?? "submission_claim_failed", requestId },
+      { status: submissionClaim?.reason === "emergency_stop" ? 423 : 503 }
+    );
+  }
+
   let txHash: string | null = null;
   let providerRequestId: string | null = null;
   let reason = "outlayer_response_unknown";
