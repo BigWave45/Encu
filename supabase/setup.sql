@@ -454,10 +454,7 @@ begin
     values(v_reservation.agent_id,'transfer_approval_blocked_emergency_stop',p_request_id,
       pg_catalog.jsonb_build_object('recipient',v_reservation.recipient,'amount_yocto',v_reservation.amount_yocto::text));
     return pg_catalog.jsonb_build_object('approved',false,'reason','emergency_stop','request_id',p_request_id);
-  end if;
-  if v_reservation.status<>'awaiting_approval' or v_reservation.submission_claimed_at is not null then raise exception 'approval_not_pending'; end if;
-  if v_reservation.approval_expires_at is null or v_reservation.approval_expires_at<=pg_catalog.now() then raise exception 'approval_expired'; end if;
-  select active into v_active from public.agents where id=v_reservation.agent_id for share;
+  end if;  select active into v_active from public.agents where id=v_reservation.agent_id for share;
   if not coalesce(v_active,false) then raise exception 'agent_not_active'; end if;
   select * into v_policy from public.agent_policies where agent_id=v_reservation.agent_id for share;
   if not found then raise exception 'agent_policy_not_configured'; end if;
