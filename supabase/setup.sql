@@ -742,3 +742,212 @@ grant execute on function public.reserve_agent_spend(text,numeric,text,text) to 
 
 -- Prune old rate windows opportunistically from an admin maintenance action later;
 -- this table is intentionally not exposed to anon/authenticated clients.
+
+
+-- Human approval is required for every transfer in V1. Approval is bound to
+-- immutable reservation parameters and consumed atomically before OutLayer.
+alter table public.spend_reservations
+  add column if not exists approval_expires_at timestamptz,
+  add column if not exists approved_at timestamptz,
+  add column if not exists approved_by text,
+  add column if not exists rejected_at timestamptz,
+  add column if not exists rejected_by text,
+  add column if not exists approval_reason text;
+
+alter table public.spend_reservations
+  drop constraint if exists spend_reservations_status_check;
+alter table public.spend_reservations
+  add constraint spend_reservations_status_check
+  check (status in ('awaiting_approval', 'reserved', 'executed', 'failed', 'needs_review', 'rejected'));
+
+create or replace function public.reserve_agent_spend(
+  p_request_id text,
+  p_amount_yocto numeric,
+  p_recipient text,
+  p_agent_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_budget public.agent_budgets%rowtype;
+  v_existing public.spend_reservations%rowtype;
+  v_agent_active boolean;
+  v_policy public.agent_policies%rowtype;
+  v_transfers_enabled boolean;
+  v_daily_total numeric;
+  v_weekly_total numeric;
+begin
+  if p_request_id is null or pg_catalog.length(p_request_id) < 8 then raise exception 'invalid_request_id'; end if;
+  if p_amount_yocto is null or p_amount_yocto <= 0 or p_amount_yocto >= 1e78
+     or p_amount_yocto <> pg_catalog.trunc(p_amount_yocto) then raise exception 'invalid_amount'; end if;
+
+  select active into v_agent_active from public.agents where id = p_agent_id for share;
+  if not coalesce(v_agent_active, false) then raise exception 'agent_not_active'; end if;
+
+  select * into v_budget from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+
+  select * into v_existing from public.spend_reservations where request_id = p_request_id for update;
+  if found then
+    if v_existing.amount_yocto <> p_amount_yocto or v_existing.recipient <> p_recipient or v_existing.agent_id <> p_agent_id then
+      raise exception 'idempotency_key_conflict';
+    end if;
+    return pg_catalog.jsonb_build_object('created', false, 'status', v_existing.status, 'request_id', v_existing.request_id, 'agent_id', v_existing.agent_id);
+  end if;
+
+  select transfers_enabled into v_transfers_enabled
+  from public.agentguard_system_controls where id = 'default' for share;
+  if not coalesce(v_transfers_enabled, false) then
+    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'emergency_stop');
+  end if;
+
+  select * into v_policy from public.agent_policies where agent_id = p_agent_id;
+  if not found then raise exception 'agent_policy_not_configured'; end if;
+  if v_policy.max_transfer_yocto is not null and p_amount_yocto > v_policy.max_transfer_yocto then
+    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'agent_per_transfer_limit');
+  end if;
+  if v_policy.allowed_recipients is not null and not (p_recipient = any(v_policy.allowed_recipients)) then
+    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'recipient_not_allowed');
+  end if;
+
+  if v_policy.daily_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_daily_total
+    from public.spend_reservations
+    where agent_id = p_agent_id and created_at >= pg_catalog.now() - interval '24 hours'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_daily_total + p_amount_yocto > v_policy.daily_limit_yocto then
+      return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'agent_daily_limit');
+    end if;
+  end if;
+
+  if v_policy.weekly_limit_yocto is not null then
+    select coalesce(sum(amount_yocto), 0) into v_weekly_total
+    from public.spend_reservations
+    where agent_id = p_agent_id and created_at >= pg_catalog.now() - interval '7 days'
+      and status in ('awaiting_approval', 'reserved', 'needs_review', 'executed');
+    if v_weekly_total + p_amount_yocto > v_policy.weekly_limit_yocto then
+      return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'agent_weekly_limit');
+    end if;
+  end if;
+
+  if v_budget.spent_yocto + v_budget.reserved_yocto + p_amount_yocto > v_budget.total_limit_yocto then
+    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'total_budget_exceeded');
+  end if;
+
+  insert into public.spend_reservations(
+    request_id, amount_yocto, recipient, status, agent_id, approval_expires_at
+  ) values (
+    p_request_id, p_amount_yocto, p_recipient, 'awaiting_approval', p_agent_id, pg_catalog.now() + interval '15 minutes'
+  );
+  update public.agent_budgets
+  set reserved_yocto = reserved_yocto + p_amount_yocto, updated_at = pg_catalog.now()
+  where id = 'default';
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_agent_id, 'transfer_submitted_for_approval', p_request_id,
+    pg_catalog.jsonb_build_object('recipient', p_recipient, 'amount_yocto', p_amount_yocto::text));
+
+  return pg_catalog.jsonb_build_object(
+    'created', true, 'status', 'awaiting_approval', 'request_id', p_request_id,
+    'agent_id', p_agent_id, 'approval_expires_at', pg_catalog.now() + interval '15 minutes'
+  );
+end;
+$$;
+
+create or replace function public.approve_agent_transfer(
+  p_request_id text,
+  p_actor_agent_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_reservation public.spend_reservations%rowtype;
+  v_enabled boolean;
+  v_active boolean;
+begin
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select transfers_enabled into v_enabled from public.agentguard_system_controls where id = 'default' for share;
+  if not coalesce(v_enabled, false) then raise exception 'emergency_stop'; end if;
+
+  select * into v_reservation from public.spend_reservations
+  where request_id = p_request_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status <> 'awaiting_approval' or v_reservation.submission_claimed_at is not null then
+    raise exception 'approval_not_pending';
+  end if;
+  if v_reservation.approval_expires_at is null or v_reservation.approval_expires_at <= pg_catalog.now() then
+    raise exception 'approval_expired';
+  end if;
+
+  select active into v_active from public.agents where id = v_reservation.agent_id for share;
+  if not coalesce(v_active, false) then raise exception 'agent_not_active'; end if;
+
+  update public.spend_reservations
+  set status = 'reserved',
+      approved_at = pg_catalog.now(),
+      approved_by = p_actor_agent_id,
+      submission_claimed_at = pg_catalog.now(),
+      updated_at = pg_catalog.now()
+  where request_id = p_request_id;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id, 'transfer_approved', p_request_id,
+    pg_catalog.jsonb_build_object('agent_id', v_reservation.agent_id,
+      'recipient', v_reservation.recipient, 'amount_yocto', v_reservation.amount_yocto::text));
+
+  return pg_catalog.jsonb_build_object(
+    'request_id', p_request_id, 'agent_id', v_reservation.agent_id,
+    'recipient', v_reservation.recipient, 'amount_yocto', v_reservation.amount_yocto::text,
+    'status', 'reserved'
+  );
+end;
+$$;
+
+create or replace function public.reject_agent_transfer(
+  p_request_id text,
+  p_actor_agent_id text,
+  p_reason text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_reservation public.spend_reservations%rowtype;
+begin
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select * into v_reservation from public.spend_reservations
+  where request_id = p_request_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status <> 'awaiting_approval' or v_reservation.submission_claimed_at is not null then
+    raise exception 'approval_not_pending';
+  end if;
+
+  update public.agent_budgets
+  set reserved_yocto = reserved_yocto - v_reservation.amount_yocto,
+      updated_at = pg_catalog.now()
+  where id = 'default';
+
+  update public.spend_reservations
+  set status = 'rejected', rejected_at = pg_catalog.now(), rejected_by = p_actor_agent_id,
+      approval_reason = pg_catalog.left(p_reason, 500), updated_at = pg_catalog.now()
+  where request_id = p_request_id;
+
+  insert into public.agentguard_admin_audit(actor_agent_id, action, target_id, details)
+  values (p_actor_agent_id, 'transfer_rejected', p_request_id,
+    pg_catalog.jsonb_build_object('agent_id', v_reservation.agent_id, 'reason', pg_catalog.left(p_reason, 500)));
+
+  return pg_catalog.jsonb_build_object('request_id', p_request_id, 'status', 'rejected');
+end;
+$$;
+
+revoke all on function public.approve_agent_transfer(text,text) from public, anon, authenticated;
+revoke all on function public.reject_agent_transfer(text,text,text) from public, anon, authenticated;
+grant execute on function public.approve_agent_transfer(text,text) to service_role;
+grant execute on function public.reject_agent_transfer(text,text,text) to service_role;
