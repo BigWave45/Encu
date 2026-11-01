@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
 import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
-import { consumeRateLimit } from "@/lib/rate-limit";
+import { adminRateLimitResponse } from "@/lib/admin-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,13 +25,8 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
-  const limit = await consumeRateLimit(`admin:${identity.agentId}`, "transfer_approval", 20, 60);
-  if (!limit) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
-  if (!limit.allowed) {
-    return NextResponse.json({ error: "rate_limit_exceeded", retryAfterSeconds: limit.retryAfterSeconds }, {
-      status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) }
-    });
-  }
+  const limited = await adminRateLimitResponse(identity.agentId, "transfer_approval", 20, 60);
+  if (limited) return limited;
 
   const db = getSupabase();
   if (parsed.data.action === "reject") {
