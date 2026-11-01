@@ -117,7 +117,13 @@ export async function GET(request: NextRequest) {
         providerRequestId: item.outlayer_request_id,
         lastError: item.last_error,
         createdAt: item.created_at,
-        updatedAt: item.updated_at
+        updatedAt: item.updated_at,
+        approvalExpiresAt: item.approval_expires_at,
+        approvedAt: item.approved_at,
+        approvedBy: item.approved_by,
+        rejectedAt: item.rejected_at,
+        rejectedBy: item.rejected_by,
+        approvalReason: item.approval_reason
       })),
       reservationPage: {
         page,
