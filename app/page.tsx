@@ -159,6 +159,7 @@ export default function Home() {
   const [policyDaily, setPolicyDaily] = useState("");
   const [policyWeekly, setPolicyWeekly] = useState("");
   const [policyRecipients, setPolicyRecipients] = useState("");
+  const [policyDenyAll, setPolicyDenyAll] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyMessage, setPolicyMessage] = useState("");
 
@@ -206,6 +207,7 @@ export default function Home() {
         setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
         setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
         setPolicyRecipients(selectedPolicy?.allowedRecipients?.join("\n") ?? "");
+        setPolicyDenyAll(Array.isArray(selectedPolicy?.allowedRecipients) && selectedPolicy.allowedRecipients.length === 0);
       }
     } catch {
       setDashboard(null);
@@ -249,7 +251,7 @@ export default function Home() {
       setPolicyMessage("Enter valid positive NEAR limits or leave a field blank for no additional limit.");
       return;
     }
-    const recipients = policyRecipients.trim()
+    const recipients = policyDenyAll ? [] : policyRecipients.trim()
       ? policyRecipients.split("\n").map(value => value.trim()).filter(Boolean)
       : null;
     setPolicyBusy(true);
@@ -620,7 +622,7 @@ export default function Home() {
           </section>
           <form onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
             <strong>Per-agent spending policy</strong>
-            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. Blank recipient list means unrestricted.</p>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. A null recipient list is unrestricted; an empty list blocks every recipient.</p>
             <label style={{ display: "block", fontSize: 13 }}>Agent
               <select value={policyAgent} onChange={e => {
                 const id = e.target.value; setPolicyAgent(id);
@@ -629,6 +631,7 @@ export default function Home() {
                 setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
                 setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
                 setPolicyRecipients(policy?.allowedRecipients?.join("\n") ?? "");
+                setPolicyDenyAll(Array.isArray(policy?.allowedRecipients) && policy.allowedRecipients.length === 0);
               }} style={{ ...inputStyle, marginTop: 5 }}>
                 {dashboard.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
               </select>
@@ -638,7 +641,8 @@ export default function Home() {
               <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
             </div>
-            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>Allowed NEAR recipients, one account ID per line<textarea value={policyRecipients} onChange={e => setPolicyRecipients(e.target.value)} rows={3} placeholder="Leave blank to allow any valid recipient" style={{ ...inputStyle, marginTop: 5 }} /></label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 10 }}><input type="checkbox" checked={policyDenyAll} onChange={e => setPolicyDenyAll(e.target.checked)} /> Block all recipients (empty allowlist)</label>
+            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>Allowed NEAR recipients, one account ID per line<textarea value={policyRecipients} disabled={policyDenyAll} onChange={e => setPolicyRecipients(e.target.value)} rows={3} placeholder="Leave blank to allow any valid recipient" style={{ ...inputStyle, marginTop: 5, opacity: policyDenyAll ? 0.5 : 1 }} /></label>
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
           </form>
