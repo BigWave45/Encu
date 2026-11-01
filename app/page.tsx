@@ -30,6 +30,8 @@ type Dashboard = {
   status?: string;
   error?: string;
   generatedAt?: string;
+  transfersEnabled?: boolean;
+  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null; allowedRecipients: string[] | null }>;
   budget?: {
     totalLimitYocto: string;
     spentYocto: string;
@@ -138,6 +140,15 @@ export default function Home() {
   const [reservationPage, setReservationPage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
   const [securityPage, setSecurityPage] = useState(1);
+  const [controlBusy, setControlBusy] = useState(false);
+  const [controlMessage, setControlMessage] = useState("");
+  const [policyAgent, setPolicyAgent] = useState("primary");
+  const [policyMax, setPolicyMax] = useState("");
+  const [policyDaily, setPolicyDaily] = useState("");
+  const [policyWeekly, setPolicyWeekly] = useState("");
+  const [policyRecipients, setPolicyRecipients] = useState("");
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [policyMessage, setPolicyMessage] = useState("");
 
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
@@ -184,6 +195,70 @@ export default function Home() {
       setDashboardError("Could not reach AgentGuard. Check your connection and try again.");
     } finally {
       setDashboardLoading(false);
+    }
+  }
+
+  async function setTransfersEnabled(enabled: boolean) {
+    if (!adminToken.trim()) return;
+    const action = enabled ? "enable transfers" : "STOP all new transfers";
+    if (!window.confirm(`Confirm: ${action}?`)) return;
+    setControlBusy(true);
+    setControlMessage("");
+    try {
+      const response = await fetch("/api/admin/transfers", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify({ enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setControlMessage(body.error ?? "transfer_control_update_failed");
+      else {
+        setControlMessage(enabled ? "Transfers enabled." : "Emergency stop active. New submissions are blocked.");
+        await loadDashboard();
+      }
+    } catch {
+      setControlMessage("Could not confirm transfer-control state. Refresh the dashboard before relying on it.");
+    } finally {
+      setControlBusy(false);
+    }
+  }
+
+  async function saveAgentPolicy(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const max = policyMax.trim() ? parseNearToYocto(policyMax) : null;
+    const daily = policyDaily.trim() ? parseNearToYocto(policyDaily) : null;
+    const weekly = policyWeekly.trim() ? parseNearToYocto(policyWeekly) : null;
+    if ((policyMax.trim() && (!max || max <= 0n)) || (policyDaily.trim() && (!daily || daily <= 0n)) || (policyWeekly.trim() && (!weekly || weekly <= 0n))) {
+      setPolicyMessage("Enter valid positive NEAR limits or leave a field blank for no additional limit.");
+      return;
+    }
+    const recipients = policyRecipients.trim()
+      ? policyRecipients.split("\\n").map(value => value.trim()).filter(Boolean)
+      : null;
+    setPolicyBusy(true);
+    setPolicyMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/policy", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: policyAgent,
+          maxTransferYocto: max?.toString() ?? null,
+          dailyLimitYocto: daily?.toString() ?? null,
+          weeklyLimitYocto: weekly?.toString() ?? null,
+          allowedRecipients: recipients
+        })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setPolicyMessage(body.reason ?? body.error ?? "agent_policy_update_failed");
+      else {
+        setPolicyMessage("Agent policy saved.");
+        await loadDashboard();
+      }
+    } catch {
+      setPolicyMessage("Could not confirm policy update.");
+    } finally {
+      setPolicyBusy(false);
     }
   }
 
