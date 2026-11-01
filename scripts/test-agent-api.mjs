@@ -206,7 +206,11 @@ const mock = createServer(async (req, res) => {
         if (!same) return send(res, 400, { message: "idempotency_key_conflict" });
         return send(res, 200, { created: false, status: existing.status, request_id: body.p_request_id });
       }
+      if (!systemControls.transfers_enabled) return send(res, 200, { created: false, status: "blocked", reason: "emergency_stop" });
+      const policy = agentPolicies.get(body.p_agent_id) ?? {};
       const amount = BigInt(body.p_amount_yocto);
+      if (policy.p_max_transfer_yocto && amount > BigInt(policy.p_max_transfer_yocto)) return send(res, 200, { created: false, status: "blocked", reason: "agent_per_transfer_limit" });
+      if (policy.p_allowed_recipients !== null && policy.p_allowed_recipients !== undefined && !policy.p_allowed_recipients.includes(body.p_recipient)) return send(res, 200, { created: false, status: "blocked", reason: "recipient_not_allowed" });
       const committed = BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto);
       if (committed + amount > BigInt(mockBudget.total_limit_yocto)) {
         return send(res, 200, { created: false, status: "blocked", request_id: body.p_request_id });
@@ -435,6 +439,43 @@ try {
   mockSignerAddress = "agentguard.testnet";
 
   const primaryId = "test-api-primary-001";
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({
+      id: "primary", maxTransferYocto: "2000000000000000000000000",
+      dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: ["recipient.near"]
+    })
+  });
+  assert(response.status === 200, "admin can configure per-agent spending and recipient policy");
+  const policyReserveCount = counters.reserve;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-recipient-001", to: "unlisted.near" });
+  payload = await response.json();
+  assert(response.status === 403 && payload.reason === "recipient_not_allowed", "recipient allowlist blocks an unlisted recipient");
+  assert(counters.reserve === policyReserveCount + 1, "recipient policy is checked in the reservation transaction");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-limit-001", amount: "3000000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 403 && payload.reason === "agent_per_transfer_limit", "per-agent transfer cap blocks an over-limit request");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: null })
+  });
+  assert(response.status === 200, "admin can restore unrestricted per-agent policy");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/transfers`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ enabled: false })
+  });
+  assert(response.status === 200, "admin can activate the global emergency stop");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-emergency-stop-001" });
+  payload = await response.json();
+  assert(response.status === 403 && payload.reason === "emergency_stop", "emergency stop blocks new transfer reservations");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/transfers`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ enabled: true })
+  });
+  assert(response.status === 200, "admin can re-enable transfers after emergency stop");
+
   const providerCountBeforePrimary = counters.provider;
   const recordCountBeforePrimary = counters.record;
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
