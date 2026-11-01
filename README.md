@@ -70,7 +70,7 @@ Apply the upgrade scripts in this order, each once:
 6. `supabase/20261101090000_atomic_outlayer_submission.sql`
 7. `supabase/20261101190000_agentguard_v1_security_controls.sql`
 
-The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget. The V1 security-controls migration adds emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, and mandatory 15-minute administrator approval before provider submission. Apply this migration only after the preceding scripts.
+The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget. The V1 security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, explicit recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory 15-minute administrator approval before provider submission. It also adds safe cancellation for expired unapproved requests and evidence-checked resolution for matching NEAR FINAL failures. Apply this migration only after the preceding scripts.
 
 The security migration has already been applied to the current AgentGuard Supabase project. The atomic-submission migration and the new V1 security-controls migration still need to be applied to that project before deploying this branch. Do not reset the database or rerun the fresh-install setup against a live project.
 
@@ -207,6 +207,12 @@ A pending transaction, unavailable RPC, missing hash, or transaction mismatch le
 ### Admin dashboard
 
 The homepage dashboard requires the separate administrator credential. It displays the shared budget, registered agents, transfer emergency stop, per-agent policy controls, pending approvals, and reservation history. Recipient policies distinguish an unrestricted `NULL` allowlist from an explicit empty allowlist that blocks every recipient. The aged/ambiguous filter highlights old `needs_review` records and reserved records with no provider references. For saved provider request IDs, the admin can request provider status; for transaction hashes, the admin can trigger NEAR finality reconciliation. These checks do not initiate or retry a transfer. The admin can cancel an expired request only while it remains unapproved and has no provider references. A submitted transfer can be manually resolved as failed only after the server verifies a matching NEAR `FINAL` failure, with a reason and evidence reference recorded in the audit log.
+
+The admin reservation-resolution endpoint is:
+
+`POST /api/admin/reservations/resolve`
+
+It accepts either `{ action: "cancel_expired", requestId, reason }` or `{ action: "failed_final", requestId, reason, evidenceReference }`. The first path is restricted to expired, never-approved reservations with no provider references. The second independently queries NEAR for FINAL status and checks the saved signer, recipient, and amount before releasing a failed transfer. An ambiguous result remains held.
 
 The dashboard data endpoint is:
 
