@@ -12,6 +12,9 @@ const tokens = {
 };
 const reservations = new Map();
 const securityEvents = [];
+const rateWindows = new Map();
+const agentPolicies = new Map([["primary", {}], ["research-agent", {}]]);
+const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" };
 let mockSignerAddress = "agentguard.testnet";
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
@@ -43,6 +46,18 @@ const mock = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [mockBudget]);
+    if (req.method === "GET" && url.pathname === "/rest/v1/agentguard_system_controls") return send(res, 200, [systemControls]);
+    if (req.method === "GET" && url.pathname === "/rest/v1/agent_policies") {
+      const rows = [...agentPolicies.entries()].map(([agent_id, policy]) => ({ agent_id, ...policy }));
+      res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
+      return send(res, 200, rows);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/agent_policies") {
+      const body = await readJson(req);
+      agentPolicies.set(body.agent_id, {});
+      res.writeHead(201);
+      return res.end();
+    }
     if (req.method === "GET" && url.pathname === "/rest/v1/agentguard_admin_audit") {
       res.setHeader("content-range", `0-${Math.max(0, adminAudit.length - 1)}/${adminAudit.length}`);
       return send(res, 200, adminAudit.slice().reverse());
@@ -105,6 +120,33 @@ const mock = createServer(async (req, res) => {
       }
       if (typeof body.active === "boolean") agent.active = body.active;
       return send(res, 200, [{ id: agent.id, name: agent.name, active: agent.active }]);
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/consume_agentguard_rate_limit") {
+      const body = await readJson(req);
+      const key = `${body.p_actor_key}:${body.p_action_key}:${Math.floor(Date.now() / (body.p_window_seconds * 1000))}`;
+      const count = (rateWindows.get(key) ?? 0) + 1;
+      rateWindows.set(key, count);
+      return send(res, 200, { allowed: count <= body.p_limit, retry_after_seconds: body.p_window_seconds });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/claim_agent_transfer_submission") {
+      const body = await readJson(req);
+      if (!systemControls.transfers_enabled) return send(res, 200, { claimed: false, reason: "emergency_stop" });
+      const row = reservations.get(body.p_request_id);
+      if (!row || row.agentId !== body.p_agent_id || row.claimed) return send(res, 200, { claimed: false, reason: "already_claimed_or_processed" });
+      row.claimed = true;
+      return send(res, 200, { claimed: true, request_id: body.p_request_id });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agentguard_transfers_enabled") {
+      const body = await readJson(req);
+      systemControls.transfers_enabled = body.p_enabled;
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfers_enabled_changed", target_id: "default", details: { enabled: body.p_enabled } });
+      return send(res, 200, { transfers_enabled: body.p_enabled });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_policy") {
+      const body = await readJson(req);
+      agentPolicies.set(body.p_agent_id, body);
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_policy_updated", target_id: body.p_agent_id, details: {} });
+      return send(res, 200, { agent_id: body.p_agent_id });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/update_agent_budget_limit") {
       const body = await readJson(req);
