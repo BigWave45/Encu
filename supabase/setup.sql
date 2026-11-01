@@ -93,6 +93,11 @@ begin
      updated_at = pg_catalog.now()
  where sr.request_id = p_request_id;
 
+ insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
+ values('system:outlayer','provider_submission_recorded',p_request_id,
+   pg_catalog.jsonb_build_object('agent_id',reservation.agent_id,'tx_hash',p_tx_hash,
+     'provider_request_id',p_provider_request_id,'error',p_error));
+
  return pg_catalog.jsonb_build_object('status', 'needs_review', 'request_id', p_request_id);
 end;
 $agentguard$;
