@@ -10,6 +10,7 @@ on:
       - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "supabase/20261101120000_admin_dashboard_controls.sql"
       - "supabase/20261101140000_security_event_log.sql"
+      - "supabase/20261101190000_agentguard_v1_security_controls.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -59,6 +60,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO public.agents (id, name, active)
           VALUES ('research-agent', 'Research Agent', true);
@@ -103,6 +105,7 @@ jobs:
           \$\$
           SQL
           winner=$(cat /tmp/agentguard-a.json /tmp/agentguard-b.json | jq -r 'select(.created == true) | .request_id')
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${winner}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
           export PGPASSWORD=service_role_test_only
           replay=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${winner}', ${amount}, 'agentguard-test.near', CASE WHEN '${winner}' = '${req_a}' THEN 'primary' ELSE 'research-agent' END);")
           echo "$replay" | jq -e '.created == false' >/dev/null
@@ -136,6 +139,7 @@ jobs:
           req_failed="ag-concurrency-${suffix}-failed"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_failed}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_failed}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'failed', 'mock-failed-tx-hash', 'final_execution_failed');" | jq -e '.status == "failed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'executed', 'mock-failed-tx-hash', NULL);" | jq -e '.status == "failed"' >/dev/null
           export PGPASSWORD=agentguard_test_only
@@ -158,6 +162,7 @@ jobs:
           req_meta="ag-concurrency-${suffix}-provider-meta"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_meta}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_meta}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('${req_meta}', 'mock-provider-tx', 'mock-provider-request', 'awaiting_finality');" | jq -e '.status == "needs_review"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || outlayer_tx_hash || ':' || outlayer_request_id FROM public.spend_reservations WHERE request_id = '${req_meta}';" | grep -qx 'needs_review:mock-provider-tx:mock-provider-request'
@@ -169,6 +174,7 @@ jobs:
           req_race="ag-concurrency-${suffix}-finish-race"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_race}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_race}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'executed', 'mock-race-tx', NULL);" > /tmp/finish-executed.json &
           finish_a=$!
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'failed', 'mock-race-tx', 'simulated_failure');" > /tmp/finish-failed.json &
