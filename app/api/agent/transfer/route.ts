@@ -4,6 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
 import { authenticateAgent } from "@/lib/agent-auth";
 import { recordSecurityEvent } from "@/lib/security-audit";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,24 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_invalid_request" });
     return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  // Persistent DB-backed rate limiting works across independent Vercel instances.
+  let rateLimit: Awaited<ReturnType<typeof consumeRateLimit>>;
+  try {
+    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 10, 60);
+  } catch {
+    rateLimit = null;
+  }
+  if (!rateLimit) {
+    return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
+  }
+  if (!rateLimit.allowed) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_rate_limited" });
+    return NextResponse.json(
+      { error: "rate_limit_exceeded", retryAfterSeconds: rateLimit.retryAfterSeconds },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
   }
 
   // Fail closed before reserving budget if the configured provider is not the
