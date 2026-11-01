@@ -205,7 +205,7 @@ export default function Home() {
         setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
         setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
         setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
-        setPolicyRecipients(selectedPolicy?.allowedRecipients?.join("\\n") ?? "");
+        setPolicyRecipients(selectedPolicy?.allowedRecipients?.join("\n") ?? "");
       }
     } catch {
       setDashboard(null);
@@ -250,7 +250,7 @@ export default function Home() {
       return;
     }
     const recipients = policyRecipients.trim()
-      ? policyRecipients.split("\\n").map(value => value.trim()).filter(Boolean)
+      ? policyRecipients.split("\n").map(value => value.trim()).filter(Boolean)
       : null;
     setPolicyBusy(true);
     setPolicyMessage("");
