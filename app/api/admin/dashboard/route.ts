@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const pageSize = Number.isSafeInteger(requestedPageSize) ? Math.min(50, Math.max(1, requestedPageSize)) : 20;
     const status = url.searchParams.get("status") ?? "all";
-    const allowedStatuses = ["all", "reserved", "needs_review", "executed", "failed"];
+    const allowedStatuses = ["all", "awaiting_approval", "reserved", "needs_review", "executed", "failed", "rejected"];
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json({ error: "invalid_status_filter" }, { status: 400 });
     }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const securityPage = Number.isSafeInteger(securityPageInput) && securityPageInput > 0 ? securityPageInput : 1;
     const activityPageSize = 20;
     let reservationsQuery = db.from("spend_reservations")
-      .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at", { count: "exact" })
+      .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at,approval_expires_at,approved_at,approved_by,rejected_at,rejected_by,approval_reason", { count: "exact" })
       .order("created_at", { ascending: false });
     if (status !== "all") reservationsQuery = reservationsQuery.eq("status", status);
     if (search) reservationsQuery = reservationsQuery.or(
