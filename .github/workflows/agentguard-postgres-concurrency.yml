@@ -79,7 +79,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','primary');" | jq -e '.approved == false and .reason == "emergency_stop"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
-          DO \$\$
+          DO $$
           DECLARE event_count integer; blocked_reservation_count integer;
           BEGIN
             SELECT count(*) INTO event_count FROM public.agentguard_security_events
@@ -90,7 +90,7 @@ jobs:
               RAISE EXCEPTION 'emergency_stop_audit_mismatch: events=%, reservation=%',event_count,blocked_reservation_count;
             END IF;
           END
-          \$\$
+          $$
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
