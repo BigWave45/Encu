@@ -31,7 +31,7 @@ create table if not exists public.spend_reservations (
   amount_yocto numeric(78, 0) not null check (amount_yocto > 0),
   recipient text not null,
   status text not null default 'reserved'
-    check (status in ('reserved', 'executed', 'failed', 'needs_review')),
+    check (status in ('awaiting_approval', 'reserved', 'executed', 'failed', 'needs_review', 'rejected', 'cancelled')),
   outlayer_tx_hash text,
   outlayer_request_id text,
   last_error text,
@@ -251,7 +251,7 @@ alter table public.spend_reservations
   drop constraint if exists spend_reservations_status_check;
 alter table public.spend_reservations
   add constraint spend_reservations_status_check
-  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected'));
+  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected','cancelled'));
 
 alter table public.agentguard_system_controls enable row level security;
 alter table public.agent_policies enable row level security;
@@ -652,11 +652,6 @@ alter table public.spend_reservations
   add column if not exists resolution_reason text,
   add column if not exists resolution_evidence_reference text;
 
-alter table public.spend_reservations
-  drop constraint if exists spend_reservations_status_check;
-alter table public.spend_reservations
-  add constraint spend_reservations_status_check
-  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected','cancelled'));
 
 create or replace function public.cancel_expired_agent_transfer(
   p_request_id text,
