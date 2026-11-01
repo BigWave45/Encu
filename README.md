@@ -158,7 +158,7 @@ Body:
 - A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
 - The request is checked against the global emergency stop, per-agent limits, recipient allowlist, rolling spend windows and shared budget in one database transaction.
 - The reservation enters `awaiting_approval` and reserves budget for 15 minutes. Agent requests never call OutLayer directly.
-- An administrator must approve the exact recipient and amount. Approval is single-use and immediately submits through OutLayer. A rejected request releases its reservation; an expired request remains held until an administrator rejects it.
+- An administrator must approve the exact recipient and amount. Approval is single-use and consumes the submission claim immediately before the OutLayer call. Rejected requests release their reservations. An expired, never-approved request can be cancelled by an administrator; an approved or ambiguously submitted request remains held.
 
 Current V1 behavior:
 
@@ -166,7 +166,7 @@ Current V1 behavior:
 - `202 needs_review`: the administrator approved and submitted the transfer, but the provider response is not final settlement. The reservation remains held while the transaction is reconciled against NEAR finality.
 - `403 blocked`: a per-transfer, agent policy, recipient, or shared-budget rule rejected the request.
 - `429`: the agent transfer request rate limit was exceeded.
-- `423`: emergency stop prevents the submission/approval path.
+- `403 blocked`: the emergency stop or a spending policy prevents reservation. An approval blocked by the emergency stop returns `409` and remains pending.
 - `409`: replay or idempotency conflict; do not create a new request ID just to bypass an unresolved payment.
 - `401/503`: authentication or service availability issue.
 
@@ -204,7 +204,7 @@ A pending transaction, unavailable RPC, missing hash, or transaction mismatch le
 
 ### Admin dashboard
 
-The homepage dashboard requires the separate administrator credential. It displays the shared budget, registered agents, transfer emergency stop, per-agent policy controls, pending approvals, and latest reservations. Every transfer requires administrator approval before OutLayer submission. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
+The homepage dashboard requires the separate administrator credential. It displays the shared budget, registered agents, transfer emergency stop, per-agent policy controls, pending approvals, and reservation history. Recipient policies distinguish an unrestricted `NULL` allowlist from an explicit empty allowlist that blocks every recipient. The aged/ambiguous filter highlights old `needs_review` records and reserved records with no provider references. For saved provider request IDs, the admin can request provider status; for transaction hashes, the admin can trigger NEAR finality reconciliation. These checks do not initiate or retry a transfer. The admin can cancel an expired request only while it remains unapproved and has no provider references. A submitted transfer can be manually resolved as failed only after the server verifies a matching NEAR `FINAL` failure, with a reason and evidence reference recorded in the audit log.
 
 The dashboard data endpoint is:
 
@@ -223,7 +223,7 @@ It is admin-only and returns the shared budget, agents, and latest 20 reservatio
 - Only the separate administrator credential can provision or rotate agent credentials, change the shared budget, change agent status or policy, toggle the emergency stop, approve/reject transfers, or read the admin dashboard.
 - Non-admin agents can access or reconcile only their own reservations.
 
-A reservation that has no provider request ID or transaction hash may require manual investigation. Do not release it or submit a replacement payment until the original request's outcome has been established.
+A reservation that has no provider request ID or transaction hash may require manual investigation. It stays held; do not release it or submit a replacement payment while the outcome is ambiguous. The emergency stop blocks new reservations and unclaimed approval/submission actions, but it cannot recall a provider request already submitted or in flight.
 
 ## Local development
 
