@@ -67,6 +67,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO public.agents (id, name, active)
           VALUES ('research-agent', 'Research Agent', true);
+          INSERT INTO public.agent_policies (agent_id)
+          VALUES ('research-agent');
           SQL
       - name: Run two simultaneous reservations
         run: |
