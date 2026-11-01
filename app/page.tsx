@@ -108,6 +108,7 @@ function parseNearToYocto(value: string): bigint | null {
 
 export default function Home() {
   const [token, setToken] = useState("");
+  const [adminToken, setAdminToken] = useState("");
   const [result, setResult] = useState<BalanceResult | null>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
@@ -164,7 +165,7 @@ export default function Home() {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: "20", status, q: search.trim(), auditPage: String(nextAuditPage), securityPage: String(nextSecurityPage) });
       const response = await fetch(`/api/admin/dashboard?${params.toString()}`, {
-        headers: { authorization: `Bearer ${token.trim()}` },
+        headers: { authorization: `Bearer ${adminToken.trim()}` },
         cache: "no-store"
       });
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
@@ -211,7 +212,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/admin/budget", {
         method: "PATCH",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
         body: JSON.stringify({ limitYocto: yocto.toString() }),
         cache: "no-store"
       });
@@ -236,7 +237,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/admin/agents/status", {
         method: "PATCH",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
         body: JSON.stringify({ id, active }),
         cache: "no-store"
       });
@@ -288,7 +289,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/agent/agents/rotate", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
         body: JSON.stringify({ id: agentId.trim() }),
         cache: "no-store"
       });
@@ -308,7 +309,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/agent/agents", {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token.trim()}` },
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
         body: JSON.stringify({ id: agentId.trim(), name: agentName.trim() }),
         cache: "no-store"
       });
@@ -403,8 +404,13 @@ export default function Home() {
         <input id="agent-token" type="password" autoComplete="off" value={token}
           onChange={(event) => setToken(event.target.value)} placeholder="Enter your AGENTGUARD_AGENT_TOKEN"
           required style={inputStyle} />
-        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Use an agent token to check its wallet balance. The primary admin token is required for the dashboard, agent provisioning and credential rotation. The token stays in this page&apos;s memory and is not saved to browser storage. Never share it in chat.</p>
+        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Use an agent token to check its wallet balance. The administrator token is required for the dashboard, budget controls, agent provisioning and credential rotation. The token stays in this page&apos;s memory and is not saved to browser storage. Never share it in chat.</p>
         <button type="submit" disabled={loading || !token.trim()} style={buttonStyle}>{loading ? "Checking…" : "Check NEAR balance"}</button>
+        <label htmlFor="admin-token" style={{ display: "block", fontWeight: 600, margin: "20px 0 8px" }}>Administrator token</label>
+        <input id="admin-token" type="password" autoComplete="off" value={adminToken}
+          onChange={(event) => setAdminToken(event.target.value)} placeholder="Enter your AGENTGUARD_ADMIN_TOKEN"
+          style={inputStyle} />
+        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>The administrator token is separate from agent credentials. Use it only for the dashboard, budget controls and agent management. It cannot submit transfers.</p>
       </form>
 
       {result && <section aria-live="polite" style={panel}>
@@ -416,8 +422,8 @@ export default function Home() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Shared budget dashboard</h2>
             <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Shared budget, agent identities and recent payments. Pending payments can be checked and reconciled here.</p></div>
-          <button type="button" onClick={() => loadDashboard()} disabled={!token.trim() || dashboardLoading}
-            style={{ ...buttonStyle, marginTop: 0, opacity: !token.trim() || dashboardLoading ? 0.55 : 1 }}>
+          <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}
+            style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || dashboardLoading ? 0.55 : 1 }}>
             {dashboardLoading ? "Loading…" : dashboard ? "Refresh dashboard" : "Load dashboard"}
           </button>
         </div>
@@ -453,7 +459,7 @@ export default function Home() {
               <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
             </label>
             <p style={{ color: "#64748b", fontSize: 12 }}>The limit cannot be reduced below spent plus reserved funds. Changes are recorded in the admin audit log.</p>
-            <button type="submit" disabled={savingBudget || !token.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
+            <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
             {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
           </form>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
@@ -463,7 +469,7 @@ export default function Home() {
               <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.id}</td>
-                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id || !adminToken.trim()} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
               </tr>)}</tbody>
             </table>
           </div>
@@ -604,13 +610,13 @@ export default function Home() {
           <input id="agent-id" value={agentId} onChange={(event) => setAgentId(event.target.value)} required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" style={inputStyle} />
           <label htmlFor="agent-name" style={{ display: "block", fontWeight: 600, margin: "16px 0 8px" }}>Agent name</label>
           <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} required minLength={2} maxLength={80} style={inputStyle} />
-          <button type="submit" disabled={creatingAgent || !token.trim()} style={buttonStyle}>{creatingAgent ? "Creating…" : "Create agent credential"}</button>
+          <button type="submit" disabled={creatingAgent || !adminToken.trim()} style={buttonStyle}>{creatingAgent ? "Creating…" : "Create agent credential"}</button>
         </form>
 
         <form onSubmit={rotateAgent} style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
           <strong>Rotate an agent credential</strong>
           <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Revoke the existing credential for the Agent ID above and issue a replacement.</p>
-          <button type="submit" disabled={rotatingAgent || !token.trim() || !agentId.trim()} style={{ ...buttonStyle, background: "#7f1d1d" }}>{rotatingAgent ? "Rotating…" : "Rotate agent credential"}</button>
+          <button type="submit" disabled={rotatingAgent || !adminToken.trim() || !agentId.trim()} style={{ ...buttonStyle, background: "#7f1d1d" }}>{rotatingAgent ? "Rotating…" : "Rotate agent credential"}</button>
         </form>
         {rotationResult && <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
           {rotationResult.token ? <>
