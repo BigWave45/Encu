@@ -440,8 +440,9 @@ begin
   where request_id=p_request_id;
 
   insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
-  values('system:near-finality','transfer_finalized',p_request_id,
-    pg_catalog.jsonb_build_object(
+  values('system:near-finality',
+    case when p_outcome='needs_review' then 'transfer_marked_needs_review' else 'transfer_finalized' end,
+    p_request_id,pg_catalog.jsonb_build_object(
       'agent_id',v_reservation.agent_id,
       'outcome',p_outcome,
       'tx_hash',coalesce(p_tx_hash,v_reservation.outlayer_tx_hash),
