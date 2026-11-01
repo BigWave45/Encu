@@ -49,6 +49,12 @@ type Dashboard = {
     providerRequestId: string | null;
     lastError: string | null;
     createdAt: string;
+    approvalExpiresAt?: string | null;
+    approvedAt?: string | null;
+    approvedBy?: string | null;
+    rejectedAt?: string | null;
+    rejectedBy?: string | null;
+    approvalReason?: string | null;
   }>;
   audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
   securityEvents?: Array<{ id: string; actorAgentId: string | null; eventType: string; requestId: string | null; details: unknown; createdAt: string }>;
@@ -264,6 +270,30 @@ export default function Home() {
       setPolicyMessage("Could not confirm policy update.");
     } finally {
       setPolicyBusy(false);
+    }
+  }
+
+  async function decideTransfer(requestId: string, action: "approve" | "reject") {
+    if (!adminToken.trim()) return;
+    const reason = action === "reject" ? window.prompt("Reason for rejecting this transfer?") : null;
+    if (action === "reject" && (!reason || reason.trim().length < 3)) return;
+    setReservationAction(requestId);
+    setReservationActionError("");
+    try {
+      const response = await fetch("/api/admin/approvals", {
+        method: "POST",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify(action === "approve"
+          ? { action, requestId }
+          : { action, requestId, reason: reason?.trim() })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setReservationActionError(body.reason ?? body.error ?? "approval_action_failed");
+      else await loadDashboard();
+    } catch {
+      setReservationActionError("Could not confirm the approval action. Refresh before retrying.");
+    } finally {
+      setReservationAction(null);
     }
   }
 
@@ -557,7 +587,7 @@ export default function Home() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
-              <option value="all">All statuses</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option>
+              <option value="all">All statuses</option><option value="awaiting_approval">Awaiting approval</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option>
             </select>
             <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
           </div>
