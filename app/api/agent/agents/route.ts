@@ -40,6 +40,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "agent_creation_failed" }, { status: 500 });
   }
 
+  const policy = await db.from("agent_policies").insert({ agent_id: parsed.data.id });
+  if (policy.error) {
+    await db.from("agents").delete().eq("id", parsed.data.id);
+    return NextResponse.json({ error: "agent_policy_initialization_failed" }, { status: 500 });
+  }
+
   const audit = await db.from("agentguard_admin_audit").insert({
     actor_agent_id: identity.agentId,
     action: "agent_credential_created",
