@@ -1,0 +1,180 @@
+name: AgentGuard partial-state upgrade test
+
+on:
+  push:
+    branches:
+      - agentguard/build-v1
+    paths:
+      - ".github/workflows/agentguard-partial-upgrade.yml"
+      - "supabase/multi-agent-v1-migration.sql"
+      - "supabase/outlayer-request-id-migration.sql"
+      - "supabase/reconcile-migration.sql"
+      - "supabase/multi-agent-v1-cleanup.sql"
+      - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
+      - "supabase/20261101090000_atomic_outlayer_submission.sql"
+      - "supabase/20261101120000_admin_dashboard_controls.sql"
+      - "supabase/20261101140000_security_event_log.sql"
+      - "supabase/20261101190000_agentguard_v1_security_controls.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  partial-state-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: agentguard_partial_test
+          POSTGRES_DB: agentguard_partial_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentguard_partial_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: agentguard_partial_test
+      PGUSER: postgres
+      PGPASSWORD: agentguard_partial_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client and jq
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client jq
+      - name: Reconstruct the current partially upgraded database
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git show origin/main:supabase/setup.sql > /tmp/pre-v1-setup.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE service_role LOGIN PASSWORD 'service_role_partial_test';
+          SQL
+          psql -v ON_ERROR_STOP=1 -f /tmp/pre-v1-setup.sql
+
+          # Reproduce the migration effects already present in the live DB.
+          psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/outlayer-request-id-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/reconcile-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-cleanup.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261031221500_restrict_privileged_rpc_access.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
+
+          # Assert that the reconstructed DB matches the live intermediate state.
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF to_regclass('public.agents') IS NULL
+               OR to_regclass('public.agentguard_admin_audit') IS NULL
+               OR to_regclass('public.agentguard_security_events') IS NULL THEN
+              RAISE EXCEPTION 'partial_state_core_tables_missing';
+            END IF;
+            IF to_regclass('public.agent_policies') IS NOT NULL
+               OR to_regclass('public.agentguard_system_controls') IS NOT NULL
+               OR to_regclass('public.agentguard_rate_windows') IS NOT NULL THEN
+              RAISE EXCEPTION 'baseline_already_contains_v1_security_tables';
+            END IF;
+            IF EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='spend_reservations'
+                AND column_name IN ('submission_claimed_at','approval_expires_at','approved_at',
+                                    'approved_by','rejected_at','rejected_by','approval_reason')
+            ) THEN
+              RAISE EXCEPTION 'baseline_already_contains_v1_approval_columns';
+            END IF;
+            IF to_regprocedure('public.reserve_agent_spend(text,numeric,text,text)') IS NULL
+               OR to_regprocedure('public.reserve_agent_spend(text,numeric,text)') IS NOT NULL THEN
+              RAISE EXCEPTION 'partial_state_agent_rpc_mismatch';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid='public.spend_reservations'::regclass
+                AND conname='spend_reservations_status_check'
+                AND pg_get_constraintdef(oid) LIKE '%reserved%'
+                AND pg_get_constraintdef(oid) NOT LIKE '%awaiting_approval%'
+            ) THEN
+              RAISE EXCEPTION 'partial_state_status_constraint_mismatch';
+            END IF;
+          END
+          $$;
+          SQL
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT public.reserve_agent_spend('legacy-partial-0001',1000000000000000000000000,'legacy.testnet','primary');" | jq -e '.created == true and .status == "reserved"' >/dev/null
+          echo "PASS: reconstructed the live intermediate schema shape and seeded a pre-upgrade reservation."
+      - name: Apply only the missing V1 security-controls migration
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
+      - name: Verify preservation, V1 controls, grants and transfer lifecycle
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE v_agent_id text; v_status text; v_reserved numeric;
+          BEGIN
+            SELECT agent_id,status INTO v_agent_id,v_status
+              FROM public.spend_reservations WHERE request_id='legacy-partial-0001';
+            SELECT reserved_yocto INTO v_reserved FROM public.agent_budgets WHERE id='default';
+            IF v_agent_id<>'primary' OR v_status<>'reserved'
+               OR v_reserved<>1000000000000000000000000 THEN
+              RAISE EXCEPTION 'legacy_reservation_not_preserved: agent=%, status=%, reserved=%',
+                v_agent_id,v_status,v_reserved;
+            END IF;
+            IF to_regclass('public.agent_policies') IS NULL
+               OR to_regclass('public.agentguard_system_controls') IS NULL
+               OR to_regclass('public.agentguard_rate_windows') IS NULL THEN
+              RAISE EXCEPTION 'v1_security_tables_missing';
+            END IF;
+            IF to_regprocedure('public.reserve_agent_spend(text,numeric,text,text)') IS NULL
+               OR to_regprocedure('public.approve_agent_transfer(text,text)') IS NULL
+               OR to_regprocedure('public.set_agentguard_transfers_enabled(boolean,text)') IS NULL THEN
+              RAISE EXCEPTION 'v1_rpc_missing';
+            END IF;
+            IF NOT has_function_privilege('service_role',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE')
+               OR has_function_privilege('anon',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE')
+               OR has_function_privilege('authenticated',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE') THEN
+              RAISE EXCEPTION 'privileged_rpc_grants_invalid';
+            END IF;
+          END
+          $$;
+          SQL
+
+          export PGPASSWORD=service_role_partial_test
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('partial-v1-life-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('partial-v1-life-0001','primary');" | jq -e '.approved == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('partial-v1-life-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('legacy-partial-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+
+          export PGPASSWORD=agentguard_partial_test
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
+          BEGIN
+            SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
+              FROM public.agent_budgets WHERE id='default';
+            SELECT count(*) INTO v_audit_count FROM public.agentguard_admin_audit
+              WHERE target_id='partial-v1-life-0001'
+                AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized');
+            IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3 THEN
+              RAISE EXCEPTION 'ledger_or_audit_mismatch: reserved=%, spent=%, audit=%',
+                v_reserved,v_spent,v_audit_count;
+            END IF;
+          END
+          $$;
+          SQL
+          echo "PASS: V1 migration upgrades the reconstructed partial state, preserves legacy reservation data, enforces RPC grants, and completes the mocked approval/submission/finality lifecycle."
+          echo "PASS: disposable PostgreSQL only; no live Supabase, OutLayer API, or NEAR network was contacted."
