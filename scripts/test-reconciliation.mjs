@@ -15,6 +15,7 @@ const agentsByHash = new Map(Object.entries(tokens).map(([token, agent]) => [has
 const reservations = new Map();
 const rpcResponses = new Map();
 const counters = { rpc: 0, finish: 0 };
+const rateWindows = new Map();
 let failFinalization = false;
 
 function send(res, status, body) {
@@ -55,6 +56,16 @@ function matchingResult(row, status = { SuccessValue: "" }) {
 const mock = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${mockPort}`);
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/consume_agentguard_rate_limit") {
+      const body = await readJson(req);
+      const key = `${body.p_actor_key}:${body.p_action_key}:${Math.floor(Date.now() / (body.p_window_seconds * 1000))}`;
+      const count = (rateWindows.get(key) ?? 0) + 1;
+      rateWindows.set(key, count);
+      return send(res, 200, {
+        allowed: count <= body.p_limit,
+        retry_after_seconds: body.p_window_seconds
+      });
+    }
     if (req.method === "GET" && url.pathname === "/rest/v1/agents") {
       const tokenHash = url.searchParams.get("token_hash")?.replace(/^eq\./, "");
       const agent = agentsByHash.get(tokenHash);
