@@ -189,6 +189,11 @@ export default function Home() {
         setAuditPage(body.activityPages?.audit?.page ?? nextAuditPage);
         setSecurityPage(body.activityPages?.security?.page ?? nextSecurityPage);
         setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
+        const selectedPolicy = body.policies?.find((item: Dashboard["policies"][number]) => item.agentId === policyAgent);
+        setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
+        setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
+        setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
+        setPolicyRecipients(selectedPolicy?.allowedRecipients?.join("\\n") ?? "");
       }
     } catch {
       setDashboard(null);
