@@ -10,7 +10,8 @@ AgentGuard is a transaction-control gateway for AI agents making NEAR transfers 
 - Request-ID idempotency and conflict detection.
 - Per-agent reservation attribution.
 - NEAR FINAL transaction reconciliation.
-- Admin-only read dashboard and agent credential provisioning/rotation.
+- Admin-only dashboard, emergency stop, per-agent spending policies and mandatory human approval before provider submission.
+- Persistent per-agent rate limiting, recipient allowlists and rolling spend windows.
 
 This is a testnet V1. It is not a custody provider, smart contract, marketplace, or multi-chain gateway. A transfer has not been confirmed merely because OutLayer accepted a request or returned a transaction hash.
 
@@ -20,7 +21,8 @@ This is a testnet V1. It is not a custody provider, smart contract, marketplace,
 Agent
   -> AgentGuard API
   -> authenticated agent identity
-  -> atomic shared-budget reservation (Supabase)
+  -> atomic policy and shared-budget reservation (Supabase)
+  -> administrator approval bound to exact recipient and amount
   -> OutLayer transfer
   -> NEAR testnet
   -> NEAR FINAL reconciliation
@@ -66,10 +68,11 @@ Apply the upgrade scripts in this order, each once:
 4. `supabase/multi-agent-v1-cleanup.sql`
 5. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
 6. `supabase/20261101090000_atomic_outlayer_submission.sql`
+7. `supabase/20261101190000_agentguard_v1_security_controls.sql`
 
-The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The final migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget.
+The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The security migration restricts privileged RPCs and ledger tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`. It does not settle or release budget. The V1 security-controls migration adds emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, and mandatory 15-minute administrator approval before provider submission. Apply this migration only after the preceding scripts.
 
-The security migration has already been applied to the current AgentGuard Supabase project. The new atomic-submission migration still needs to be applied to that project before deploying the updated transfer route. Do not reset the database or rerun the fresh-install setup against a live project.
+The security migration has already been applied to the current AgentGuard Supabase project. The atomic-submission migration and the new V1 security-controls migration still need to be applied to that project before deploying this branch. Do not reset the database or rerun the fresh-install setup against a live project.
 
 ## Authentication and agents
 
@@ -153,12 +156,17 @@ Body:
 - `amountYocto` is a positive integer string in yoctoNEAR. Do not send a floating-point NEAR amount.
 - Reuse the same request ID only when retrying the same logical request with the same agent, recipient, and amount.
 - A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
-- The request is first reserved against the shared budget. Only the request that creates the reservation is allowed to call OutLayer.
+- The request is checked against the global emergency stop, per-agent limits, recipient allowlist, rolling spend windows and shared budget in one database transaction.
+- The reservation enters `awaiting_approval` and reserves budget for 15 minutes. Agent requests never call OutLayer directly.
+- An administrator must approve the exact recipient and amount. Approval is single-use and immediately submits through OutLayer. A rejected request releases its reservation; an expired request remains held until an administrator rejects it.
 
 Current V1 behavior:
 
-- `202 needs_review`: the provider response is not treated as final settlement. The reservation remains held while the transaction is reconciled against NEAR finality.
-- `403 blocked`: the per-transfer or shared-budget limit rejected the request.
+- `202 awaiting_approval`: the transfer is reserved and waiting for administrator review. No provider call has been made.
+- `202 needs_review`: the administrator approved and submitted the transfer, but the provider response is not final settlement. The reservation remains held while the transaction is reconciled against NEAR finality.
+- `403 blocked`: a per-transfer, agent policy, recipient, or shared-budget rule rejected the request.
+- `429`: the agent transfer request rate limit was exceeded.
+- `423`: emergency stop prevents the submission/approval path.
 - `409`: replay or idempotency conflict; do not create a new request ID just to bypass an unresolved payment.
 - `401/503`: authentication or service availability issue.
 
@@ -196,7 +204,7 @@ A pending transaction, unavailable RPC, missing hash, or transaction mismatch le
 
 ### Admin dashboard
 
-The homepage dashboard requires the separate administrator credential. The agent balance and reconciliation actions require an agent credential. It displays the shared budget, registered agents, and latest 20 reservations. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
+The homepage dashboard requires the separate administrator credential. It displays the shared budget, registered agents, transfer emergency stop, per-agent policy controls, pending approvals, and latest reservations. Every transfer requires administrator approval before OutLayer submission. For pending reservations with a saved provider request ID, the admin can request the provider status. For reservations with a transaction hash, the admin can trigger NEAR finality reconciliation. These actions do not initiate or retry a transfer.
 
 The dashboard data endpoint is:
 
@@ -212,7 +220,7 @@ It is admin-only and returns the shared budget, agents, and latest 20 reservatio
 - A provider response or transaction hash alone does not settle the budget.
 - Ambiguous timeouts remain reserved because the provider may have accepted the transfer.
 - There is no automatic transfer retry.
-- Only the separate administrator credential can provision or rotate agent credentials, change the shared budget, change agent status or read the admin dashboard.
+- Only the separate administrator credential can provision or rotate agent credentials, change the shared budget, change agent status or policy, toggle the emergency stop, approve/reject transfers, or read the admin dashboard.
 - Non-admin agents can access or reconcile only their own reservations.
 
 A reservation that has no provider request ID or transaction hash may require manual investigation. Do not release it or submit a replacement payment until the original request's outcome has been established.
