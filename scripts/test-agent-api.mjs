@@ -517,6 +517,15 @@ try {
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: [] })
+  });
+  assert(response.status === 200, "admin can configure an explicit empty recipient allowlist");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-deny-all-001", to: "recipient.near" });
+  payload = await response.json();
+  assert(response.status === 403 && payload.reason === "recipient_not_allowed", "an empty recipient allowlist blocks every recipient");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: null })
   });
   assert(response.status === 200, "admin can restore unrestricted per-agent policy");
