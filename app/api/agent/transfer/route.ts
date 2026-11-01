@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   let rateLimit: Awaited<ReturnType<typeof consumeRateLimit>>;
   try {
-    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 60, 60);
+    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 20, 60);
   } catch {
     rateLimit = null;
   }
