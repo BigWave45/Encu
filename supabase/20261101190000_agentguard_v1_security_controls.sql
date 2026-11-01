@@ -53,7 +53,7 @@ alter table public.spend_reservations
   drop constraint if exists spend_reservations_status_check;
 alter table public.spend_reservations
   add constraint spend_reservations_status_check
-  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected'));
+  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected','cancelled'));
 
 alter table public.agentguard_system_controls enable row level security;
 alter table public.agent_policies enable row level security;
@@ -454,11 +454,6 @@ alter table public.spend_reservations
   add column if not exists resolution_reason text,
   add column if not exists resolution_evidence_reference text;
 
-alter table public.spend_reservations
-  drop constraint if exists spend_reservations_status_check;
-alter table public.spend_reservations
-  add constraint spend_reservations_status_check
-  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected','cancelled'));
 
 create or replace function public.cancel_expired_agent_transfer(
   p_request_id text,
