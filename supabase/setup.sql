@@ -547,14 +547,14 @@ begin
   if p_actor_key is null or p_action_key is null or p_limit < 1 or p_window_seconds < 1 or p_window_seconds > 86400 then
     raise exception 'invalid_rate_limit_parameters';
   end if;
-  v_start := pg_catalog.to_timestamp(pg_catalog.floor(pg_catalog.extract(epoch from pg_catalog.now()) / p_window_seconds) * p_window_seconds);
+  v_start := pg_catalog.to_timestamp(pg_catalog.floor(extract(epoch from pg_catalog.now()) / p_window_seconds) * p_window_seconds);
   insert into public.agentguard_rate_windows(actor_key,action_key,window_start,request_count)
   values(p_actor_key,p_action_key,v_start,1)
   on conflict(actor_key,action_key,window_start)
   do update set request_count=public.agentguard_rate_windows.request_count+1
   returning request_count into v_count;
   return pg_catalog.jsonb_build_object('allowed',v_count<=p_limit,'count',v_count,'limit',p_limit,
-    'retry_after_seconds',greatest(1,pg_catalog.ceil(pg_catalog.extract(epoch from
+    'retry_after_seconds',greatest(1,pg_catalog.ceil(extract(epoch from
       (v_start + pg_catalog.make_interval(secs=>p_window_seconds) - pg_catalog.now())))::integer));
 end;
 $$;
