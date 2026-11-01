@@ -175,6 +175,28 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "budget_limit_updated", target_id: "default", details: {} });
       return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/create_agent_with_audit") {
+      const body = await readJson(req);
+      if (mockAgents.some(agent => agent.id === body.p_agent_id)) {
+        return send(res, 409, { code: "23505", message: "duplicate key" });
+      }
+      const agent = {
+        id: body.p_agent_id,
+        name: body.p_name,
+        active: true,
+        created_at: new Date().toISOString()
+      };
+      mockAgents.push(agent);
+      agentsByHash.set(body.p_token_hash, agent.id);
+      agentPolicies.set(agent.id, {});
+      adminAudit.push({
+        actor_agent_id: body.p_actor_agent_id,
+        action: "agent_credential_created",
+        target_id: agent.id,
+        details: { name: agent.name }
+      });
+      return send(res, 200, { id: agent.id, name: agent.name });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/rotate_agent_credential") {
       const body = await readJson(req);
       const agent = mockAgents.find(item => item.id === body.p_agent_id && item.active);
