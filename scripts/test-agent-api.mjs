@@ -113,6 +113,29 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: body.p_active ? "agent_activated" : "agent_deactivated", target_id: agent.id, details: {} });
       return send(res, 200, { id: agent.id, name: agent.name, active: agent.active });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/reserve_agent_spend") {
+      counters.reserve++;
+      const body = await readJson(req);
+      const existing = reservations.get(body.p_request_id);
+      if (existing) {
+        const same = existing.amount === body.p_amount_yocto
+          && existing.recipient === body.p_recipient
+          && existing.agentId === body.p_agent_id;
+        if (!same) return send(res, 400, { message: "idempotency_key_conflict" });
+        return send(res, 200, { created: false, status: existing.status, request_id: body.p_request_id });
+      }
+      const amount = BigInt(body.p_amount_yocto);
+      const committed = BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto);
+      if (committed + amount > BigInt(mockBudget.total_limit_yocto)) {
+        return send(res, 200, { created: false, status: "blocked", request_id: body.p_request_id });
+      }
+      reservations.set(body.p_request_id, {
+        amount: body.p_amount_yocto, recipient: body.p_recipient,
+        agentId: body.p_agent_id, status: "reserved", txHash: null, providerRequestId: null
+      });
+      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
+      return send(res, 200, { created: true, status: "reserved", request_id: body.p_request_id });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
       const body = await readJson(req);
