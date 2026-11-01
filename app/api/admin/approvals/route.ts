@@ -65,6 +65,9 @@ export async function POST(request: NextRequest) {
     p_actor_agent_id: identity.agentId
   });
   if (approvalError) return NextResponse.json({ error: "transfer_approval_failed", reason: approvalError.message }, { status: 409 });
+  if (approved?.approved === false) {
+    return NextResponse.json({ error: String(approved.reason ?? "transfer_approval_blocked") }, { status: 409 });
+  }
 
   const requestId = String(approved.request_id);
   const recipient = String(approved.recipient);
