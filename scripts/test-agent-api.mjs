@@ -488,6 +488,9 @@ try {
   assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "approved request invokes provider once and atomically records provider references");
   assert(reservations.get(primaryId)?.providerRequestId === `mock-provider-${providerCountBeforePrimary + 1}`, "provider request ID is persisted atomically");
   assert(reservations.get(primaryId)?.txHash === `mock-tx-${providerCountBeforePrimary + 1}`, "transaction hash is persisted atomically");
+  response = await approveTransfer(primaryId);
+  assert(response.status === 409, "an already-consumed approval cannot be replayed");
+  assert(counters.provider === providerCountBeforePrimary + 1, "approval replay cannot call OutLayer twice");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   assert(response.status === 409, "identical request replay is rejected by API");
