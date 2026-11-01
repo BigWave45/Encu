@@ -346,16 +346,18 @@ try {
   mockSignerAddress = "agentguard.testnet";
 
   const primaryId = "test-api-primary-001";
+  const providerCountBeforePrimary = counters.provider;
+  const recordCountBeforePrimary = counters.record;
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider transaction hash is held for independent chain confirmation");
-  assert(counters.provider === 1 && counters.record === 1, "first valid request invokes provider once and atomically records provider references");
-  assert(reservations.get(primaryId)?.providerRequestId === "mock-provider-1", "provider request ID is persisted atomically");
-  assert(reservations.get(primaryId)?.txHash === "mock-tx-1", "transaction hash is persisted atomically");
+  assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "first valid request invokes provider once and atomically records provider references");
+  assert(reservations.get(primaryId)?.providerRequestId === `mock-provider-${providerCountBeforePrimary + 1}`, "provider request ID is persisted atomically");
+  assert(reservations.get(primaryId)?.txHash === `mock-tx-${providerCountBeforePrimary + 1}`, "transaction hash is persisted atomically");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   assert(response.status === 409, "identical request replay is rejected by API");
-  assert(counters.provider === 1, "identical replay does not invoke provider again");
+  assert(counters.provider === providerCountBeforePrimary + 1, "identical replay does not invoke provider again");
   assert(securityEvents.some(event => event.event_type === "transfer_replay_rejected" && event.request_id === primaryId), "duplicate transfer replay is recorded as a security event");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId, amount: "4000000000000000000000000" });
