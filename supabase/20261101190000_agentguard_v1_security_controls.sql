@@ -453,3 +453,111 @@ end;
 $$;
 revoke all on function public.finish_agent_spend(text,text,text,text) from public,anon,authenticated;
 grant execute on function public.finish_agent_spend(text,text,text,text) to service_role;
+
+
+-- Admin resolution is deliberately narrow: expired requests that were never
+-- approved may be cancelled; submitted transfers may only be released after
+-- the API independently verifies a matching NEAR FINAL failure.
+alter table public.spend_reservations
+  add column if not exists cancelled_at timestamptz,
+  add column if not exists cancelled_by text,
+  add column if not exists resolved_at timestamptz,
+  add column if not exists resolved_by text,
+  add column if not exists resolution_reason text,
+  add column if not exists resolution_evidence_reference text;
+
+alter table public.spend_reservations
+  drop constraint if exists spend_reservations_status_check;
+alter table public.spend_reservations
+  add constraint spend_reservations_status_check
+  check (status in ('awaiting_approval','reserved','executed','failed','needs_review','rejected','cancelled'));
+
+create or replace function public.cancel_expired_agent_transfer(
+  p_request_id text,
+  p_actor_agent_id text,
+  p_reason text
+) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare v_reservation public.spend_reservations%rowtype; v_evidence text;
+begin
+  if p_actor_agent_id is null or p_reason is null or pg_catalog.length(pg_catalog.btrim(p_reason))<3 then
+    raise exception 'invalid_resolution_details';
+  end if;
+  perform 1 from public.agent_budgets where id='default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select * into v_reservation from public.spend_reservations where request_id=p_request_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status<>'awaiting_approval'
+     or v_reservation.approval_expires_at is null
+     or v_reservation.approval_expires_at>pg_catalog.now()
+     or v_reservation.approved_at is not null
+     or v_reservation.submission_claimed_at is not null
+     or v_reservation.outlayer_tx_hash is not null
+     or v_reservation.outlayer_request_id is not null then
+    raise exception 'reservation_not_safely_cancellable';
+  end if;
+  v_evidence := 'database:approval_expired_at=' || v_reservation.approval_expires_at::text;
+  update public.agent_budgets
+  set reserved_yocto=reserved_yocto-v_reservation.amount_yocto,updated_at=pg_catalog.now()
+  where id='default';
+  update public.spend_reservations
+  set status='cancelled',cancelled_at=pg_catalog.now(),cancelled_by=p_actor_agent_id,
+      resolved_at=pg_catalog.now(),resolved_by=p_actor_agent_id,
+      resolution_reason=pg_catalog.left(pg_catalog.btrim(p_reason),500),
+      resolution_evidence_reference=v_evidence,
+      updated_at=pg_catalog.now()
+  where request_id=p_request_id;
+  insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
+  values(p_actor_agent_id,'expired_transfer_cancelled',p_request_id,
+    pg_catalog.jsonb_build_object('agent_id',v_reservation.agent_id,'reason',pg_catalog.left(pg_catalog.btrim(p_reason),500),
+      'evidence_reference',v_evidence,'amount_yocto',v_reservation.amount_yocto::text));
+  return pg_catalog.jsonb_build_object('request_id',p_request_id,'status','cancelled','evidence_reference',v_evidence);
+end;
+$$;
+
+create or replace function public.resolve_agent_transfer_failed_final(
+  p_request_id text,
+  p_actor_agent_id text,
+  p_reason text,
+  p_evidence_reference text
+) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare v_reservation public.spend_reservations%rowtype;
+begin
+  if p_actor_agent_id is null or p_reason is null or pg_catalog.length(pg_catalog.btrim(p_reason))<3
+     or p_evidence_reference is null or pg_catalog.length(pg_catalog.btrim(p_evidence_reference))<8 then
+    raise exception 'invalid_resolution_details';
+  end if;
+  perform 1 from public.agent_budgets where id='default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  select * into v_reservation from public.spend_reservations where request_id=p_request_id for update;
+  if not found then raise exception 'reservation_not_found'; end if;
+  if v_reservation.status not in ('reserved','needs_review') or v_reservation.outlayer_tx_hash is null then
+    raise exception 'reservation_not_resolvable';
+  end if;
+  update public.agent_budgets
+  set reserved_yocto=reserved_yocto-v_reservation.amount_yocto,updated_at=pg_catalog.now()
+  where id='default';
+  update public.spend_reservations
+  set status='failed',resolved_at=pg_catalog.now(),resolved_by=p_actor_agent_id,
+      resolution_reason=pg_catalog.left(pg_catalog.btrim(p_reason),500),
+      resolution_evidence_reference=pg_catalog.left(pg_catalog.btrim(p_evidence_reference),500),
+      last_error=pg_catalog.left(pg_catalog.btrim(p_reason),500),
+      updated_at=pg_catalog.now()
+  where request_id=p_request_id;
+  insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
+  values(p_actor_agent_id,'transfer_resolved_failed_final',p_request_id,
+    pg_catalog.jsonb_build_object('agent_id',v_reservation.agent_id,'reason',pg_catalog.left(pg_catalog.btrim(p_reason),500),
+      'evidence_reference',pg_catalog.left(pg_catalog.btrim(p_evidence_reference),500),
+      'tx_hash',v_reservation.outlayer_tx_hash,'finality','FINAL',
+      'amount_yocto',v_reservation.amount_yocto::text));
+  return pg_catalog.jsonb_build_object('request_id',p_request_id,'status','failed');
+end;
+$$;
+
+revoke all on function public.cancel_expired_agent_transfer(text,text,text) from public,anon,authenticated;
+revoke all on function public.resolve_agent_transfer_failed_final(text,text,text,text) from public,anon,authenticated;
+grant execute on function public.cancel_expired_agent_transfer(text,text,text) to service_role;
+grant execute on function public.resolve_agent_transfer_failed_final(text,text,text,text) to service_role;
