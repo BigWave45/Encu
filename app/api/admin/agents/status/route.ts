@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticateAgent } from "@/lib/agent-auth";
+import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -14,8 +14,8 @@ const schema = z.object({
 });
 
 export async function PATCH(request: NextRequest) {
-  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
-  try { identity = await authenticateAgent(request.headers.get("authorization")); }
+  let identity: ReturnType<typeof authenticateAdmin>;
+  try { identity = authenticateAdmin(request.headers.get("authorization")); }
   catch { return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 }); }
   if (!identity?.isAdmin) return NextResponse.json({ error: "admin_required" }, { status: 403 });
 
