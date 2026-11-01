@@ -55,6 +55,12 @@ type Dashboard = {
     rejectedAt?: string | null;
     rejectedBy?: string | null;
     approvalReason?: string | null;
+    cancelledAt?: string | null;
+    cancelledBy?: string | null;
+    resolvedAt?: string | null;
+    resolvedBy?: string | null;
+    resolutionReason?: string | null;
+    resolutionEvidenceReference?: string | null;
   }>;
   audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
   securityEvents?: Array<{ id: string; actorAgentId: string | null; eventType: string; requestId: string | null; details: unknown; createdAt: string }>;
@@ -292,6 +298,37 @@ export default function Home() {
       else await loadDashboard();
     } catch {
       setReservationActionError("Could not confirm the approval action. Refresh before retrying.");
+    } finally {
+      setReservationAction(null);
+    }
+  }
+
+  async function resolveReservation(requestId: string, action: "cancel_expired" | "failed_final", txHash?: string | null) {
+    if (!adminToken.trim()) return;
+    const reason = window.prompt(action === "cancel_expired"
+      ? "Why are you cancelling this expired request? It must still be unapproved and have no provider references."
+      : "Reason for resolving this transfer as a final NEAR failure?");
+    if (!reason || reason.trim().length < 3) return;
+    const evidenceReference = action === "failed_final"
+      ? window.prompt("Evidence reference (transaction hash or explorer URL):", txHash ?? "")
+      : undefined;
+    if (action === "failed_final" && (!evidenceReference || evidenceReference.trim().length < 8)) return;
+
+    setReservationAction(requestId + ":resolve");
+    setReservationActionError("");
+    try {
+      const response = await fetch("/api/admin/reservations/resolve", {
+        method: "POST",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify(action === "cancel_expired"
+          ? { action, requestId, reason: reason.trim() }
+          : { action, requestId, reason: reason.trim(), evidenceReference: evidenceReference?.trim() })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setReservationActionError(body.reason ?? body.reason ?? body.error ?? "reservation_resolution_failed");
+      else await loadDashboard();
+    } catch {
+      setReservationActionError("Could not confirm the resolution. Refresh the dashboard before retrying.");
     } finally {
       setReservationAction(null);
     }
@@ -627,6 +664,7 @@ export default function Home() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
                   <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
+                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired")} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
                 </div>
               </div>)}
             </div>}
@@ -634,7 +672,7 @@ export default function Home() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
-              <option value="all">All statuses</option><option value="awaiting_approval">Awaiting approval</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option>
+              <option value="all">All statuses</option><option value="aged">Aged / ambiguous (15+ min)</option><option value="awaiting_approval">Awaiting approval</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option>
             </select>
             <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
           </div>
@@ -644,10 +682,13 @@ export default function Home() {
                 <strong>{item.agentId}</strong><strong>{item.status}</strong>
               </div>
               <div style={{ marginTop: 6 }}>{near(item.amountYocto)} NEAR → {item.recipient}</div>
+              <div style={{ color: "#64748b", marginTop: 4 }}>Created {new Date(item.createdAt).toLocaleString()} · {Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))} min ago</div>
               <div style={{ color: "#64748b", marginTop: 5, overflowWrap: "anywhere" }}>Request: {item.requestId}</div>
               {item.txHash && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Tx: {item.txHash}</div>}
               {item.providerRequestId && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Provider request: {item.providerRequestId}</div>}
               {item.lastError && <div style={{ color: "#92400e", marginTop: 4 }}>Review: {item.lastError}</div>}
+              {item.resolutionReason && <div style={{ color: "#475569", marginTop: 4 }}>Resolution: {item.resolutionReason} · by {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</div>}
+              {item.resolutionEvidenceReference && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Evidence: {item.resolutionEvidenceReference}</div>}
               {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 {item.providerRequestId && <button type="button"
                   disabled={reservationAction !== null}
@@ -661,7 +702,8 @@ export default function Home() {
                   style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
                   {reservationAction === item.requestId + ":reconcile" ? "Checking NEAR…" : "Reconcile on NEAR"}
                 </button>}
-                {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. Manual investigation required; do not retry this payment.</span>}
+                {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", item.txHash)} style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", background: "#475569" }}>Resolve verified final failure</button>}
+                {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. This remains held until evidence proves no transfer was submitted. Do not retry or release it manually.</span>}
               </div>}
             </div>)}</div>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
