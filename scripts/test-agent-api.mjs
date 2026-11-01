@@ -207,7 +207,8 @@ const env = {
   AGENTGUARD_TEST_MODE: "true",
   AGENTGUARD_NETWORK: "testnet",
   AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000",
-  AGENTGUARD_AGENT_TOKEN: "primary-agent-token",\n  AGENTGUARD_ADMIN_TOKEN: "admin-token",
+  AGENTGUARD_AGENT_TOKEN: "primary-agent-token",
+  AGENTGUARD_ADMIN_TOKEN: "admin-token",
   PORT: String(appPort),
   HOSTNAME: "127.0.0.1"
 };
