@@ -114,7 +114,7 @@ begin
   if not exists(select 1 from public.agents where id=p_agent_id) then raise exception 'agent_not_found'; end if;
   if p_allowed_recipients is not null then
     foreach v_recipient in array p_allowed_recipients loop
-      if v_recipient is null or pg_catalog.length(v_recipient) > 64
+      if v_recipient is null or pg_catalog.length(v_recipient) < 2 or pg_catalog.length(v_recipient) > 64
        or v_recipient !~ '^[a-z0-9]+([._-][a-z0-9]+)*$' then
         raise exception 'invalid_allowed_recipient';
       end if;
@@ -180,7 +180,7 @@ begin
   if p_request_id is null or pg_catalog.length(p_request_id)<8 then raise exception 'invalid_request_id'; end if;
   if p_amount_yocto is null or p_amount_yocto<=0 or p_amount_yocto>=1e78
     or p_amount_yocto<>pg_catalog.trunc(p_amount_yocto) then raise exception 'invalid_amount'; end if;
-  if p_recipient is null or pg_catalog.length(p_recipient)>64
+  if p_recipient is null or pg_catalog.length(p_recipient)<2 or pg_catalog.length(p_recipient)>64
     or p_recipient !~ '^[a-z0-9]+([._-][a-z0-9]+)*
   if not found then raise exception 'budget_not_configured'; end if;
   select active into v_active from public.agents where id=p_agent_id for share;
