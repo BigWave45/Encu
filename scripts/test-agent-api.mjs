@@ -46,6 +46,11 @@ const mock = createServer(async (req, res) => {
       res.setHeader("content-range", `0-${Math.max(0, securityEvents.length - 1)}/${securityEvents.length}`);
       return send(res, 200, securityEvents.slice().reverse());
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/agentguard_security_events") {
+      securityEvents.push(await readJson(req));
+      res.writeHead(201);
+      return res.end();
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/agentguard_admin_audit") {
       adminAudit.push(await readJson(req));
       res.writeHead(201);
