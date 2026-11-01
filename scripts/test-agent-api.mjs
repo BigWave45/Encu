@@ -207,7 +207,7 @@ const env = {
   AGENTGUARD_TEST_MODE: "true",
   AGENTGUARD_NETWORK: "testnet",
   AGENTGUARD_MAX_TRANSFER_YOCTO: "5000000000000000000000000",
-  AGENTGUARD_AGENT_TOKEN: "admin-token",
+  AGENTGUARD_AGENT_TOKEN: "primary-agent-token",\n  AGENTGUARD_ADMIN_TOKEN: "admin-token",
   PORT: String(appPort),
   HOSTNAME: "127.0.0.1"
 };
@@ -256,6 +256,12 @@ try {
   });
   payload = await response.json();
   assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2, `admin dashboard loads budget and agent inventory (HTTP ${response.status}: ${JSON.stringify(payload)})`);
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
+    headers: { authorization: "Bearer primary-agent-token" }
+  });
+  assert(response.status === 403, "primary agent credential cannot access admin dashboard");
+  response = await postTransfer({ token: "admin-token", requestId: "test-admin-token-transfer-001" });
+  assert(response.status === 401, "administrator credential cannot submit agent transfers");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
     headers: { authorization: "Bearer agent-one-token" }
   });
