@@ -43,6 +43,18 @@ const mock = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/") {
       const body = await readJson(req);
       if (body.method === "status") return send(res, 200, { jsonrpc: "2.0", id: body.id, result: { chain_id: "testnet" } });
+      if (body.method === "tx") return send(res, 200, {
+        jsonrpc: "2.0", id: body.id,
+        result: {
+          final_execution_status: "FINAL",
+          transaction: {
+            signer_id: "agentguard.testnet",
+            receiver_id: "recipient.near",
+            actions: [{ Transfer: { deposit: "1000000000000000000000000" } }]
+          },
+          status: { Failure: { error_message: "mock final failure" } }
+        }
+      });
     }
     if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [mockBudget]);
@@ -196,6 +208,29 @@ const mock = createServer(async (req, res) => {
         details: { name: agent.name }
       });
       return send(res, 200, { id: agent.id, name: agent.name });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/cancel_expired_agent_transfer") {
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row || row.status !== "awaiting_approval" || new Date(row.approvalExpiresAt ?? 0).getTime() > Date.now()) {
+        return send(res, 400, { message: "reservation_not_safely_cancellable" });
+      }
+      row.status = "cancelled";
+      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "expired_transfer_cancelled", target_id: body.p_request_id, details: { reason: body.p_reason } });
+      return send(res, 200, { request_id: body.p_request_id, status: "cancelled" });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/resolve_agent_transfer_failed_final") {
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      if (!row || !["reserved", "needs_review"].includes(row.status) || !row.txHash) {
+        return send(res, 400, { message: "reservation_not_resolvable" });
+      }
+      row.status = "failed";
+      row.lastError = body.p_reason;
+      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_resolved_failed_final", target_id: body.p_request_id, details: { reason: body.p_reason, evidence_reference: body.p_evidence_reference } });
+      return send(res, 200, { request_id: body.p_request_id, status: "failed" });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/rotate_agent_credential") {
       const body = await readJson(req);
@@ -552,6 +587,42 @@ try {
   payload = await response.json();
   assert(response.status === 200 && payload.status === "rejected", "administrator can reject a pending transfer");
   assert(reservations.get("test-reject-001")?.status === "rejected", "rejected transfer is terminal in the ledger");
+
+  const expiredResolutionId = "test-expired-resolution-001";
+  const expiredAmount = "1000000000000000000000";
+  reservations.set(expiredResolutionId, {
+    amount: expiredAmount, recipient: "recipient.near", agentId: "primary",
+    status: "awaiting_approval", approvalExpiresAt: new Date(Date.now() - 60_000).toISOString()
+  });
+  mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + BigInt(expiredAmount)).toString();
+  response = await fetch("http://127.0.0.1:3000/api/admin/reservations/resolve", {
+    method: "POST",
+    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ action: "cancel_expired", requestId: expiredResolutionId, reason: "Approval expired and no provider submission was made." })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "cancelled", "admin can cancel an expired unapproved reservation");
+  assert(reservations.get(expiredResolutionId)?.status === "cancelled" && adminAudit.some(entry => entry.action === "expired_transfer_cancelled"), "expired cancellation releases its reservation and writes an admin audit entry");
+
+  const failedFinalResolutionId = "test-failed-final-resolution-001";
+  const failedFinalAmount = "1000000000000000000000000";
+  reservations.set(failedFinalResolutionId, {
+    amount: failedFinalAmount, recipient: "recipient.near", agentId: "primary",
+    status: "needs_review", txHash: "mock-failed-final-hash", providerRequestId: "mock-failed-final-provider"
+  });
+  mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + BigInt(failedFinalAmount)).toString();
+  response = await fetch("http://127.0.0.1:3000/api/admin/reservations/resolve", {
+    method: "POST",
+    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({
+      action: "failed_final", requestId: failedFinalResolutionId,
+      reason: "NEAR confirms the transfer failed at finality.",
+      evidenceReference: "https://nearblocks.io/txns/mock-failed-final-hash"
+    })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "failed", "admin can resolve a matching NEAR FINAL failure");
+  assert(reservations.get(failedFinalResolutionId)?.status === "failed" && adminAudit.some(entry => entry.action === "transfer_resolved_failed_final"), "final-failure resolution releases reserved budget and records evidence audit");
 
   const recoveryRow = {
     amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
