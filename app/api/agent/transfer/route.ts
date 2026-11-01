@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
   }
   if (!rateLimit) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
   if (!rateLimit.allowed) {
-    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_rate_limited" });
+    const recorded = await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_rate_limited" });
+    if (!recorded) return NextResponse.json({ error: "security_event_unavailable" }, { status: 503 });
     return NextResponse.json(
       { error: "rate_limit_exceeded", retryAfterSeconds: rateLimit.retryAfterSeconds },
       { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
