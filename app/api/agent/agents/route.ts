@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
+import { adminRateLimitResponse } from "@/lib/admin-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,15 +25,16 @@ export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
+  const limited = await adminRateLimitResponse(identity.agentId, "agent_provisioning", 10, 60);
+  if (limited) return limited;
+
   const token = `ag_${randomBytes(32).toString("base64url")}`;
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const db = getSupabase();
-
-  const { error } = await db.from("agents").insert({
-    id: parsed.data.id,
-    name: parsed.data.name,
-    token_hash: tokenHash,
-    active: true
+  const { data, error } = await getSupabase().rpc("create_agent_with_audit", {
+    p_agent_id: parsed.data.id,
+    p_name: parsed.data.name,
+    p_token_hash: tokenHash,
+    p_actor_agent_id: identity.agentId
   });
 
   if (error) {
@@ -40,27 +42,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "agent_creation_failed" }, { status: 500 });
   }
 
-  const policy = await db.from("agent_policies").insert({ agent_id: parsed.data.id });
-  if (policy.error) {
-    await db.from("agents").delete().eq("id", parsed.data.id);
-    return NextResponse.json({ error: "agent_policy_initialization_failed" }, { status: 500 });
-  }
-
-  const audit = await db.from("agentguard_admin_audit").insert({
-    actor_agent_id: identity.agentId,
-    action: "agent_credential_created",
-    target_id: parsed.data.id,
-    details: { name: parsed.data.name }
-  });
-  if (audit.error) {
-    await db.from("agent_policies").delete().eq("agent_id", parsed.data.id);
-    await db.from("agents").delete().eq("id", parsed.data.id);
-    return NextResponse.json({ error: "agent_creation_audit_failed" }, { status: 500 });
-  }
-
   return NextResponse.json({
     status: "created",
-    agent: { id: parsed.data.id, name: parsed.data.name },
+    agent: { id: data.id, name: data.name },
     token,
     warning: "Copy this token now. It cannot be retrieved again."
   }, { status: 201 });
