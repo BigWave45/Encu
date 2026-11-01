@@ -179,10 +179,10 @@ begin
   if p_request_id is null or pg_catalog.length(p_request_id)<8 then raise exception 'invalid_request_id'; end if;
   if p_amount_yocto is null or p_amount_yocto<=0 or p_amount_yocto>=1e78
     or p_amount_yocto<>pg_catalog.trunc(p_amount_yocto) then raise exception 'invalid_amount'; end if;
-  select active into v_active from public.agents where id=p_agent_id for share;
-  if not coalesce(v_active,false) then raise exception 'agent_not_active'; end if;
   select * into v_budget from public.agent_budgets where id='default' for update;
   if not found then raise exception 'budget_not_configured'; end if;
+  select active into v_active from public.agents where id=p_agent_id for share;
+  if not coalesce(v_active,false) then raise exception 'agent_not_active'; end if;
   select * into v_existing from public.spend_reservations where request_id=p_request_id for update;
   if found then
     if v_existing.amount_yocto<>p_amount_yocto or v_existing.recipient<>p_recipient or v_existing.agent_id<>p_agent_id then
@@ -561,3 +561,27 @@ revoke all on function public.cancel_expired_agent_transfer(text,text,text) from
 revoke all on function public.resolve_agent_transfer_failed_final(text,text,text,text) from public,anon,authenticated;
 grant execute on function public.cancel_expired_agent_transfer(text,text,text) to service_role;
 grant execute on function public.resolve_agent_transfer_failed_final(text,text,text,text) to service_role;
+
+create or replace function public.set_agent_active(
+  p_agent_id text,p_active boolean,p_actor_agent_id text
+) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare v_agent public.agents%rowtype;
+begin
+  if p_agent_id is null or p_agent_id='primary' or p_active is null or p_actor_agent_id is null then
+    raise exception 'invalid_agent_status_update';
+  end if;
+  -- Match reservation lock order: shared budget first, then the agent row.
+  perform 1 from public.agent_budgets where id='default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+  update public.agents set active=p_active where id=p_agent_id returning * into v_agent;
+  if not found then raise exception 'agent_not_found'; end if;
+  insert into public.agentguard_admin_audit(actor_agent_id,action,target_id,details)
+  values(p_actor_agent_id,case when p_active then 'agent_activated' else 'agent_deactivated' end,
+    p_agent_id,pg_catalog.jsonb_build_object('name',v_agent.name));
+  return pg_catalog.jsonb_build_object('id',v_agent.id,'name',v_agent.name,'active',v_agent.active);
+end;
+$$;
+revoke all on function public.set_agent_active(text,boolean,text) from public,anon,authenticated;
+grant execute on function public.set_agent_active(text,boolean,text) to service_role;
