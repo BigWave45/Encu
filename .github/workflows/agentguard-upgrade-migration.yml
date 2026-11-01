@@ -1,0 +1,144 @@
+name: AgentGuard upgrade migration test
+
+on:
+  push:
+    branches:
+      - agentguard/build-v1
+    paths:
+      - ".github/workflows/agentguard-upgrade-migration.yml"
+      - "supabase/multi-agent-v1-migration.sql"
+      - "supabase/outlayer-request-id-migration.sql"
+      - "supabase/reconcile-migration.sql"
+      - "supabase/multi-agent-v1-cleanup.sql"
+      - "supabase/20261101120000_admin_dashboard_controls.sql"
+      - "supabase/20261101140000_security_event_log.sql"
+      - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
+      - "supabase/20261101090000_atomic_outlayer_submission.sql"
+      - "supabase/20261101190000_agentguard_v1_security_controls.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-existing-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: agentguard_test_only
+          POSTGRES_DB: agentguard_upgrade_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentguard_upgrade_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: agentguard_upgrade_test
+      PGUSER: postgres
+      PGPASSWORD: agentguard_test_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client jq
+      - name: Build the pre-V1 database baseline
+        run: |
+          set -euo pipefail
+          base_sha="534094096eead5f7e9ecbf4d48c485f2c6eae685"
+          git fetch --no-tags origin "$base_sha"
+          git show "$base_sha:supabase/setup.sql" > /tmp/pre-v1-setup.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE service_role LOGIN PASSWORD 'service_role_test_only';
+          SQL
+          psql -v ON_ERROR_STOP=1 -f /tmp/pre-v1-setup.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT public.reserve_agent_spend('migration-legacy-0001',1000000000000000000000000,'legacy.testnet');" | jq -e '.created == true and .status == "reserved"' >/dev/null
+      - name: Apply documented upgrade sequence
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/outlayer-request-id-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/reconcile-migration.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-cleanup.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261031221500_restrict_privileged_rpc_access.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
+      - name: Verify preserved data, schema, permissions and transfer lifecycle
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            v_agent_id text;
+            v_status text;
+            v_reserved numeric;
+          BEGIN
+            SELECT agent_id,status INTO v_agent_id,v_status
+              FROM public.spend_reservations WHERE request_id='migration-legacy-0001';
+            SELECT reserved_yocto INTO v_reserved FROM public.agent_budgets WHERE id='default';
+            IF v_agent_id<>'primary' OR v_status<>'reserved'
+               OR v_reserved<>1000000000000000000000000 THEN
+              RAISE EXCEPTION 'legacy_data_not_preserved: agent=%, status=%, reserved=%',
+                v_agent_id,v_status,v_reserved;
+            END IF;
+            IF to_regclass('public.agentguard_admin_audit') IS NULL
+               OR to_regclass('public.agentguard_security_events') IS NULL
+               OR to_regclass('public.agent_policies') IS NULL
+               OR to_regclass('public.agentguard_system_controls') IS NULL
+               OR to_regclass('public.agentguard_rate_windows') IS NULL THEN
+              RAISE EXCEPTION 'required_v1_tables_missing';
+            END IF;
+            IF to_regprocedure('public.reserve_agent_spend(text,numeric,text)') IS NOT NULL
+               OR to_regprocedure('public.reserve_agent_spend(text,numeric,text,text)') IS NULL
+               OR to_regprocedure('public.record_outlayer_submission(text,text,text,text)') IS NULL THEN
+              RAISE EXCEPTION 'required_rpc_signature_missing_or_legacy_rpc_remains';
+            END IF;
+            IF NOT has_function_privilege('service_role',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE')
+               OR has_function_privilege('anon',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE')
+               OR has_function_privilege('authenticated',
+                 'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE') THEN
+              RAISE EXCEPTION 'privileged_rpc_grants_invalid';
+            END IF;
+          END
+          $$;
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-v1-lifecycle-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-v1-lifecycle-0001','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('migration-v1-lifecycle-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-v1-lifecycle-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
+          BEGIN
+            SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
+              FROM public.agent_budgets WHERE id='default';
+            SELECT count(*) INTO v_audit_count FROM public.agentguard_admin_audit
+              WHERE target_id='migration-v1-lifecycle-0001'
+                AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized');
+            IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3 THEN
+              RAISE EXCEPTION 'post_upgrade_ledger_or_audit_mismatch: reserved=%, spent=%, audit=%',
+                v_reserved,v_spent,v_audit_count;
+            END IF;
+          END
+          $$;
+          SQL
+          echo "PASS: documented upgrade sequence preserves legacy ledger data, applies V1 schema and permissions, and completes a mocked approval/submission/finality lifecycle."
+          echo "PASS: disposable PostgreSQL only. No Supabase project, OutLayer API, or NEAR network was contacted."
