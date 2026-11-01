@@ -130,18 +130,18 @@ jobs:
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
           CREATE OR REPLACE FUNCTION public.agentguard_test_fail_audit()
-          RETURNS trigger LANGUAGE plpgsql AS $
+          RETURNS trigger LANGUAGE plpgsql AS $agentguard_test$
           BEGIN
             IF NEW.action IN ('agent_credential_created','transfer_finalized') THEN
               RAISE EXCEPTION 'forced_audit_failure';
             END IF;
             RETURN NEW;
           END
-          $;
+          $agentguard_test$;
           CREATE TRIGGER agentguard_test_fail_audit
           BEFORE INSERT ON public.agentguard_admin_audit
           FOR EACH ROW EXECUTE FUNCTION public.agentguard_test_fail_audit();
-          DO $
+          DO $agentguard_test$
           BEGIN
             BEGIN
               PERFORM public.create_agent_with_audit('audit-fail-agent','Audit Fail Agent',repeat('a',64),'primary');
@@ -154,14 +154,14 @@ jobs:
               RAISE EXCEPTION 'agent_creation_survived_audit_failure';
             END IF;
           END
-          $;
+          $agentguard_test$;
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-audit-failure-finalise',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-audit-failure-finalise','primary');" | jq -e '.status == "reserved"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
-          DO $
+          DO $agentguard_test$
           BEGIN
             BEGIN
               PERFORM public.finish_agent_spend('ag-audit-failure-finalise','failed',NULL,'test');
@@ -174,7 +174,7 @@ jobs:
               RAISE EXCEPTION 'settlement_survived_audit_failure';
             END IF;
           END
-          $;
+          $agentguard_test$;
           DROP TRIGGER agentguard_test_fail_audit ON public.agentguard_admin_audit;
           DROP FUNCTION public.agentguard_test_fail_audit();
           SQL
