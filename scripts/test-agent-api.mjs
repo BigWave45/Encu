@@ -403,6 +403,8 @@ try {
   response = await postTransfer({ token: payload.token, requestId: "test-new-demo-token-001" });
   const replacementBody = await response.text();
   assert(response.status === 202 && replacementBody.length > 0, `replacement credential reaches transfer lifecycle (HTTP ${response.status}; body: ${replacementBody || "<empty>"})`);
+  response = await approveTransfer("test-new-demo-token-001", "reject");
+  assert(response.status === 200, "test credential's pending transfer is rejected to release its reservation");
 
   const beforeUnauthReserve = counters.reserve;
   const beforeUnauthProvider = counters.provider;
