@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
+import { adminRateLimitResponse } from "@/lib/admin-rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+
+  const limited = await adminRateLimitResponse(identity.agentId, "agent_credential_rotation", 10, 60);
+  if (limited) return limited;
 
   const token = `ag_${randomBytes(32).toString("base64url")}`;
   const tokenHash = createHash("sha256").update(token).digest("hex");
