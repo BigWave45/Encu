@@ -206,4 +206,62 @@ jobs:
           \$\$
           SQL
           echo "PASS: concurrent conflicting finalisations produce one terminal outcome and consistent budget accounting."
+          # Expired, never-approved requests may be cancelled and release their reservation.
+          req_cancel="ag-concurrency-${suffix}-expired-cancel"
+          cancel_amount=1000000000000000000000
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          INSERT INTO public.spend_reservations(request_id,amount_yocto,recipient,status,agent_id,approval_expires_at)
+          VALUES ('${req_cancel}',${cancel_amount},'agentguard-test.near','awaiting_approval','primary',now()-interval '1 minute');
+          UPDATE public.agent_budgets SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE id='default';
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.cancel_expired_agent_transfer('${req_cancel}','primary','Approval expired; no provider submission was made.');" | jq -e '.status == "cancelled"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || cancelled_by FROM public.spend_reservations WHERE request_id='${req_cancel}';" | grep -qx 'cancelled:primary'
+          echo "PASS: expired unapproved reservation is cancelled with actor and evidence audit."
+
+          # A submitted transfer can be released only after the API verifies NEAR FINAL failure.
+          req_resolve="ag-concurrency-${suffix}-failed-final-resolution"
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          INSERT INTO public.spend_reservations(request_id,amount_yocto,recipient,status,agent_id,outlayer_tx_hash)
+          VALUES ('${req_resolve}',${cancel_amount},'agentguard-test.near','needs_review','primary','mock-final-failure-hash');
+          UPDATE public.agent_budgets SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE id='default';
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.resolve_agent_transfer_failed_final('${req_resolve}','primary','NEAR reported final failure','https://nearblocks.io/txns/mock-final-failure-hash');" | jq -e '.status == "failed"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE row_status text; actor text; reserved numeric; audit_count integer;
+          BEGIN
+            SELECT status,resolved_by INTO row_status,actor FROM public.spend_reservations WHERE request_id='${req_resolve}';
+            SELECT reserved_yocto INTO reserved FROM public.agent_budgets WHERE id='default';
+            SELECT count(*) INTO audit_count FROM public.agentguard_admin_audit
+              WHERE target_id='${req_resolve}' AND action='transfer_resolved_failed_final';
+            IF row_status<>'failed' OR actor<>'primary' OR reserved<>0 OR audit_count<>1 THEN
+              RAISE EXCEPTION 'failed_final_resolution_mismatch: status=%, actor=%, reserved=%, audit=%',row_status,actor,reserved,audit_count;
+            END IF;
+          END
+          \$\$
+          SQL
+          echo "PASS: failed-final resolution atomically releases funds and records admin evidence."
+          # Finalisation and provider metadata transitions must each create audit records.
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE provider_audit integer; final_audit integer;
+          BEGIN
+            SELECT count(*) INTO provider_audit FROM public.agentguard_admin_audit
+              WHERE target_id='${req_meta}' AND action='provider_submission_recorded';
+            SELECT count(*) INTO final_audit FROM public.agentguard_admin_audit
+              WHERE target_id='${req_race}' AND action='transfer_finalized';
+            IF provider_audit<>1 OR final_audit<>1 THEN
+              RAISE EXCEPTION 'transition_audit_missing: provider=%, final=%',provider_audit,final_audit;
+            END IF;
+          END
+          \$\$
+          SQL
+          echo "PASS: provider metadata and NEAR finality ledger transitions are audited atomically."
           echo "PASS: isolated PostgreSQL test complete. No Supabase project, production database, OutLayer, or NEAR transfer was used."
