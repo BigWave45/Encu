@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateAgent } from "@/lib/agent-auth";
+import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
+  let identity: ReturnType<typeof authenticateAdmin>;
   try {
-    identity = await authenticateAgent(request.headers.get("authorization"));
+    identity = authenticateAdmin(request.headers.get("authorization"));
   } catch {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
