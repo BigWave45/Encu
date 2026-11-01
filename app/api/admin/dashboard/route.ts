@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       `request_id.ilike.%${search}%,agent_id.ilike.%${search}%,recipient.ilike.%${search}%,outlayer_tx_hash.ilike.%${search}%,outlayer_request_id.ilike.%${search}%`
     );
     reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
-    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult] = await Promise.all([
+    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult, controlsResult, policiesResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
@@ -61,10 +61,17 @@ export async function GET(request: NextRequest) {
       db.from("agentguard_security_events")
         .select("id,actor_agent_id,event_type,request_id,details,created_at", { count: "exact" })
         .order("created_at", { ascending: false })
-        .range((securityPage - 1) * activityPageSize, securityPage * activityPageSize - 1)
+        .range((securityPage - 1) * activityPageSize, securityPage * activityPageSize - 1),
+      db.from("agentguard_system_controls")
+        .select("transfers_enabled,updated_at,updated_by")
+        .eq("id", "default")
+        .maybeSingle(),
+      db.from("agent_policies")
+        .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,allowed_recipients,updated_at,updated_by")
+        .order("agent_id", { ascending: true })
     ]);
 
-    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error) {
+    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error || controlsResult.error || policiesResult.error || !controlsResult.data) {
       return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
     }
     if (!budgetResult.data) {
@@ -82,6 +89,18 @@ export async function GET(request: NextRequest) {
         reservedYocto: asString(budgetResult.data.reserved_yocto),
         updatedAt: budgetResult.data.updated_at
       },
+      transfersEnabled: controlsResult.data.transfers_enabled,
+      transferControlsUpdatedAt: controlsResult.data.updated_at,
+      transferControlsUpdatedBy: controlsResult.data.updated_by,
+      policies: (policiesResult.data ?? []).map((policy) => ({
+        agentId: policy.agent_id,
+        maxTransferYocto: policy.max_transfer_yocto,
+        dailyLimitYocto: policy.daily_limit_yocto,
+        weeklyLimitYocto: policy.weekly_limit_yocto,
+        allowedRecipients: policy.allowed_recipients,
+        updatedAt: policy.updated_at,
+        updatedBy: policy.updated_by
+      })),
       agents: (agentsResult.data ?? []).map((agent) => ({
         id: agent.id,
         name: agent.name,
