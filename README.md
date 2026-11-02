@@ -56,37 +56,54 @@ Never commit real credentials or send them in issue reports, screenshots, or cha
 
 ## Database setup
 
-For an existing database, apply the forward-only migrations in timestamp order after the legacy setup/migration sequence: `20261101190000_agentguard_v1_security_controls.sql`, `20261101230000_submission_audit_and_append_only.sql`, `20261102080000_admin_actor_self_approval_guard.sql`, then `20261102090000_reserve_admin_agent_id.sql`. The last migration reserves the `admin` identifier at the database layer. It intentionally aborts if an agent with that ID already exists; investigate that record and its audit history rather than renaming or deleting it automatically.
-
-
+The repository has two different database paths. Keep them separate.
 
 ### Fresh Supabase project
 
-Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the current multi-agent schema, privileged RPCs, and a shared default budget of 5 NEAR.
-
-Do not run this fresh-install script on an existing database. It is not an upgrade migration and does not preserve or migrate an existing ledger.
+Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the baseline multi-agent schema and privileged RPCs. Then apply the forward migrations listed below in timestamp order to bring that baseline to the current V1 schema. The setup script is not an upgrade mechanism and must not be run against an existing database.
 
 ### Existing AgentGuard database
 
-For a database that has only the legacy setup and has not yet received the multi-agent/admin migrations, apply the upgrade scripts below in order, each once. Do not replay any step already present in that database's migration history or schema. The connected AgentGuard database has already received steps 1–8; its remaining V1 sequence is steps 9–12 only.
+Do not assume that a database is at a particular migration step because a previous README version said so. Inspect both its schema and `supabase_migrations.schema_migrations` before applying anything. The SQL files are forward changes; do not replay a migration that is already represented in the database or whose effects are already present.
 
-1. `supabase/multi-agent-v1-migration.sql`
-2. `supabase/outlayer-request-id-migration.sql`
-3. `supabase/reconcile-migration.sql`
-4. `supabase/multi-agent-v1-cleanup.sql`
-5. `supabase/20261101120000_admin_dashboard_controls.sql`
-6. `supabase/20261101140000_security_event_log.sql`
-7. `supabase/20261031221500_restrict_privileged_rpc_access.sql`
-8. `supabase/20261101090000_atomic_outlayer_submission.sql`
-9. `supabase/20261101190000_agentguard_v1_security_controls.sql`
-10. `supabase/20261101230000_submission_audit_and_append_only.sql`
-11. `supabase/20261102080000_admin_actor_self_approval_guard.sql`
-12. `supabase/20261102090000_reserve_admin_agent_id.sql`
+The V1 forward migrations, in required order, are:
 
-The multi-agent migration creates the agent table and attributes existing reservations to the primary agent. The request-ID migration adds the OutLayer provider request reference. The reconciliation migration installs the finality settlement function. The cleanup migration removes the legacy reservation function. The admin-dashboard migration creates the audit table and budget/agent control RPCs. The security-event migration creates the server-only security event log. The privileged-access migration restricts ledger RPCs and tables to server-side service-role access. The atomic-submission migration adds a service-role-only RPC that atomically persists the OutLayer request ID and transaction hash while keeping the reservation in `needs_review`; it does not settle or release budget. The V1 security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, explicit recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory 15-minute administrator approval before provider submission. It also adds safe cancellation for expired unapproved requests and evidence-checked resolution for matching NEAR FINAL failures. The admin-audit and security-event tables must exist before the atomic-submission and V1 security-controls migrations are applied. The forward-only submission-audit correction replaces the older provider-submission RPC with its audited implementation and restricts `service_role` to SELECT and INSERT on both audit tables; apply it after the V1 security-controls migration. The administrator-identity correction gives the administrator a distinct `admin` audit identity and makes the approval RPC reject an actor matching the requesting agent. The reserved-ID migration runs last and prevents any agent from claiming `admin`; it aborts if that ID already exists.
+1. `supabase/20261101190000_agentguard_v1_security_controls.sql`
+2. `supabase/20261101230000_submission_audit_and_append_only.sql`
+3. `supabase/20261102080000_admin_actor_self_approval_guard.sql`
+4. `supabase/20261102090000_reserve_admin_agent_id.sql`
 
-Do not run this sequence against the connected live database as part of development. The current database has not been upgraded to the full V1 schema in this work session. Do not reset it or rerun the fresh-install setup against a live project.
+The security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory administrator approval before provider submission. The submission-audit migration replaces the provider-submission RPC with an audited implementation and restricts `service_role` on both audit tables to SELECT and INSERT. The administrator-identity migration separates the admin audit identity from agent identities and blocks self-approval. The final migration reserves the `admin` agent identifier and intentionally aborts if that identifier is already occupied. Investigate the existing record and audit history rather than renaming or deleting it automatically.
 
+Older installations may also require the earlier multi-agent, request-ID, reconciliation, cleanup, admin-dashboard, security-event, privileged-RPC and atomic-submission scripts before the four V1 migrations above. Those scripts are:
+
+- `supabase/multi-agent-v1-migration.sql`
+- `supabase/outlayer-request-id-migration.sql`
+- `supabase/reconcile-migration.sql`
+- `supabase/multi-agent-v1-cleanup.sql`
+- `supabase/20261101120000_admin_dashboard_controls.sql`
+- `supabase/20261101140000_security_event_log.sql`
+- `supabase/20261031221500_restrict_privileged_rpc_access.sql`
+- `supabase/20261101090000_atomic_outlayer_submission.sql`
+
+These earlier scripts are prerequisites only when their schema changes are absent. Establish the actual baseline before choosing an upgrade path. Do not apply the entire list blindly.
+
+### Connected AgentGuard database: observed state on 2026-11-02
+
+The connected Supabase project was inspected read-only. Its migration history contains these five entries:
+
+- `20261031194550` — `add_agent_row_share_lock_to_reservation`
+- `20261031221435` — `restrict_agentguard_privileged_rpc_access`
+- `20261031232739` — `atomic_outlayer_submission`
+- `20261031233841` — `admin_dashboard_controls`
+- `20261031234140` — `security_event_log`
+
+The core tables `agents`, `agent_budgets`, `spend_reservations`, `agentguard_admin_audit`, and `agentguard_security_events` exist, with RLS enabled. The V1 tables `agent_policies`, `agentguard_system_controls`, and `agentguard_rate_windows` were absent at the time of inspection. Therefore this database must not be described as having completed the V1 security-controls upgrade.
+
+The audit-table privilege inspection also found that `service_role` still had UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER privileges on `agentguard_admin_audit` and `agentguard_security_events`. No append-only triggers were found on those tables. This does not match the intended restrictions in `20261101230000_submission_audit_and_append_only.sql`, which has not yet been applied to this database. Treat the audit tables as mutable in this connected environment until that migration is safely applied and verified.
+
+This is an observed database snapshot, not a promise that the state remains unchanged. Re-inspect the live schema and migration history before any future migration. Do not run these upgrades, reset the project, or use the fresh-install setup against the connected database as part of routine development. Validate the full upgrade sequence against a disposable database first.
+ 
 ## Authentication and agents
 
 All agent endpoints use bearer authentication:
