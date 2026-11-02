@@ -1,6 +1,7 @@
 name: Manual Supabase database backup
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - agentguard/build-v1
