@@ -56,6 +56,12 @@ revoke all on table
   public.spend_reservations
 from public, anon, authenticated;
 
+grant select on table
+  public.agents,
+  public.agent_budgets,
+  public.spend_reservations
+to service_role;
+
 
 
 -- Persist provider references and mark a submission for review in one transaction.
