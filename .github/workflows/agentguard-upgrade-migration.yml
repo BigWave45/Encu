@@ -19,6 +19,7 @@ on:
       - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
       - "supabase/20261102090000_reserve_admin_agent_id.sql"
       - "supabase/20261102100000_revoke_public_core_table_access.sql"
+      - "supabase/20261102110000_grant_service_role_core_reads.sql"
   workflow_dispatch:
 
 permissions:
@@ -83,6 +84,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102090000_reserve_admin_agent_id.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $reserved_admin$
           BEGIN
