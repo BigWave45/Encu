@@ -1,3 +1,4 @@
+# Exercises reservation, finality and recovery races on disposable PostgreSQL.
 name: AgentGuard PostgreSQL concurrency test
 
 on:
