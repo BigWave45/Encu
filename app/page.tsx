@@ -18,13 +18,6 @@ type AgentResult = {
   error?: string;
 };
 
-type SimulationEntry = {
-  agentId: string;
-  requestId: string;
-  amountYocto: string;
-  decision: "reserved" | "blocked";
-  reason: string;
-};
 
 type Dashboard = {
   status?: string;
@@ -136,11 +129,6 @@ export default function Home() {
   const [rotatingAgent, setRotatingAgent] = useState(false);
   const [reservationAction, setReservationAction] = useState<string | null>(null);
   const [reservationActionError, setReservationActionError] = useState("");
-  const [simulationAmounts, setSimulationAmounts] = useState({ primary: "3", research: "3" });
-  const [simulationEntries, setSimulationEntries] = useState<SimulationEntry[]>([]);
-  const [simulationAvailable, setSimulationAvailable] = useState<string | null>(null);
-  const [simulationRun, setSimulationRun] = useState(0);
-  const [simulationError, setSimulationError] = useState("");
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [budgetLimit, setBudgetLimit] = useState("");
@@ -510,72 +498,6 @@ export default function Home() {
     }
   }
 
-  function runSimulation() {
-    if (!dashboard?.budget) {
-      setSimulationError("Load the admin dashboard first so the sandbox can use its latest budget snapshot.");
-      return;
-    }
-    const primaryAmount = parseNearToYocto(simulationAmounts.primary);
-    const researchAmount = parseNearToYocto(simulationAmounts.research);
-    if (primaryAmount === null || researchAmount === null || primaryAmount <= 0n || researchAmount <= 0n) {
-      setSimulationError("Enter positive NEAR amounts with up to 24 decimal places.");
-      return;
-    }
-    const available =
-      BigInt(dashboard.budget.totalLimitYocto) -
-      BigInt(dashboard.budget.spentYocto) -
-      BigInt(dashboard.budget.reservedYocto);
-    if (available < 0n) {
-      setSimulationError("The dashboard budget values are inconsistent. Do not use this snapshot.");
-      return;
-    }
-    const nextRun = simulationRun + 1;
-    const requests = [
-      { agentId: "primary", amount: primaryAmount, requestId: "sandbox-" + nextRun + "-primary" },
-      { agentId: "research-agent", amount: researchAmount, requestId: "sandbox-" + nextRun + "-research" }
-    ];
-    let simulatedReserved = 0n;
-    const entries: SimulationEntry[] = requests.map((request) => {
-      if (request.amount <= available - simulatedReserved) {
-        simulatedReserved += request.amount;
-        return {
-          agentId: request.agentId,
-          requestId: request.requestId,
-          amountYocto: request.amount.toString(),
-          decision: "reserved",
-          reason: "Accepted in the sandbox's serialized lock order."
-        };
-      }
-      return {
-        agentId: request.agentId,
-        requestId: request.requestId,
-        amountYocto: request.amount.toString(),
-        decision: "blocked",
-        reason: "Insufficient shared budget after the earlier reservation."
-      };
-    });
-    setSimulationEntries(entries);
-    setSimulationAvailable((available - simulatedReserved).toString());
-    setSimulationRun(nextRun);
-    setSimulationError("");
-  }
-
-  function replayPrimarySimulation() {
-    const original = simulationEntries.find((entry) => entry.agentId === "primary" && entry.decision === "reserved");
-    if (!original) {
-      setSimulationError("The Primary Agent request was not reserved, so there is no successful request to replay.");
-      return;
-    }
-    setSimulationEntries((current) => [
-      ...current,
-      {
-        ...original,
-        decision: "blocked",
-        reason: "Idempotency replay: this request ID already has a reservation. No second reservation is created."
-      }
-    ]);
-    setSimulationError("");
-  }
 
   const panel = { marginTop: 24, padding: 20, border: "1px solid #e2e8f0", borderRadius: 12 };
   const inputStyle = { boxSizing: "border-box" as const, width: "100%", padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 16 };
@@ -820,63 +742,6 @@ export default function Home() {
           <strong>Request response</strong>
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify(requestResult, null, 2)}</pre>
         </div>}
-      </section>
-
-      <section style={panel}>
-        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Shared-budget concurrency sandbox</h2>
-        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
-          Uses the latest dashboard budget snapshot to model two agents requesting funds at the same time.
-          This is a local demonstration only: it does not call the AgentGuard API, write to Supabase, contact OutLayer, or move NEAR.
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginTop: 16 }}>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>
-            Primary Agent request (NEAR)
-            <input type="number" min="0.000000000000000000000001" step="any" value={simulationAmounts.primary}
-              onChange={(event) => setSimulationAmounts((current) => ({ ...current, primary: event.target.value }))}
-              style={{ ...inputStyle, marginTop: 7 }} />
-          </label>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>
-            Research Agent request (NEAR)
-            <input type="number" min="0.000000000000000000000001" step="any" value={simulationAmounts.research}
-              onChange={(event) => setSimulationAmounts((current) => ({ ...current, research: event.target.value }))}
-              style={{ ...inputStyle, marginTop: 7 }} />
-          </label>
-        </div>
-        <button type="button" onClick={runSimulation} disabled={!dashboard?.budget}
-          style={{ ...buttonStyle, opacity: !dashboard?.budget ? 0.55 : 1 }}>
-          Run two-agent simulation
-        </button>
-        {!dashboard?.budget && <p style={{ color: "#92400e", fontSize: 12 }}>Load the dashboard above first.</p>}
-        {simulationError && <p role="alert" style={{ color: "#b91c1c", fontSize: 13 }}>{simulationError}</p>}
-        {simulationEntries.length > 0 && <>
-          <div style={{ marginTop: 18, padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9 }}>
-            <strong>Simulated available budget: {simulationAvailable === null ? "Unavailable" : near(simulationAvailable) + " NEAR"}</strong>
-            <p style={{ color: "#64748b", fontSize: 11, margin: "5px 0 0" }}>
-              Run {simulationRun}. Processing order is Primary Agent, then Research Agent, representing the database lock serializing competing reservations.
-            </p>
-          </div>
-          <div style={{ display: "grid", gap: 9, marginTop: 12 }}>
-            {simulationEntries.map((entry, index) => <div key={entry.requestId + "-" + index}
-              style={{ padding: 12, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <strong>{entry.agentId}</strong>
-                <strong style={{ color: entry.decision === "reserved" ? "#166534" : "#b91c1c" }}>
-                  {entry.decision === "reserved" ? "Reserved (simulated)" : "Blocked (simulated)"}
-                </strong>
-              </div>
-              <div style={{ marginTop: 5 }}>{near(entry.amountYocto)} NEAR</div>
-              <div style={{ color: "#64748b", overflowWrap: "anywhere", marginTop: 4 }}>Request ID: {entry.requestId}</div>
-              <div style={{ marginTop: 5 }}>{entry.reason}</div>
-            </div>)}
-          </div>
-          <button type="button" onClick={replayPrimarySimulation}
-            style={{ ...buttonStyle, background: "#334155" }}>
-            Replay Primary Agent request
-          </button>
-        </>}
-        <p style={{ color: "#92400e", fontSize: 12, lineHeight: 1.5, marginTop: 16 }}>
-          Important: this visual sandbox demonstrates the policy outcome; it does not prove live database concurrency or RPC idempotency. Those require a separate isolated backend test.
-        </p>
       </section>
 
       <section style={panel}>
