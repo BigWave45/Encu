@@ -227,6 +227,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('partial-v1-life-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('partial-v1-life-0001','primary');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          # A retried callback for the same provider submission must not
+          # duplicate the provider_submission_recorded audit event.
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('partial-v1-life-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('legacy-partial-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
