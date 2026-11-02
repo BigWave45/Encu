@@ -46,5 +46,5 @@ export function authenticateAdmin(authorization: string | null): AgentIdentity |
 
   // Keep the existing primary audit actor identity, but this credential cannot
   // be used by agent endpoints.
-  return { agentId: "primary", isAdmin: true };
+  return { agentId: "admin", isAdmin: true };
 }
