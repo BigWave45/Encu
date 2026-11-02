@@ -17,6 +17,7 @@ on:
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
       - "supabase/20261101230000_submission_audit_and_append_only.sql"
       - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
+      - "supabase/20261102090000_reserve_admin_agent_id.sql"
   workflow_dispatch:
 
 permissions:
@@ -79,6 +80,27 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102090000_reserve_admin_agent_id.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $reserved_admin$
+          BEGIN
+            BEGIN
+              INSERT INTO public.agents(id,name,token_hash,active)
+              VALUES ('admin','Reserved administrator identity',repeat('f',64),true);
+              RAISE EXCEPTION 'reserved_admin_agent_id_was_accepted';
+            EXCEPTION WHEN check_violation THEN
+              NULL;
+            END;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conrelid='public.agents'::regclass
+                AND conname='agents_reserved_admin_id_check'
+            ) THEN
+              RAISE EXCEPTION 'reserved_admin_agent_id_constraint_missing';
+            END IF;
+          END
+          $reserved_admin$;
+          SQL
       - name: Verify preserved data, schema, permissions and transfer lifecycle
         run: |
           set -euo pipefail
