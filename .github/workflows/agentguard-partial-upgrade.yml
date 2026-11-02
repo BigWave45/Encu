@@ -15,6 +15,7 @@ on:
       - "supabase/20261101120000_admin_dashboard_controls.sql"
       - "supabase/20261101140000_security_event_log.sql"
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
+      - "supabase/20261101230000_submission_audit_and_append_only.sql"
   workflow_dispatch:
 
 permissions:
@@ -62,6 +63,10 @@ jobs:
 
           # Reproduce the migration effects already present in the live DB.
           psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-migration.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.agents(id,name,token_hash,active)
+          VALUES ('secondary','Secondary Agent',repeat('b',64),true);
+          SQL
           psql -v ON_ERROR_STOP=1 -f supabase/outlayer-request-id-migration.sql
           psql -v ON_ERROR_STOP=1 -f supabase/reconcile-migration.sql
           psql -v ON_ERROR_STOP=1 -f supabase/multi-agent-v1-cleanup.sql
@@ -70,9 +75,55 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101120000_admin_dashboard_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
 
+          # Restore the older live RPC body so the correction is tested against
+          # a database that genuinely lacks provider-submission auditing.
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE OR REPLACE FUNCTION public.record_outlayer_submission(
+           p_request_id text, p_tx_hash text DEFAULT NULL,
+           p_provider_request_id text DEFAULT NULL, p_error text DEFAULT NULL
+          ) RETURNS jsonb
+          LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+          AS $function$
+          declare reservation public.spend_reservations%rowtype;
+          begin
+           perform 1 from public.agent_budgets where id = 'default' for update;
+           if not found then raise exception 'budget_not_configured'; end if;
+           select * into reservation from public.spend_reservations
+           where request_id = p_request_id for update;
+           if not found then raise exception 'reservation_not_found'; end if;
+           if reservation.status not in ('reserved', 'needs_review') then
+            return pg_catalog.jsonb_build_object('status', reservation.status, 'request_id', p_request_id);
+           end if;
+           if reservation.outlayer_tx_hash is not null and p_tx_hash is not null
+              and reservation.outlayer_tx_hash <> p_tx_hash then
+            raise exception 'provider_transaction_hash_conflict';
+           end if;
+           if reservation.outlayer_request_id is not null and p_provider_request_id is not null
+              and reservation.outlayer_request_id <> p_provider_request_id then
+            raise exception 'provider_request_id_conflict';
+           end if;
+           update public.spend_reservations as sr
+           set status = 'needs_review',
+               outlayer_tx_hash = coalesce(sr.outlayer_tx_hash, p_tx_hash),
+               outlayer_request_id = coalesce(sr.outlayer_request_id, p_provider_request_id),
+               last_error = p_error, updated_at = pg_catalog.now()
+           where sr.request_id = p_request_id;
+           return pg_catalog.jsonb_build_object('status', 'needs_review', 'request_id', p_request_id);
+          end;
+          $function$;
+          DO $
+          BEGIN
+            IF pg_get_functiondef('public.record_outlayer_submission(text,text,text,text)'::regprocedure)
+               LIKE '%provider_submission_recorded%' THEN
+              RAISE EXCEPTION 'fixture_not_older_provider_submission_rpc';
+            END IF;
+          END
+          $;
+          SQL
+
           # Assert that the reconstructed DB matches the live intermediate state.
           psql -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$
+          DO $
           BEGIN
             IF to_regclass('public.agents') IS NULL
                OR to_regclass('public.agentguard_admin_audit') IS NULL
@@ -110,10 +161,11 @@ jobs:
           SQL
           psql -v ON_ERROR_STOP=1 -Atc "SELECT public.reserve_agent_spend('legacy-partial-0001',1000000000000000000000000,'legacy.testnet','primary');" | jq -e '.created == true and .status == "reserved"' >/dev/null
           echo "PASS: reconstructed the live intermediate schema shape and seeded a pre-upgrade reservation."
-      - name: Apply only the missing V1 security-controls migration
+      - name: Apply V1 controls and forward-only audit correction
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
       - name: Verify preservation, V1 controls, grants and transfer lifecycle
         run: |
           set -euo pipefail
