@@ -18,6 +18,7 @@ on:
       - "supabase/20261101230000_submission_audit_and_append_only.sql"
       - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
       - "supabase/20261102090000_reserve_admin_agent_id.sql"
+      - "supabase/20261102100000_revoke_public_core_table_access.sql"
   workflow_dispatch:
 
 permissions:
@@ -81,6 +82,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102090000_reserve_admin_agent_id.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $reserved_admin$
           BEGIN
@@ -154,6 +156,17 @@ jobs:
             IF pg_get_functiondef('public.record_outlayer_submission(text,text,text,text)'::regprocedure)
                NOT LIKE '%provider_submission_recorded%' THEN
               RAISE EXCEPTION 'submission_audit_correction_not_applied';
+            END IF;
+            IF has_table_privilege('anon','public.agents','SELECT')
+               OR has_table_privilege('authenticated','public.agents','SELECT')
+               OR has_table_privilege('anon','public.agent_budgets','SELECT')
+               OR has_table_privilege('authenticated','public.agent_budgets','SELECT')
+               OR has_table_privilege('anon','public.spend_reservations','SELECT')
+               OR has_table_privilege('authenticated','public.spend_reservations','SELECT')
+               OR NOT has_table_privilege('service_role','public.agents','SELECT')
+               OR NOT has_table_privilege('service_role','public.agent_budgets','SELECT')
+               OR NOT has_table_privilege('service_role','public.spend_reservations','SELECT') THEN
+              RAISE EXCEPTION 'core_table_grants_invalid';
             END IF;
           END
           $$;
