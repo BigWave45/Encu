@@ -50,7 +50,7 @@ Configure these in the deployment environment:
 | `AGENTGUARD_ADMIN_TOKEN` | Separate administrator bearer credential for dashboard and management operations |
 | `AGENTGUARD_MAX_TRANSFER_YOCTO` | Maximum amount allowed in one transfer, in yoctoNEAR |
 
-`AGENTGUARD_NETWORK` defaults to `testnet`. Mainnet is supported by explicitly setting `AGENTGUARD_NETWORK=mainnet`, `OUTLAYER_BASE_URL=https://api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.mainnet.near.org`. The selected network must match the exact provider and RPC host allowlists. Local mock endpoints are accepted only outside production or in the explicit CI test harness. `OUTLAYER_NEAR_ADDRESS` is mandatory and must be the OutLayer executor account ID that signs native NEAR transfers. Health compares it with OutLayer’s reported executor account ID; reconciliation checks the same signer against chain transaction details.
+`AGENTGUARD_NETWORK` defaults to `testnet`. Mainnet is supported by explicitly setting `AGENTGUARD_NETWORK=mainnet`, `OUTLAYER_BASE_URL=https://api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.mainnet.near.org`. The selected network must match the exact provider and RPC host allowlists. Local mock endpoints are accepted only outside production or in the explicit CI test harness. `OUTLAYER_NEAR_ADDRESS` is mandatory and must be the OutLayer executor account ID that signs native NEAR transfers. OutLayer may return this as a 64-character lowercase hexadecimal NEAR implicit account ID; it is not necessarily the named asset account the wallet acts for. Do not substitute a bound asset account such as `alice.near`. Health compares this value with OutLayer’s reported `executor_account_id`; reconciliation checks the same signer against chain transaction details.
 
 Never commit real credentials or send them in issue reports, screenshots, or chat messages. Rotate any credential that may have been exposed.
 
@@ -104,16 +104,19 @@ The core tables `agents`, `agent_budgets`, `spend_reservations`, `agentguard_adm
 
 The audit-table privilege inspection also found that `service_role` still had UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER privileges on `agentguard_admin_audit` and `agentguard_security_events`. No append-only triggers were found on those tables. This does not match the intended restrictions in `20261101230000_submission_audit_and_append_only.sql`, which has not yet been applied to this database. Treat the audit tables as mutable in this connected environment until that migration is safely applied and verified.
 
-### Preview environment isolation: observed state on 2026-11-02
+### Original production database: observed state before V1 upgrade (2026-11-02)
 
-The Vercel `agentguard/build-v1` Preview has branch-specific values for `AGENTGUARD_NETWORK=testnet`, `OUTLAYER_BASE_URL=https://testnet-api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.testnet.near.org`. These route provider and RPC traffic to testnet.
+The original production Supabase project was inspected read-only before the test environment was created. Its migration history contained the five entries listed above; the V1 tables `agent_policies`, `agentguard_system_controls`, and `agentguard_rate_windows` were absent, and the audit-table append-only restrictions had not yet been applied. No production migration or schema mutation was performed during the test-environment work. Re-inspect production before planning any future upgrade; do not infer its current state from this historical snapshot.
 
-The public Preview health endpoint was checked on 2026-11-02. Supabase and the default budget were reachable, and the NEAR RPC reported testnet. OutLayer returned `not_configured`, so the Preview correctly returned HTTP 503 and must not be used for a live transfer test yet. The branch-specific `OUTLAYER_NEAR_ADDRESS` record currently has an empty value. No verified executor account ID has been supplied; do not substitute a placeholder. The OutLayer API credential is stored as a sensitive Vercel variable and its value is not exposed by the read-only configuration listing.
+### Isolated Preview test environment: verified state (2026-11-02)
 
+The Vercel `agentguard/build-v1` Preview has branch-specific testnet settings: `AGENTGUARD_NETWORK=testnet`, `OUTLAYER_BASE_URL=https://testnet-api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.testnet.near.org`. It also has branch-specific `SUPABASE_URL` and `AGENTGUARD_SUPABASE_SERVICE_ROLE_KEY` values pointing to the dedicated Supabase project `AgentGuard Test` (`rrvrlvitjithqizwutfl`, `eu-west-3`). The shared Production Supabase variables were left unchanged.
 
-However, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are currently configured as shared environment-variable records targeting both Preview and Production. There is no branch-specific Supabase override. Therefore Preview is not demonstrated to have an isolated database; it uses the same configured Supabase backend as Production. Do not run Preview tests that mutate database state until a separate test database is configured and verified. Never apply migrations from Preview.
+The test project was initialized from `supabase/setup.sql` and brought forward with all six V1 migrations listed above. Verification confirmed that `anon` and `authenticated` have no direct SELECT privileges on the core agent, budget and reservation tables, while `service_role` retains the SELECT access required by the backend. CI has passed the API security/lifecycle, upgrade migration, and PostgreSQL concurrency workflows on the commits recorded in the project handoff; the latest commit must still pass its own CI checks.
 
-This is an observed database snapshot, not a promise that the state remains unchanged. Re-inspect the live schema and migration history before any future migration. Do not run these upgrades, reset the project, or use the fresh-install setup against the connected database as part of routine development. Validate the full upgrade sequence against a disposable database first.
+The Preview health endpoint now confirms Supabase connectivity, the default budget, and NEAR testnet RPC connectivity. The authenticated OutLayer address endpoint returns an executor account ID in 64-character lowercase hexadecimal form. The configured Preview `OUTLAYER_NEAR_ADDRESS` must match that exact executor ID, not a named bound asset account. No live transfer has been sent and no end-to-end transfer/finality test has yet been completed.
+
+This is a verified test-environment snapshot, not a guarantee that later environment edits remain deployed. Re-check the branch-specific Preview settings and test database before running state-mutating tests. Never apply Preview migrations to Production.
  
 ## Authentication and agents
 
