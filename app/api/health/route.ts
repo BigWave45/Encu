@@ -77,7 +77,7 @@ async function checkNearRpc(): Promise<"connected" | "unavailable" | "configurat
 export async function GET() {
   const missing = [
     !process.env.SUPABASE_URL && "SUPABASE_URL",
-    !process.env.SUPABASE_SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"
+    !(process.env.AGENTGUARD_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY) && "AGENTGUARD_SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY"
   ].filter(Boolean);
 
   if (missing.length > 0) {
