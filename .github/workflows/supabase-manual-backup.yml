@@ -48,6 +48,13 @@ jobs:
           test -n "$SUPABASE_DB_URL"
           test -n "$BACKUP_ENCRYPTION_PASSPHRASE"
 
+      - name: Diagnose database URL (safe fields only)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import os; from urllib.parse import urlsplit, unquote; u=urlsplit(os.environ["SUPABASE_DB_URL"]); print("Parsed database host:", u.hostname or "<missing>"); print("Parsed database port:", u.port or "<default>"); print("Parsed database username:", unquote(u.username or "") or "<missing>"); print("Scheme:", u.scheme or "<missing>")'
+
       - name: Test database authentication
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
