@@ -16,6 +16,7 @@ on:
       - "supabase/20261101140000_security_event_log.sql"
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
       - "supabase/20261101230000_submission_audit_and_append_only.sql"
+      - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
   workflow_dispatch:
 
 permissions:
@@ -166,6 +167,7 @@ jobs:
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
       - name: Verify preservation, V1 controls, grants and transfer lifecycle
         run: |
           set -euo pipefail
@@ -225,7 +227,7 @@ jobs:
           export PGPASSWORD=service_role_partial_test
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('partial-v1-life-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('partial-v1-life-0001','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('partial-v1-life-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
           # A retried callback for the same provider submission must not
           # duplicate the provider_submission_recorded audit event.
