@@ -257,9 +257,8 @@ jobs:
           $assert$;
           SQL
 
-          export PGPASSWORD=agentguard_partial_test
-          psql -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$
+          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
+          DO $
           DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
           BEGIN
             SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
