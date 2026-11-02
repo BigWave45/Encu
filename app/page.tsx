@@ -162,6 +162,12 @@ export default function Home() {
   const [policyDenyAll, setPolicyDenyAll] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyMessage, setPolicyMessage] = useState("");
+  const [requestAgentToken, setRequestAgentToken] = useState("");
+  const [requestAgentLabel, setRequestAgentLabel] = useState("Alpha");
+  const [requestRecipient, setRequestRecipient] = useState("lensherr.testnet");
+  const [requestAmount, setRequestAmount] = useState("3");
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestResult, setRequestResult] = useState<Record<string, unknown> | null>(null);
 
 
   async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
@@ -471,6 +477,39 @@ export default function Home() {
     }
   }
 
+  async function submitAgentRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = parseNearToYocto(requestAmount);
+    if (!amount || amount <= 0n || !requestAgentToken.trim()) {
+      setRequestResult({ error: "Enter a valid positive NEAR amount and agent token." });
+      return;
+    }
+    setRequestBusy(true);
+    setRequestResult(null);
+    try {
+      const response = await fetch("/api/agent/transfer", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${requestAgentToken.trim()}`
+        },
+        body: JSON.stringify({
+          requestId: `ag-${crypto.randomUUID()}`,
+          to: requestRecipient.trim(),
+          amountYocto: amount.toString()
+        }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setRequestResult({ httpStatus: response.status, agentLabel: requestAgentLabel, ...body });
+    } catch {
+      setRequestResult({ error: "Could not reach AgentGuard. Request outcome is unconfirmed; check transaction history before retrying." });
+    } finally {
+      setRequestBusy(false);
+      setRequestAgentToken("");
+    }
+  }
+
   function runSimulation() {
     if (!dashboard?.budget) {
       setSimulationError("Load the admin dashboard first so the sandbox can use its latest budget snapshot.");
@@ -746,6 +785,41 @@ export default function Home() {
           </div>
           <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
         </>}
+      </section>
+
+      <section style={panel}>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Live agent request test</h2>
+        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
+          Sends a real authenticated request to AgentGuard's reservation API. It does not call OutLayer. The agent token is held only in this page's memory and cleared after submission.
+        </p>
+        <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Test agent
+            <select value={requestAgentLabel} onChange={event => setRequestAgentLabel(event.target.value)} style={{ ...inputStyle, marginTop: 6 }}>
+              <option value="Alpha">Alpha</option>
+              <option value="Beta">Beta</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Agent credential
+            <input type="password" autoComplete="off" value={requestAgentToken} onChange={event => setRequestAgentToken(event.target.value)} required placeholder="Paste this agent's token here" style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Recipient NEAR account
+            <input value={requestRecipient} onChange={event => setRequestRecipient(event.target.value)} required style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Amount (NEAR)
+            <input inputMode="decimal" value={requestAmount} onChange={event => setRequestAmount(event.target.value)} required style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <button type="submit" disabled={requestBusy || !requestAgentToken.trim()} style={{ ...buttonStyle, opacity: requestBusy || !requestAgentToken.trim() ? 0.6 : 1 }}>
+            {requestBusy ? "Submitting request…" : "Submit live agent request"}
+          </button>
+        </form>
+        {requestResult && <div aria-live="polite" style={{ marginTop: 14, padding: 12, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+          <strong>Request response</strong>
+          <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify(requestResult, null, 2)}</pre>
+        </div>}
       </section>
 
       <section style={panel}>
