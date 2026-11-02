@@ -15,6 +15,7 @@ type AddressResponse = {
 async function checkOutLayer(): Promise<{
   status: "not_configured" | "connected" | "authentication_failed" | "unavailable" | "signer_mismatch" | "configuration_invalid";
   signerMatches?: boolean;
+  providerAddress?: string;
 }> {
   let config;
   try {
@@ -45,9 +46,9 @@ async function checkOutLayer(): Promise<{
     );
     if (!actualAddress) return { status: "unavailable" };
     if (actualAddress !== config.nearAddress) {
-      return { status: "signer_mismatch", signerMatches: false };
+      return { status: "signer_mismatch", signerMatches: false, providerAddress: actualAddress };
     }
-    return { status: "connected", signerMatches: true };
+    return { status: "connected", signerMatches: true, providerAddress: actualAddress };
   } catch {
     return { status: "unavailable" };
   }
@@ -113,7 +114,10 @@ export async function GET() {
       network,
       nearRpc,
       outlayer: outlayer.status,
-      signerMatches: outlayer.signerMatches ?? false
+      signerMatches: outlayer.signerMatches ?? false,
+      // NEAR account IDs are public identifiers; include the provider's actual
+      // executor account so a signer mismatch can be corrected without exposing credentials.
+      outlayerAddress: outlayer.providerAddress ?? null
     }, { status: ready ? 200 : 503 });
   } catch {
     return NextResponse.json({
