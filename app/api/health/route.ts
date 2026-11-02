@@ -93,11 +93,13 @@ export async function GET() {
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json({
-        status: "database_error",
+      // This endpoint is public. Keep database diagnostics in server logs,
+      // never expose Postgres/PostgREST details to unauthenticated callers.
+      console.error("AgentGuard health database check failed", {
         code: error.code ?? null,
         message: error.message ?? "Supabase query failed."
-      }, { status: 503 });
+      });
+      return NextResponse.json({ status: "database_error" }, { status: 503 });
     }
     if (!data) return NextResponse.json({ status: "database_connected", budget: "missing" }, { status: 503 });
 
