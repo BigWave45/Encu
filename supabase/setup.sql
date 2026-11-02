@@ -48,6 +48,14 @@ insert into public.agent_budgets (id, total_limit_yocto)
 values ('default', 5000000000000000000000000)
 on conflict (id) do nothing;
 
+-- Core ledger tables are accessed only by trusted server-side service_role RPCs.
+-- Do not expose direct table access through the Supabase Data API.
+revoke all on table
+  public.agents,
+  public.agent_budgets,
+  public.spend_reservations
+from public, anon, authenticated;
+
 
 
 -- Persist provider references and mark a submission for review in one transaction.
