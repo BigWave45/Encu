@@ -1,3 +1,4 @@
+# Runs route-authentication and mocked provider/finality lifecycle regressions.
 name: AgentGuard API security and lifecycle tests
 
 on:
