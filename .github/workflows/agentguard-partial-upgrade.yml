@@ -241,9 +241,8 @@ jobs:
             'other-recipient.testnet','secondary');
           SELECT public.reject_agent_transfer(
             'partial-v1-secondary-0001','primary','multi-agent fixture rejection');
-          SQL
-          psql -v ON_ERROR_STOP=1 <<'SQL'
-          DO $assert$
+          DO $assertfinal$
+          DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
           BEGIN
             IF (SELECT status FROM public.spend_reservations
                 WHERE request_id='partial-v1-secondary-0001') <> 'rejected' THEN
@@ -253,14 +252,6 @@ jobs:
                 WHERE request_id='partial-v1-secondary-blocked-0001') IS NOT NULL THEN
               RAISE EXCEPTION 'blocked_secondary_request_was_persisted';
             END IF;
-          END
-          $assert$;
-          SQL
-
-          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
-          DO $
-          DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
-          BEGIN
             SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
               FROM public.agent_budgets WHERE id='default';
             SELECT count(*) INTO v_audit_count FROM public.agentguard_admin_audit
@@ -275,7 +266,7 @@ jobs:
               RAISE EXCEPTION 'secondary_rejection_audit_missing';
             END IF;
           END
-          $$;
+          $assertfinal$;
           SQL
           echo "PASS: V1 migration upgrades the reconstructed partial state, preserves legacy reservation data, enforces RPC grants, and completes the mocked approval/submission/finality lifecycle."
           echo "PASS: disposable PostgreSQL only; no live Supabase, OutLayer API, or NEAR network was contacted."
