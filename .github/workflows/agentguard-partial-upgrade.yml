@@ -1,3 +1,4 @@
+# Exercises the connected project's observed intermediate schema shape on disposable PostgreSQL.
 name: AgentGuard partial-state upgrade test
 
 on:
