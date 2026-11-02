@@ -123,7 +123,7 @@ jobs:
 
           # Assert that the reconstructed DB matches the live intermediate state.
           psql -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $baseline$
           BEGIN
             IF to_regclass('public.agents') IS NULL
                OR to_regclass('public.agentguard_admin_audit') IS NULL
@@ -157,7 +157,7 @@ jobs:
               RAISE EXCEPTION 'partial_state_status_constraint_mismatch';
             END IF;
           END
-          $$;
+          $baseline$;
           SQL
           psql -v ON_ERROR_STOP=1 -Atc "SELECT public.reserve_agent_spend('legacy-partial-0001',1000000000000000000000000,'legacy.testnet','primary');" | jq -e '.created == true and .status == "reserved"' >/dev/null
           echo "PASS: reconstructed the live intermediate schema shape and seeded a pre-upgrade reservation."
