@@ -139,6 +139,22 @@ jobs:
                  'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE') THEN
               RAISE EXCEPTION 'privileged_rpc_grants_invalid';
             END IF;
+            IF has_table_privilege('service_role','public.agentguard_admin_audit','UPDATE')
+               OR has_table_privilege('service_role','public.agentguard_admin_audit','DELETE')
+               OR has_table_privilege('service_role','public.agentguard_admin_audit','TRUNCATE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','UPDATE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','DELETE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','TRUNCATE')
+               OR NOT has_table_privilege('service_role','public.agentguard_admin_audit','INSERT')
+               OR NOT has_table_privilege('service_role','public.agentguard_admin_audit','SELECT')
+               OR NOT has_table_privilege('service_role','public.agentguard_security_events','INSERT')
+               OR NOT has_table_privilege('service_role','public.agentguard_security_events','SELECT') THEN
+              RAISE EXCEPTION 'append_only_audit_grants_invalid';
+            END IF;
+            IF pg_get_functiondef('public.record_outlayer_submission(text,text,text,text)'::regprocedure)
+               NOT LIKE '%provider_submission_recorded%' THEN
+              RAISE EXCEPTION 'submission_audit_correction_not_applied';
+            END IF;
           END
           $$;
           SQL
@@ -159,6 +175,10 @@ jobs:
           SQL
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-v1-lifecycle-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('migration-v1-lifecycle-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('migration-v1-lifecycle-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='provider_submission_recorded';" | grep -qx '1'
+          export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-v1-lifecycle-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           export PGPASSWORD=agentguard_test_only
