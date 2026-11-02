@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  id: z.string().min(2).max(48).regex(/^[a-z0-9_-]+$/),
+  id: z.string().min(2).max(48).regex(/^[a-z0-9_-]+$/).refine(id => id !== "admin", { message: "Reserved administrator identity." }),
   name: z.string().trim().min(2).max(80)
 });
 
