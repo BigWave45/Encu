@@ -50,7 +50,7 @@ jobs:
           mkdir -p backup
           supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/roles.sql --role-only
           supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql
-          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/data.sql --use-copy --data-only -x "storage.buckets_vectors" -x "storage.vector_indexes"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/data.sql --use-copy --data-only
           test -s backup/roles.sql
           test -s backup/schema.sql
           test -s backup/data.sql
