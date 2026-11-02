@@ -790,7 +790,7 @@ export default function Home() {
       <section style={panel}>
         <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Live agent request test</h2>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
-          Sends a real authenticated request to AgentGuard's reservation API. It does not call OutLayer. The agent token is held only in this page's memory and cleared after submission.
+          Sends a real authenticated request to AgentGuard&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
         </p>
         <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
