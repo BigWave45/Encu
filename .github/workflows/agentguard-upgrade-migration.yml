@@ -16,6 +16,7 @@ on:
       - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
       - "supabase/20261101230000_submission_audit_and_append_only.sql"
+      - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
   workflow_dispatch:
 
 permissions:
@@ -77,6 +78,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
       - name: Verify preserved data, schema, permissions and transfer lifecycle
         run: |
           set -euo pipefail
@@ -121,7 +123,7 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-v1-lifecycle-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-v1-lifecycle-0001','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-v1-lifecycle-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('migration-v1-lifecycle-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-v1-lifecycle-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
