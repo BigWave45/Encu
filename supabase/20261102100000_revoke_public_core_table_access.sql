@@ -6,10 +6,3 @@ REVOKE ALL ON TABLE
   public.agent_budgets,
   public.spend_reservations
 FROM PUBLIC, anon, authenticated;
-
--- The trusted backend still needs direct reads for the admin dashboard.
-GRANT SELECT ON TABLE
-  public.agents,
-  public.agent_budgets,
-  public.spend_reservations
-TO service_role;
