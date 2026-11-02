@@ -20,7 +20,7 @@ jobs:
     name: Export and encrypt database
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: contains(github.event.head_commit.message, '[run-backup]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-backup]')
 
     steps:
       - name: Check out repository
@@ -30,6 +30,11 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
       - name: Install GPG
         run: sudo apt-get update && sudo apt-get install -y gnupg
@@ -42,6 +47,18 @@ jobs:
           set -euo pipefail
           test -n "$SUPABASE_DB_URL"
           test -n "$BACKUP_ENCRYPTION_PASSPHRASE"
+
+      - name: Test database authentication
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --tuples-only \
+            --no-align \
+            --command="select current_user || ' @ ' || current_database();"
 
       - name: Export database
         env:
