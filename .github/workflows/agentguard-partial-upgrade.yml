@@ -227,6 +227,18 @@ jobs:
           export PGPASSWORD=service_role_partial_test
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('partial-v1-life-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
+          DO $self_approval$
+          BEGIN
+            BEGIN
+              PERFORM public.approve_agent_transfer('partial-v1-life-0001','primary');
+              RAISE EXCEPTION 'self_approval_was_not_rejected';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM <> 'self_approval_forbidden' THEN RAISE; END IF;
+            END;
+          END
+          $self_approval$;
+          SQL
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('partial-v1-life-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
           # A retried callback for the same provider submission must not
