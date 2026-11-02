@@ -14,6 +14,7 @@ on:
       - "lib/rate-limit.ts"
       - "app/api/health/route.ts"
       - "lib/agent-auth.ts"
+      - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
       - "lib/outlayer.ts"
       - "lib/supabase.ts"
       - "lib/security-audit.ts"
