@@ -31,6 +31,8 @@ Agent
 
 Supabase is the source of truth for the shared budget and reservation ledger. OutLayer is the configured transfer provider. NEAR RPC is used to independently verify final transaction execution.
 
+**Product boundary:** AgentGuard owns agent identity and authentication, policy evaluation, authorization, shared-budget reservation, idempotency, approval, attribution, audit, and finality-based ledger settlement. OutLayer submits approved transfers; it does not decide which agent may spend, how much it may spend, or whether a request is authorized. OutLayer is the only execution provider implemented in V1. Additional execution-provider adapters are a future extension point; multi-provider support is not part of the current NEAR hackathon scope.
+
 ## Environment variables
 
 Configure these in the deployment environment:
