@@ -448,6 +448,12 @@ try {
   });
   payload = await response.json();
   assert(response.status === 201 && payload.token && adminAudit.some(entry => entry.action === "agent_credential_created"), "agent provisioning returns one-time token and writes audit entry");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/agents`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "admin", name: "Reserved Admin Collision" })
+  });
+  payload = await response.json();
+  assert(response.status === 400 && payload.error === "invalid_request", "reserved administrator identity cannot be provisioned as an agent");
   const oldDemoToken = payload.token;
   response = await fetch(`http://127.0.0.1:${appPort}/api/agent/agents/rotate`, {
     method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
