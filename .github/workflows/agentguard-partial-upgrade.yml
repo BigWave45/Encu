@@ -111,14 +111,14 @@ jobs:
            return pg_catalog.jsonb_build_object('status', 'needs_review', 'request_id', p_request_id);
           end;
           $function$;
-          DO $
+          DO $fixture$
           BEGIN
             IF pg_get_functiondef('public.record_outlayer_submission(text,text,text,text)'::regprocedure)
                LIKE '%provider_submission_recorded%' THEN
               RAISE EXCEPTION 'fixture_not_older_provider_submission_rpc';
             END IF;
           END
-          $;
+          $fixture$;
           SQL
 
           # Assert that the reconstructed DB matches the live intermediate state.
@@ -191,6 +191,25 @@ jobs:
                OR to_regprocedure('public.set_agentguard_transfers_enabled(boolean,text)') IS NULL THEN
               RAISE EXCEPTION 'v1_rpc_missing';
             END IF;
+            IF pg_get_functiondef('public.record_outlayer_submission(text,text,text,text)'::regprocedure)
+               NOT LIKE '%provider_submission_recorded%' THEN
+              RAISE EXCEPTION 'submission_audit_correction_not_applied';
+            END IF;
+            IF has_table_privilege('service_role','public.agentguard_admin_audit','UPDATE')
+               OR has_table_privilege('service_role','public.agentguard_admin_audit','DELETE')
+               OR has_table_privilege('service_role','public.agentguard_admin_audit','TRUNCATE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','UPDATE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','DELETE')
+               OR has_table_privilege('service_role','public.agentguard_security_events','TRUNCATE')
+               OR NOT has_table_privilege('service_role','public.agentguard_admin_audit','INSERT')
+               OR NOT has_table_privilege('service_role','public.agentguard_admin_audit','SELECT')
+               OR NOT has_table_privilege('service_role','public.agentguard_security_events','INSERT')
+               OR NOT has_table_privilege('service_role','public.agentguard_security_events','SELECT') THEN
+              RAISE EXCEPTION 'append_only_audit_grants_invalid';
+            END IF;
+            IF (SELECT count(*) FROM public.agent_policies WHERE agent_id IN ('primary','secondary'))<>2 THEN
+              RAISE EXCEPTION 'multi_agent_policy_rows_missing';
+            END IF;
             IF NOT has_function_privilege('service_role',
                  'public.reserve_agent_spend(text,numeric,text,text)','EXECUTE')
                OR has_function_privilege('anon',
@@ -210,6 +229,33 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('partial-v1-life-0001','mock-tx-hash','mock-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('partial-v1-life-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('legacy-partial-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
+          SELECT public.set_agent_policy(
+            'secondary',500000000000000000000000,1000000000000000000000000,
+            2000000000000000000000000,ARRAY['secondary-recipient.testnet'],'primary');
+          SELECT public.reserve_agent_spend(
+            'partial-v1-secondary-0001',100000000000000000000000,
+            'secondary-recipient.testnet','secondary');
+          SELECT public.reserve_agent_spend(
+            'partial-v1-secondary-blocked-0001',100000000000000000000000,
+            'other-recipient.testnet','secondary');
+          SELECT public.reject_agent_transfer(
+            'partial-v1-secondary-0001','primary','multi-agent fixture rejection');
+          SQL
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $assert$
+          BEGIN
+            IF (SELECT status FROM public.spend_reservations
+                WHERE request_id='partial-v1-secondary-0001') <> 'rejected' THEN
+              RAISE EXCEPTION 'secondary_transfer_not_rejected';
+            END IF;
+            IF (SELECT status FROM public.spend_reservations
+                WHERE request_id='partial-v1-secondary-blocked-0001') IS NOT NULL THEN
+              RAISE EXCEPTION 'blocked_secondary_request_was_persisted';
+            END IF;
+          END
+          $assert$;
+          SQL
 
           export PGPASSWORD=agentguard_partial_test
           psql -v ON_ERROR_STOP=1 <<'SQL'
@@ -224,6 +270,10 @@ jobs:
             IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3 THEN
               RAISE EXCEPTION 'ledger_or_audit_mismatch: reserved=%, spent=%, audit=%',
                 v_reserved,v_spent,v_audit_count;
+            END IF;
+            IF (SELECT count(*) FROM public.agentguard_admin_audit
+                WHERE target_id='partial-v1-secondary-0001' AND action='transfer_rejected')<>1 THEN
+              RAISE EXCEPTION 'secondary_rejection_audit_missing';
             END IF;
           END
           $$;
