@@ -54,6 +54,10 @@ Never commit real credentials or send them in issue reports, screenshots, or cha
 
 ## Database setup
 
+For an existing database, apply the forward-only migrations in timestamp order after the legacy setup/migration sequence: `20261101190000_agentguard_v1_security_controls.sql`, `20261101230000_submission_audit_and_append_only.sql`, `20261102080000_admin_actor_self_approval_guard.sql`, then `20261102090000_reserve_admin_agent_id.sql`. The last migration reserves the `admin` identifier at the database layer. It intentionally aborts if an agent with that ID already exists; investigate that record and its audit history rather than renaming or deleting it automatically.
+
+
+
 ### Fresh Supabase project
 
 Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the current multi-agent schema, privileged RPCs, and a shared default budget of 5 NEAR.
