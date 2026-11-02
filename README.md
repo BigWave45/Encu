@@ -102,6 +102,12 @@ The core tables `agents`, `agent_budgets`, `spend_reservations`, `agentguard_adm
 
 The audit-table privilege inspection also found that `service_role` still had UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER privileges on `agentguard_admin_audit` and `agentguard_security_events`. No append-only triggers were found on those tables. This does not match the intended restrictions in `20261101230000_submission_audit_and_append_only.sql`, which has not yet been applied to this database. Treat the audit tables as mutable in this connected environment until that migration is safely applied and verified.
 
+### Preview environment isolation: observed state on 2026-11-02
+
+The Vercel `agentguard/build-v1` Preview has branch-specific values for `AGENTGUARD_NETWORK=testnet`, `OUTLAYER_BASE_URL=https://testnet-api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.testnet.near.org`. These route provider and RPC traffic to testnet.
+
+However, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are currently configured as shared environment-variable records targeting both Preview and Production. There is no branch-specific Supabase override. Therefore Preview is not demonstrated to have an isolated database; it uses the same configured Supabase backend as Production. Do not run Preview tests that mutate database state until a separate test database is configured and verified. Never apply migrations from Preview.
+
 This is an observed database snapshot, not a promise that the state remains unchanged. Re-inspect the live schema and migration history before any future migration. Do not run these upgrades, reset the project, or use the fresh-install setup against the connected database as part of routine development. Validate the full upgrade sequence against a disposable database first.
  
 ## Authentication and agents
