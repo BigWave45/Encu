@@ -118,6 +118,31 @@ The Preview health endpoint now confirms Supabase connectivity, the default budg
 
 This is a verified test-environment snapshot, not a guarantee that later environment edits remain deployed. Re-check the branch-specific Preview settings and test database before running state-mutating tests. Never apply Preview migrations to Production.
  
+### Live multi-agent test checkpoint (2026-11-03)
+
+This section supersedes the earlier statement that the isolated Preview database had no test agents. It records the latest verified state and is the handoff point for the next engineering session.
+
+- Preview deployment: `https://agentguard-iy27t3qjn-resonances-projects-13e560cd.vercel.app`, commit `0507d40213de4952d5aafa576737390b554bfa4a`. The deployment was READY and its health endpoint returned HTTP 200 on 2026-11-02.
+- Health verification passed for the isolated Supabase project, NEAR testnet RPC, OutLayer API connectivity, and the configured OutLayer executor signer.
+- The isolated Supabase project is `AgentGuard Test` (`rrvrlvitjithqizwutfl`, region `eu-west-3`). Do not use the original/production Supabase project for these tests.
+- Current agent rows verified directly from the test database: `primary` (Primary Agent, active) and `test-agent-alpha` (AgentGuard Multi-Agent Alpha, active). `test-agent-beta` does not exist yet.
+- Shared test budget remains 5 NEAR (`5000000000000000000000000` yoctoNEAR), spent = 0, reserved = 0.
+- `agentguard_system_controls.transfers_enabled` is currently `false`. No test reservations exist. No OutLayer transfer has been submitted.
+- The Preview admin dashboard and admin-control endpoints reject unauthenticated requests with `admin_required`, as expected. This only verifies that the admin gate is active; it does not verify the configured admin token.
+- A previous attempt to provision the second test agent and change test policies via a multi-statement SQL tool call was interrupted. A fresh read-only query confirmed that none of those attempted changes took effect. Do not assume they succeeded.
+
+#### Next test sequence
+
+1. Obtain authenticated access to the Preview admin dashboard without exposing the administrator token in chat. Verify the dashboard loads and confirms the above state.
+2. Provision `test-agent-beta` through `POST /api/agent/agents` (the application endpoint), then store each returned agent token securely. Tokens are shown only once. Do not create credentials by inserting guessed token hashes.
+3. Set both test-agent policies to a 0.004 NEAR maximum transfer, 0.004 NEAR daily and weekly caps, and an allowlist containing only `lensherr.testnet`. Confirm these settings through the dashboard.
+4. Enable transfers only in the isolated test environment so requests can reach the atomic reservation path. Keep every request unapproved while testing policy blocks, shared-budget contention, idempotent replay, and conflicting request IDs. The global emergency stop blocks reservation itself, so it cannot remain enabled during these reservation tests.
+5. Reject pending requests and verify reservations are released. Then activate the emergency stop and verify that new requests and approval/submission attempts are blocked. Re-check the budget ledger and reservation states.
+6. Re-enable transfers only for the final controlled test. Before approval, verify the exact destination, amount, testnet, executor identity, and available balance. The user has explicitly authorized one test transfer only: 0.001 NEAR from the configured OutLayer executor to `lensherr.testnet`. Submit it only through AgentGuard's authenticated request → reservation → admin approval → OutLayer → NEAR finality reconciliation path. Never send directly through OutLayer.
+7. Verify the final NEAR transaction and AgentGuard settlement, then replay the same request ID and confirm no second provider submission occurs. Record the transaction hash, finality result, reservation state, and budget counters here.
+
+**Credential/access blocker:** the administrator token is configured as a sensitive Preview environment variable and is not readable through the deployment configuration API. Do not retrieve or print it, and do not ask the user to paste it into chat. Until there is a safe authenticated way to submit admin requests, agent provisioning and policy configuration remain blocked. Do not bypass the application authorization layer with direct provider calls.
+
 ## Authentication and agents
 
 All agent endpoints use bearer authentication:
