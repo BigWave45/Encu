@@ -106,6 +106,9 @@ The audit-table privilege inspection also found that `service_role` still had UP
 
 The Vercel `agentguard/build-v1` Preview has branch-specific values for `AGENTGUARD_NETWORK=testnet`, `OUTLAYER_BASE_URL=https://testnet-api.outlayer.ai`, and `NEAR_RPC_URL=https://rpc.testnet.near.org`. These route provider and RPC traffic to testnet.
 
+The public Preview health endpoint was checked on 2026-11-02. Supabase and the default budget were reachable, and the NEAR RPC reported testnet. OutLayer returned `not_configured`, so the Preview correctly returned HTTP 503 and must not be used for a live transfer test yet. The branch-specific `OUTLAYER_NEAR_ADDRESS` record currently has an empty value. No verified executor account ID has been supplied; do not substitute a placeholder. The OutLayer API credential is stored as a sensitive Vercel variable and its value is not exposed by the read-only configuration listing.
+
+
 However, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are currently configured as shared environment-variable records targeting both Preview and Production. There is no branch-specific Supabase override. Therefore Preview is not demonstrated to have an isolated database; it uses the same configured Supabase backend as Production. Do not run Preview tests that mutate database state until a separate test database is configured and verified. Never apply migrations from Preview.
 
 This is an observed database snapshot, not a promise that the state remains unchanged. Re-inspect the live schema and migration history before any future migration. Do not run these upgrades, reset the project, or use the fresh-install setup against the connected database as part of routine development. Validate the full upgrade sequence against a disposable database first.
