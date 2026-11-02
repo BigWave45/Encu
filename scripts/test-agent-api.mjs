@@ -16,6 +16,7 @@ const rateWindows = new Map();
 const agentPolicies = new Map([["primary", {}], ["research-agent", {}]]);
 const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" };
 let mockSignerAddress = "agentguard.testnet";
+let mockBudgetReadError = false;
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -57,7 +58,13 @@ const mock = createServer(async (req, res) => {
       });
     }
     if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
-    if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") return send(res, 200, [mockBudget]);
+    if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") {
+      if (mockBudgetReadError) return send(res, 500, {
+        code: "42501",
+        message: "permission denied for table agent_budgets; internal diagnostic"
+      });
+      return send(res, 200, [mockBudget]);
+    }
     if (req.method === "GET" && url.pathname === "/rest/v1/agentguard_system_controls") return send(res, 200, [systemControls]);
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_policies") {
       const rows = [...agentPolicies.entries()].map(([agent_id, policy]) => ({ agent_id, ...policy }));
@@ -502,6 +509,18 @@ try {
   payload = await response.json();
   assert(response.status === 503 && payload.outlayer === "signer_mismatch" && payload.nearRpc === "connected", "health fails closed when provider wallet signer differs");
   mockSignerAddress = "agentguard.testnet";
+
+  mockBudgetReadError = true;
+  response = await fetch(`http://127.0.0.1:${appPort}/api/health`);
+  payload = await response.json();
+  assert(
+    response.status === 503 && payload.status === "database_error"
+      && !("code" in payload) && !("message" in payload)
+      && !JSON.stringify(payload).includes("42501")
+      && !JSON.stringify(payload).includes("internal diagnostic"),
+    "public health endpoint redacts Postgres error codes and messages"
+  );
+  mockBudgetReadError = false;
 
   const primaryId = "test-api-primary-001";
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
