@@ -15,6 +15,7 @@ on:
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
       - "supabase/20261101090000_atomic_outlayer_submission.sql"
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
+      - "supabase/20261101230000_submission_audit_and_append_only.sql"
   workflow_dispatch:
 
 permissions:
@@ -75,6 +76,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261031221500_restrict_privileged_rpc_access.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101090000_atomic_outlayer_submission.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
       - name: Verify preserved data, schema, permissions and transfer lifecycle
         run: |
           set -euo pipefail
