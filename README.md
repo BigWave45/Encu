@@ -481,3 +481,12 @@ The inventory commit is `f2c97b3bc4dbb30a25d977b973115d4114b21d3d`. This documen
 ### Treasury and agent allocation design
 
 The allocation model and migration requirements are documented in [`docs/treasury-agent-allocation-design.md`](docs/treasury-agent-allocation-design.md). This is a reviewed design only; no allocation migration has been applied and no application enforcement has changed. The document records the current Preview ledger/RPC behaviour, atomic dual-ledger invariants, migration/backfill requirements and required tests. Commit: `02b859ee12ccaef16e15a5dcf2ed7a888fe2f5a3`.
+
+
+### Allocation implementation checkpoint (2026-11-03)
+
+Phase 1 is committed in `supabase/20261103000000_treasury_agent_allocations.sql` (commit `d102c4b661494dd88c4ce5c21e39a8f8ebaa02e9`). It adds an allocation ledger with per-agent limit, spent and reserved counters, a historical backfill, a treasury-counter reconciliation preflight, integer/nonnegative constraints, an overcommit constraint, RLS, and service-role read access.
+
+This is schema-only. It does not enforce allocations in reservation, approval, cancellation, settlement, failure resolution, or provisioning RPCs. It is not safe to apply independently to Preview or Production until the follow-up enforcement migration and API integration are ready. No database was changed.
+
+The upgrade migration workflow was updated to apply this phase against disposable PostgreSQL and verify a legacy reserved reservation is backfilled as one agent allocation with matching reserved exposure. Commit `51a5ec25ed1f18bbce909e9531873e3348d97cbc`. GitHub CI is running; Vercel deployment check is separately blocked by the Hobby team's build-rate limit. Current Preview treasury remains 5 NEAR limit, 0.001 NEAR spent, zero reserved; Production untouched.
