@@ -1,4 +1,4 @@
-# AgentGuard V1 security implementation plan
+# ENCU V1 security implementation plan
 
 Status: implementation specification for `agentguard/build-v1`.
 Target: testnet V1 submission. This document is a fixed scope boundary, not a commitment to add unrelated platform features.
@@ -88,7 +88,7 @@ Do not replace or weaken these controls while adding the items below.
 
 ## Database and migration requirements
 
-- Add an additive upgrade migration for the existing AgentGuard database; do not rerun `supabase/setup.sql` against an existing project.
+- Add an additive upgrade migration for the existing ENCU database; do not rerun `supabase/setup.sql` against an existing project.
 - Update the fresh-install setup separately so a new project gets the same schema.
 - Use constraints, indexes, row locks, and service-role-only RPC permissions.
 - Ensure reservation creation, policy checks, rolling spend checks, and shared-budget reservation are one atomic operation.
