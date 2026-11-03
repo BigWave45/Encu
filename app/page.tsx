@@ -916,7 +916,7 @@ export default function Home() {
             </li>
             <li>
               <strong>Assign treasury allocation and spending limits</strong>
-              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Allocation is the agent's hard sub-limit. Per-transfer and rolling 24-hour/7-day limits are additional caps. Autonomous allowance is a cumulative sub-limit within those ceilings; requests beyond it require administrator approval.</p>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Allocation is the agent&apos;s hard sub-limit. Per-transfer and rolling 24-hour/7-day limits are additional caps. Autonomous allowance is a cumulative sub-limit within those ceilings; requests beyond it require administrator approval.</p>
               <span className={onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "Allocation and autonomous allowance configured" : "Incomplete"}</span>
               <button type="button" disabled={!onboardingAgent} onClick={() => setActiveView("agents")} style={buttonStyle}>Configure allocation and policy</button>
             </li>
@@ -928,7 +928,7 @@ export default function Home() {
             </li>
             <li>
               <strong>Store the agent credential and integrate</strong>
-              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>The token is displayed once at creation or rotation. Store it in the agent's server-side secret manager. Never use the administrator token or OutLayer API key in agent code.</p>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>The token is displayed once at creation or rotation. Store it in the agent&apos;s server-side secret manager. Never use the administrator token or OutLayer API key in agent code.</p>
               <span className={onboardingCredentialIssued ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingCredentialIssued ? "New token available in credential panel" : "Credential handoff not confirmed in this session"}</span>
               <button type="button" onClick={() => setActiveView("access")} style={buttonStyle}>Open credential handoff</button>
             </li>
@@ -1257,7 +1257,7 @@ Content-Type: application/json
           </label>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
             Agent credential
-            <input type="password" autoComplete="off" value={requestAgentToken} onChange={event => setRequestAgentToken(event.target.value)} required placeholder="Paste this agent's token here" style={{ ...inputStyle, marginTop: 6 }} />
+            <input type="password" autoComplete="off" value={requestAgentToken} onChange={event => setRequestAgentToken(event.target.value)} required placeholder="Paste this agent&apos;s token here" style={{ ...inputStyle, marginTop: 6 }} />
           </label>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
             Recipient NEAR account
