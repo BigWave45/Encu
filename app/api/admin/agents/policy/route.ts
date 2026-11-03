@@ -13,8 +13,6 @@ const policySchema = z.object({
   maxTransferYocto: z.string().regex(/^[1-9][0-9]*$/).nullable(),
   dailyLimitYocto: z.string().regex(/^[1-9][0-9]*$/).nullable(),
   weeklyLimitYocto: z.string().regex(/^[1-9][0-9]*$/).nullable(),
-  // null = unrestricted; [] = deny every recipient.
-  allowedRecipients: z.array(z.string().min(2).max(64).regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/)).max(500).nullable()
 });
 
 function admin(request: NextRequest) {
@@ -33,7 +31,7 @@ export async function GET(request: NextRequest) {
   if (id && !idSchema.safeParse(id).success) return NextResponse.json({ error: "invalid_agent_id" }, { status: 400 });
 
   let query = getSupabase().from("agent_policies")
-    .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,allowed_recipients,updated_at,updated_by")
+    .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,updated_at,updated_by")
     .order("agent_id", { ascending: true });
   if (id) query = query.eq("agent_id", id);
   const { data, error } = await query;
@@ -43,7 +41,6 @@ export async function GET(request: NextRequest) {
     maxTransferYocto: row.max_transfer_yocto,
     dailyLimitYocto: row.daily_limit_yocto,
     weeklyLimitYocto: row.weekly_limit_yocto,
-    allowedRecipients: row.allowed_recipients,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by
   })) }, { headers: { "Cache-Control": "no-store, private" } });
@@ -64,7 +61,7 @@ export async function PATCH(request: NextRequest) {
     p_max_transfer_yocto: policy.maxTransferYocto,
     p_daily_limit_yocto: policy.dailyLimitYocto,
     p_weekly_limit_yocto: policy.weeklyLimitYocto,
-    p_allowed_recipients: policy.allowedRecipients,
+    p_allowed_recipients: null,
     p_actor_agent_id: identity.agentId
   });
   if (error) {
