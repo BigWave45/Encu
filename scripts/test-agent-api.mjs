@@ -14,6 +14,10 @@ const reservations = new Map();
 const securityEvents = [];
 const rateWindows = new Map();
 const agentPolicies = new Map([["primary", {}], ["research-agent", {}]]);
+const allocations = new Map([
+  ["primary", { agent_id: "primary", allocation_limit_yocto: (2n * 10n ** 24n).toString(), spent_yocto: "0", reserved_yocto: "0", updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" }],
+  ["research-agent", { agent_id: "research-agent", allocation_limit_yocto: (3n * 10n ** 24n).toString(), spent_yocto: "0", reserved_yocto: "0", updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" }]
+]);
 const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" };
 let mockSignerAddress = "agentguard.testnet";
 let mockBudgetReadError = false;
@@ -68,6 +72,11 @@ const mock = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/rest/v1/agentguard_system_controls") return send(res, 200, [systemControls]);
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_policies") {
       const rows = [...agentPolicies.entries()].map(([agent_id, policy]) => ({ agent_id, ...policy }));
+      res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
+      return send(res, 200, rows);
+    }
+    if (req.method === "GET" && url.pathname === "/rest/v1/agent_allocations") {
+      const rows = [...allocations.values()];
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
     }
@@ -186,13 +195,30 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_rejected", target_id: body.p_request_id, details: {} });
       return send(res, 200, { request_id: body.p_request_id, status: "rejected" });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_allocation") {
+      const body = await readJson(req);
+      const row = allocations.get(body.p_agent_id);
+      if (!row) return send(res, 400, { message: "agent_allocation_not_configured" });
+      const next = BigInt(body.p_allocation_limit_yocto);
+      if (next < BigInt(row.spent_yocto) + BigInt(row.reserved_yocto)) return send(res, 400, { message: "allocation_below_committed_amounts" });
+      const others = [...allocations.values()].filter(item => item.agent_id !== body.p_agent_id)
+        .reduce((sum, item) => sum + BigInt(item.allocation_limit_yocto), 0n);
+      if (others + next > BigInt(mockBudget.total_limit_yocto)) return send(res, 400, { message: "allocations_exceed_treasury_limit" });
+      row.allocation_limit_yocto = next.toString();
+      row.updated_by = body.p_actor_agent_id;
+      row.updated_at = new Date().toISOString();
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_allocation_updated", target_id: body.p_agent_id, details: {} });
+      return send(res, 200, { agent_id: body.p_agent_id, allocation_limit_yocto: next.toString(), spent_yocto: row.spent_yocto, reserved_yocto: row.reserved_yocto });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/update_agent_budget_limit") {
       const body = await readJson(req);
       const next = BigInt(body.p_new_limit_yocto);
       if (next < BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto)) return send(res, 400, { message: "budget_below_committed_amounts" });
+      const allocated = [...allocations.values()].reduce((sum, item) => sum + BigInt(item.allocation_limit_yocto), 0n);
+      if (next < allocated) return send(res, 400, { message: "budget_below_allocated_amounts" });
       mockBudget.total_limit_yocto = next.toString();
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "budget_limit_updated", target_id: "default", details: {} });
-      return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto });
+      return send(res, 200, { total_limit_yocto: next.toString(), spent_yocto: mockBudget.spent_yocto, reserved_yocto: mockBudget.reserved_yocto, allocated_yocto: allocated.toString() });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/create_agent_with_audit") {
       const body = await readJson(req);
@@ -208,13 +234,14 @@ const mock = createServer(async (req, res) => {
       mockAgents.push(agent);
       agentsByHash.set(body.p_token_hash, agent.id);
       agentPolicies.set(agent.id, {});
+      allocations.set(agent.id, { agent_id: agent.id, allocation_limit_yocto: "0", spent_yocto: "0", reserved_yocto: "0", updated_at: new Date().toISOString(), updated_by: body.p_actor_agent_id });
       adminAudit.push({
         actor_agent_id: body.p_actor_agent_id,
         action: "agent_credential_created",
         target_id: agent.id,
         details: { name: agent.name }
       });
-      return send(res, 200, { id: agent.id, name: agent.name });
+      return send(res, 200, { id: agent.id, name: agent.name, allocation_limit_yocto: "0" });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/cancel_expired_agent_transfer") {
       const body = await readJson(req);
@@ -406,7 +433,7 @@ try {
     headers: { authorization: "Bearer admin-token" }
   });
   payload = await response.json();
-  assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2, `admin dashboard loads budget and agent inventory (HTTP ${response.status}: ${JSON.stringify(payload)})`);
+  assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2 && payload.allocations?.length === 2, `admin dashboard loads budget, agents and allocation ledger (HTTP ${response.status}: ${JSON.stringify(payload)})`);
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
     headers: { authorization: "Bearer primary-agent-token" }
   });
@@ -430,6 +457,27 @@ try {
   });
   assert(response.status === 409, "admin cannot lower budget below reserved commitments");
   mockBudget.reserved_yocto = "0";
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/budget`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ limitYocto: "4000000000000000000000000" })
+  });
+  assert(response.status === 409 && (await response.json()).error === "budget_below_agent_allocations", "admin cannot lower treasury ceiling below summed agent allocations");
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", allocationLimitYocto: "2500000000000000000000000" })
+  });
+  assert(response.status === 200 && allocations.get("primary").allocation_limit_yocto === "2500000000000000000000000", "admin can update agent allocation within treasury ceiling");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", allocationLimitYocto: "1000000000000000000000000" })
+  });
+  assert(response.status === 403, "agent credential cannot change allocation");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", allocationLimitYocto: "4000000000000000000000000" })
+  });
+  assert(response.status === 409, "allocation update cannot exceed treasury ceiling");
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/status`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
@@ -454,7 +502,7 @@ try {
     body: JSON.stringify({ id: "demo-agent", name: "Demo Agent" })
   });
   payload = await response.json();
-  assert(response.status === 201 && payload.token && adminAudit.some(entry => entry.action === "agent_credential_created"), "agent provisioning returns one-time token and writes audit entry");
+  assert(response.status === 201 && payload.token && allocations.get("demo-agent")?.allocation_limit_yocto === "0" && adminAudit.some(entry => entry.action === "agent_credential_created"), "agent provisioning creates zero allocation and returns one-time token");
   response = await fetch(`http://127.0.0.1:${appPort}/api/agent/agents`, {
     method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "admin", name: "Reserved Admin Collision" })
