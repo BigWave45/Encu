@@ -20,6 +20,7 @@ on:
       - "supabase/20261102110000_grant_service_role_core_reads.sql"
       - "supabase/20261103000000_treasury_agent_allocations.sql"
       - "supabase/20261103010000_enforce_agent_allocations.sql"
+      - "supabase/20261103020000_agent_recipient_registry.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -77,6 +78,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103000000_treasury_agent_allocations.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103010000_enforce_agent_allocations.sql
+          psql -v ON_ERROR_STOP=1 -c "UPDATE public.agent_policies SET allowed_recipients=ARRAY['agentguard-test.near'] WHERE agent_id='primary';"
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103020000_agent_recipient_registry.sql
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'admin');" | jq -e '.transfers_enabled == true' >/dev/null
           export PGPASSWORD=agentguard_test_only
@@ -89,6 +92,7 @@ jobs:
           VALUES ('research-agent',0,0,0,'admin');
           SQL
           export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('research-agent','agentguard-test.near','test recipient',NULL,'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',3000000000000000000000000,'admin');" >/dev/null
           # Emergency stop must block both new reservations and pending approvals,
