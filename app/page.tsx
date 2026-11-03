@@ -119,6 +119,23 @@ function availableAgentNear(allocation: NonNullable<Dashboard["allocations"]>[nu
   }
 }
 
+function totalAgentAllocationsNear(allocations?: Dashboard["allocations"]) {
+  try {
+    return near((allocations ?? []).reduce((sum, item) => sum + BigInt(item.allocationLimitYocto), 0n).toString());
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function unallocatedAuthorityNear(budget: NonNullable<Dashboard["budget"]>, allocations?: Dashboard["allocations"]) {
+  try {
+    const allocated = (allocations ?? []).reduce((sum, item) => sum + BigInt(item.allocationLimitYocto), 0n);
+    return near((BigInt(budget.totalLimitYocto) - allocated).toString());
+  } catch {
+    return "Unavailable";
+  }
+}
+
 function parseNearToYocto(value: string): bigint | null {
   const match = value.trim().match(/^(0|[1-9]\d*)(?:\.(\d{1,24}))?$/);
   if (!match) return null;
@@ -623,6 +640,8 @@ export default function Home() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginTop: 20 }}>
             {[
               ["Total budget", near(dashboard.budget.totalLimitYocto)],
+              ["Allocated to agents", totalAgentAllocationsNear(dashboard.allocations)],
+              ["Unallocated authority", unallocatedAuthorityNear(dashboard.budget, dashboard.allocations)],
               ["Spent", near(dashboard.budget.spentYocto)],
               ["Reserved", near(dashboard.budget.reservedYocto)],
               ["Available", availableNear(dashboard.budget)]
@@ -636,7 +655,7 @@ export default function Home() {
             <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
               <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
             </label>
-            <p style={{ color: "#64748b", fontSize: 12 }}>The limit cannot be reduced below spent plus reserved funds. Changes are recorded in the admin audit log.</p>
+            <p style={{ color: "#64748b", fontSize: 12 }}>The limit cannot be reduced below spent plus reserved funds or below the sum of agent allocations. Changes are recorded in the admin audit log.</p>
             <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
             {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
           </form>
