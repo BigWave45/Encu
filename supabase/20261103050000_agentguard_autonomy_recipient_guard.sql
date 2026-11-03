@@ -133,10 +133,6 @@ begin
   if v_policy.max_transfer_yocto is not null and p_amount_yocto > v_policy.max_transfer_yocto then
     return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'agent_per_transfer_limit');
   end if;
-  if v_policy.allowed_recipients is not null and not (p_recipient = any(v_policy.allowed_recipients)) then
-    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'recipient_not_allowed');
-  end if;
-
   select * into v_recipient_auth
   from public.agent_authorized_recipients
   where agent_id = p_agent_id and account_id = p_recipient
