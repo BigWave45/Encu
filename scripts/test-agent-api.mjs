@@ -951,6 +951,28 @@ try {
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
   assert(response.status === 409 && counters.provider === providerBeforeAuto + 1, "autonomous request replay cannot submit a duplicate provider transfer");
 
+  const providerBeforeAutoOverflow = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-overflow-001", to: "recipient.near", amount: "60000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "awaiting_approval", "request beyond remaining autonomous allowance falls back to admin approval");
+  assert(counters.provider === providerBeforeAutoOverflow, "autonomous allowance overflow does not reach OutLayer");
+  response = await approveTransfer("test-auto-overflow-001", "reject");
+  assert(response.status === 200, "admin can reject a request routed to approval after autonomous allowance is exhausted");
+
+  const providerBeforeAutoTimeout = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-timeout-001", to: "timeout.test", amount: "10000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review" && payload.reason === "outlayer_timeout_or_connection_error", "autonomous provider timeout is retained as needs_review");
+  assert(counters.provider === providerBeforeAutoTimeout + 1, "autonomous timeout makes one provider attempt only");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-timeout-001", to: "timeout.test", amount: "10000000000000000000000" });
+  assert(response.status === 409 && counters.provider === providerBeforeAutoTimeout + 1, "autonomous timeout replay cannot retry an ambiguous provider submission");
+
+  const providerBeforeAutoError = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-provider-error-001", to: "provider-error.test", amount: "10000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review" && payload.reason === "unclassified_outlayer_response_502", "autonomous provider 5xx response is retained for review");
+  assert(counters.provider === providerBeforeAutoError + 1, "autonomous provider 5xx makes one provider attempt only");
+
   // A second app process runs with a mainnet provider URL. The route must
   // refuse before reservation or provider execution, even in CI test mode.
   const guardPort = 3002;
