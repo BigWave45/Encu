@@ -273,6 +273,11 @@ jobs:
           $recipient_revocation$;
           SQL
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('recipient-revocation-pending-001','admin','revoked recipient test');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('primary','claimed.testnet','claimed submission test',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('recipient-claimed-inflight-001',500000000000000000000000,'claimed.testnet','primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('recipient-claimed-inflight-001','admin');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.revoke_agent_recipient('primary','claimed.testnet','claimed submission revoke','admin');" | jq -e '.claimed_inflight == 1 and .provider_submitted == 0' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('recipient-claimed-inflight-001','failed',NULL,'mock claimed request cleanup');" | jq -e '.status == "failed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('primary','revoked.testnet','reactivated recipient',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('recipient-reactivated-001',500000000000000000000000,'revoked.testnet','primary');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('recipient-reactivated-001','admin','release reactivated recipient test');" | jq -e '.status == "rejected"' >/dev/null
