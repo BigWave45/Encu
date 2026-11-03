@@ -694,7 +694,7 @@ export default function Home() {
           {[
             ["Overview", "#overview"], ["Treasury", "#treasury-settings"], ["Agents", "#agents"],
             ["Recipients", "#recipients"], ["Payments", "#payments"], ["Approvals", "#approvals"],
-            ["Security & audit", "#security-events"], ["Health", "#system-health"], ["Developer tools", "#developer-tools"]
+            ["Security & audit", "#admin-audit"], ["Health", "#system-health"], ["Developer tools", "#developer-tools"], ["Agent access", "#agent-access"]
           ].map(([label, href]) => <a key={href} href={href} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 999, color: "#334155", textDecoration: "none", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</a>)}
         </nav>}
         <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
@@ -903,7 +903,7 @@ export default function Home() {
               <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) >= (dashboard.reservationPage?.totalPages ?? 1)} onClick={() => loadDashboard((dashboard.reservationPage?.page ?? 1) + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
             </div>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
+          <h3 id="admin-audit" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
               <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
