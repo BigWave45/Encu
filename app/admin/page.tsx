@@ -1,5 +1,7 @@
 "use client";
 
+import "../dashboard.css";
+
 import { Fragment, useState } from "react";
 
 type BalanceResult = {
