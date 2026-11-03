@@ -93,13 +93,16 @@ export async function POST(request: NextRequest) {
     p_actor_agent_id: identity.agentId
   });
   if (approvalError) {
+    const reason = typeof approvalError.message === "string" && /^[a-z0-9_]+$/.test(approvalError.message)
+      ? approvalError.message
+      : "approval_rpc_error";
     await recordSecurityEvent({
       actorAgentId: identity.agentId,
       eventType: "transfer_approval_blocked",
       requestId: parsed.data.requestId,
-      details: { reason: "approval_rpc_error", code: approvalError.code ?? null }
+      details: { reason, code: approvalError.code ?? null }
     });
-    return NextResponse.json({ error: "transfer_approval_failed", reason: approvalError.message }, { status: 409 });
+    return NextResponse.json({ error: "transfer_approval_failed", reason }, { status: 409 });
   }
   if (approved?.approved === false) {
     const reason = String(approved.reason ?? "transfer_approval_blocked");
