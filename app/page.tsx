@@ -152,7 +152,7 @@ export default function Home() {
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyMessage, setPolicyMessage] = useState("");
   const [requestAgentToken, setRequestAgentToken] = useState("");
-  const [requestAgentLabel, setRequestAgentLabel] = useState("Alpha");
+  const [requestAgentId, setRequestAgentId] = useState("test-agent-alpha");
   const [requestRecipient, setRequestRecipient] = useState("lensherr.testnet");
   const [requestAmount, setRequestAmount] = useState("3");
   const [requestBusy, setRequestBusy] = useState(false);
@@ -499,12 +499,13 @@ export default function Home() {
         body: JSON.stringify({
           requestId: `ag-${crypto.randomUUID()}`,
           to: requestRecipient.trim(),
-          amountYocto: amount.toString()
+          amountYocto: amount.toString(),
+          expectedAgentId: requestAgentId
         }),
         cache: "no-store"
       });
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
-      setRequestResult({ httpStatus: response.status, agentLabel: requestAgentLabel, ...body });
+      setRequestResult({ httpStatus: response.status, ...body });
     } catch {
       setRequestResult({ error: "Could not reach AgentGuard. Request outcome is unconfirmed; check transaction history before retrying." });
     } finally {
@@ -732,10 +733,11 @@ export default function Home() {
         <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
             Test agent
-            <select value={requestAgentLabel} onChange={event => setRequestAgentLabel(event.target.value)} style={{ ...inputStyle, marginTop: 6 }}>
-              <option value="Alpha">Alpha</option>
-              <option value="Beta">Beta</option>
+            <select value={requestAgentId} onChange={event => setRequestAgentId(event.target.value)} style={{ ...inputStyle, marginTop: 6 }}>
+              <option value="test-agent-alpha">Alpha · test-agent-alpha</option>
+              <option value="test-agent-beta">Beta · test-agent-beta</option>
             </select>
+            <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 400, marginTop: 5 }}>AgentGuard verifies this selection against the identity in the token. A mismatch is rejected before reserving funds.</span>
           </label>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
             Agent credential
