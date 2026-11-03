@@ -63,6 +63,15 @@ const mock = createServer(async (req, res) => {
       });
     }
     if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
+    if (req.method === "GET" && url.pathname === "/wallet/v1/policy") return send(res, 200, {
+      policy: {
+        rules: { limits: { per_transaction: { native: "1000000000000000000000000" } }, transaction_types: ["transfer"] },
+        approval: { threshold: { required: 1 }, approvers: [{ id: "lensherr.testnet", role: "admin" }] },
+        capabilities: { evm_sign: { allowed: false }, solana_sign: { allowed: false } },
+        api_key: "must-not-be-returned"
+      },
+      internal_debug: "must-not-be-returned"
+    });
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_budgets") {
       if (mockBudgetReadError) return send(res, 500, {
         code: "42501",
@@ -910,6 +919,17 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.reason === "provider_transaction_hash_conflict", "conflicting provider hash is not overwritten");
 
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/outlayer-policy`, {
+    headers: { authorization: "Bearer agent-one-token" }
+  });
+  assert(response.status === 403, "agent credential cannot inspect the OutLayer wallet policy");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/outlayer-policy`, {
+    headers: { authorization: "Bearer admin-token" }
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.policy?.approval?.threshold?.required === 1, "admin can inspect the effective OutLayer approval policy");
+  assert(!JSON.stringify(payload).includes("must-not-be-returned"), "OutLayer policy inspection strips unrelated provider fields and secrets");
 
   rateWindows.clear();
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
