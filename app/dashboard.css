@@ -1146,3 +1146,98 @@ body {
   .bulk-toolbar > span { width: 100%; }
   .bulk-toolbar button { flex: 1 1 42%; }
 }
+
+
+/* ENCU contrast correction: enforce readable foregrounds on every V2 surface. */
+.encu-v2 .encu-intro {
+  display: block;
+  padding: 38px 30px 28px;
+  border: 1px solid #26372d;
+  border-radius: 18px;
+  background: #17251e !important;
+  color: #f4f5ed !important;
+}
+.encu-v2 .encu-intro > div:first-child { max-width: 780px; }
+.encu-v2 .encu-intro .encu-eyebrow,
+.encu-v2 .encu-intro .encu-note-kicker {
+  color: #b9c9b9 !important;
+}
+.encu-v2 .encu-intro h1 {
+  color: #f5f6ef !important;
+}
+.encu-v2 .encu-intro .encu-lede {
+  color: #d0d9ce !important;
+}
+.encu-v2 .encu-intro-note {
+  max-width: 100%;
+  margin-top: 22px;
+  padding: 18px 20px;
+  background: #f7f8f5 !important;
+  border: 1px solid #dce4da !important;
+  color: #26372b !important;
+}
+.encu-v2 .encu-intro-note strong { color: #203027 !important; }
+.encu-v2 .encu-intro-note > span:last-child { color: #536258 !important; }
+
+.encu-v2 .encu-live-strip { background: #dce4da !important; }
+.encu-v2 .encu-live-strip > div { background: #fff !important; }
+.encu-v2 .encu-live-strip .encu-live-label {
+  color: #59685d !important;
+  font-weight: 800 !important;
+}
+.encu-v2 .encu-live-strip strong { color: #203027 !important; }
+.encu-v2 .encu-live-strip strong small {
+  color: #59685d !important;
+}
+.encu-v2 .metric-card > div:first-child {
+  color: #59685d !important;
+}
+.encu-v2 .metric-card > div:last-child,
+.encu-v2 .metric-card > div:last-child span {
+  color: #203027 !important;
+}
+.encu-v2 .dashboard-workspace h2,
+.encu-v2 .dashboard-workspace h3,
+.encu-v2 .dashboard-workspace h4,
+.encu-v2 .dashboard-workspace strong {
+  color: #203027 !important;
+}
+.encu-v2 .dashboard-workspace p,
+.encu-v2 .dashboard-workspace small,
+.encu-v2 .dashboard-workspace label,
+.encu-v2 .dashboard-workspace span {
+  color: #536258;
+}
+.encu-v2 .dashboard-workspace [role="alert"] { color: #9b3328 !important; }
+.encu-v2 .dashboard-workspace [role="status"] { color: #285b38 !important; }
+.encu-v2 #agent-access,
+.encu-v2 #developer-tools {
+  background: #fff !important;
+  border-color: #dce4da !important;
+  color: #26372b !important;
+}
+.encu-v2 #agent-access h2,
+.encu-v2 #developer-tools h2 { color: #203027 !important; }
+.encu-v2 #agent-access p,
+.encu-v2 #developer-tools p { color: #536258 !important; }
+.encu-v2 #agent-access label,
+.encu-v2 #developer-tools label { color: #34483a !important; }
+.encu-v2 #agent-access input,
+.encu-v2 #developer-tools input,
+.encu-v2 #agent-access select,
+.encu-v2 #developer-tools select {
+  background: #f7f9f5 !important;
+  color: #1b2a20 !important;
+  border-color: #cbd8c9 !important;
+}
+.encu-v2 .console-table th,
+.encu-v2 .history-table thead th { color: #435348 !important; }
+.encu-v2 .console-table td,
+.encu-v2 .history-table td { color: #26372b !important; }
+.encu-v2 .console-panel .bulk-toolbar,
+.encu-v2 .console-panel .bulk-message { color: #34483a !important; }
+
+@media (max-width: 760px) {
+  .encu-v2 .encu-intro { padding: 28px 20px 22px; }
+  .encu-v2 .encu-intro-note { margin-top: 20px; }
+}
