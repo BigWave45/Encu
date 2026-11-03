@@ -6,7 +6,7 @@ Purpose: preserve every working control while reorganizing the existing administ
 
 ## Current presentation
 
-The dashboard remains a single client component in `app/page.tsx`. It currently renders:
+The dashboard remains a single client component in `app/page.tsx`. A first navigation pass now widens the content area, adds a sticky in-page navigation row, and anchors the existing controls under Overview, Treasury, Agents, Recipients, Payments, Approvals, Security & audit, Health, Developer tools and Agent access. It is still one page, not separate routes or tab panels. The navigation is an incremental presentation improvement, not a backend or policy change. It currently renders:
 - Token entry and authenticated dashboard loading.
 - Shared budget dashboard and system health.
 - Treasury budget summary and global transfer control.
