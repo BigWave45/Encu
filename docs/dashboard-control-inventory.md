@@ -72,3 +72,19 @@ The dashboard is implemented in one client component: `app/page.tsx`. It combine
 ## Next implementation gate
 
 Do not begin visual rearrangement until the existing controls have been mapped to the intended navigation and the underlying treasury/allocation, recipient, policy-version and execution-profile contracts are specified. UI work must not imply enforcement that the API and database do not yet provide. Preserve existing endpoints and operational controls during the refactor.
+
+
+## Allocation-control addendum (2026-11-03)
+
+The dashboard now reads the per-agent allocation ledger and exposes an administrator control for assigning each agent a cumulative allocation ceiling.
+
+- Dashboard read: `GET /api/admin/dashboard` now returns `allocations[]` with agent ID, allocation limit, spent, reserved, updated time and actor.
+- Allocation write: `PATCH /api/admin/agents/allocation` accepts an exact agent ID and integer yocto allocation. It is admin-authenticated and rate-limited. It calls `set_agent_allocation`; the database enforces committed-exposure and aggregate treasury ceilings.
+- Dashboard UI: the Shared budget dashboard now displays total allocated authority and unallocated authority, plus a per-agent allocation editor showing spent, reserved and available amounts.
+- Provisioning: new agents receive a zero allocation in `create_agent_with_audit`; credential creation does not grant spending authority.
+- Treasury limit: `update_agent_budget_limit` rejects a new ceiling below either spent + reserved or the sum of agent allocation limits.
+- Transfer preparation: `reserve_agent_spend` returns a policy block when the request would exceed the agent allocation. It reserves both ledgers atomically.
+- Settlement: reject, safe expiry cancellation, final execution, final failure and NEAR-FINAL failed resolution update both ledgers atomically. Provider submission and `needs_review` retain reserved exposure.
+- Lock order: treasury row, agent allocation row, reservation row. The enforcement migration re-backfills under the treasury lock and takes a table lock on agents to cover legacy provisioning between the additive schema and enforcement migrations.
+
+The two migrations are applied to the isolated AgentGuard Test Supabase project only. Production remains unchanged. The Vercel Preview deployment has not yet been updated because the Hobby team build-rate limit is still outstanding.
