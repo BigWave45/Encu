@@ -189,6 +189,37 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',NULL,NULL,NULL,NULL,'admin');" >/dev/null
           echo "PASS: tightened policy downgrades autonomous request to approval and preserves both ledgers."
 
+          # Emergency stop asserted after autonomous reservation but before the
+          # submission claim must also downgrade execution and preserve exposure.
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',1000000000000000000000000,NULL,NULL,NULL,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',1000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-auto-emergency-downgrade',500000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true and .auto_approved == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(false,'admin');" | jq -e '.transfers_enabled == false' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.claim_agent_auto_submission('ag-auto-emergency-downgrade','primary','agentguard-test.near');" | jq -e '.claimed == false and .awaiting_approval == true and .reason == "emergency_stop"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'admin');" | jq -e '.transfers_enabled == true' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
+          DO $agentguard_test$
+          DECLARE row_status text; auto_flag boolean; claim_at timestamptz; treasury_reserved numeric; agent_reserved numeric;
+          BEGIN
+            SELECT status,auto_approved,submission_claimed_at INTO row_status,auto_flag,claim_at
+              FROM public.spend_reservations WHERE request_id='ag-auto-emergency-downgrade';
+            SELECT reserved_yocto INTO treasury_reserved FROM public.agent_budgets WHERE id='default';
+            SELECT reserved_yocto INTO agent_reserved FROM public.agent_allocations WHERE agent_id='primary';
+            IF row_status<>'awaiting_approval' OR auto_flag OR claim_at IS NOT NULL
+               OR treasury_reserved<>500000000000000000000000
+               OR agent_reserved<>500000000000000000000000 THEN
+              RAISE EXCEPTION 'emergency_auto_downgrade_mismatch: status=%, auto=%, claim=%, treasury_reserved=%, agent_reserved=%',
+                row_status,auto_flag,claim_at,treasury_reserved,agent_reserved;
+            END IF;
+          END
+          $agentguard_test$;
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-auto-emergency-downgrade','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',NULL,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',NULL,NULL,NULL,NULL,'admin');" >/dev/null
+          echo "PASS: emergency stop before autonomous submission downgrades to approval and preserves both ledgers."
 
           # Persistent rate limits must serialize requests from independent clients.
           for i in $(seq 1 10); do
