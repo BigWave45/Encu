@@ -3,7 +3,59 @@
 -- Lock order for all mutating paths: treasury -> agent allocation -> reservation.
 begin;
 
-create or replace function public.set_agent_allocation(
+-- Phase 1 is deliberately additive so old application instances can continue
+-- running between migrations. Reconcile again under the treasury row lock here
+-- before replacing any RPC, covering reservations/agents created in that gap.
+do $allocation_reconcile$
+declare
+  v_budget public.agent_budgets%rowtype;
+  v_spent numeric;
+  v_reserved numeric;
+  v_unknown bigint;
+  v_allocated numeric;
+begin
+  select * into v_budget from public.agent_budgets where id='default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
+
+  insert into public.agent_allocations(agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto)
+  select a.id,0,0,0 from public.agents a
+  where not exists (select 1 from public.agent_allocations aa where aa.agent_id=a.id);
+
+  select
+    coalesce(sum(amount_yocto) filter(where status='executed'),0),
+    coalesce(sum(amount_yocto) filter(where status in ('awaiting_approval','reserved','needs_review')),0),
+    count(*) filter(where status not in ('awaiting_approval','reserved','needs_review','executed','failed','rejected','cancelled'))
+  into v_spent,v_reserved,v_unknown
+  from public.spend_reservations;
+
+  if v_unknown<>0 then raise exception 'allocation_reconcile_unknown_reservation_statuses: %',v_unknown; end if;
+  if v_spent<>v_budget.spent_yocto or v_reserved<>v_budget.reserved_yocto then
+    raise exception 'allocation_reconcile_treasury_ledger_mismatch';
+  end if;
+
+  update public.agent_allocations aa
+  set spent_yocto=coalesce(r.spent,0),
+      reserved_yocto=coalesce(r.reserved,0),
+      allocation_limit_yocto=greatest(aa.allocation_limit_yocto,coalesce(r.spent,0)+coalesce(r.reserved,0)),
+      updated_at=pg_catalog.now()
+  from (
+    select a.id as agent_id,
+      coalesce(sum(sr.amount_yocto) filter(where sr.status='executed'),0) as spent,
+      coalesce(sum(sr.amount_yocto) filter(where sr.status in ('awaiting_approval','reserved','needs_review')),0) as reserved
+    from public.agents a
+    left join public.spend_reservations sr on sr.agent_id=a.id
+    group by a.id
+  ) r
+  where aa.agent_id=r.agent_id;
+
+  select coalesce(sum(allocation_limit_yocto),0) into v_allocated from public.agent_allocations;
+  if v_allocated>v_budget.total_limit_yocto then
+    raise exception 'allocation_reconcile_allocations_exceed_treasury';
+  end if;
+end;
+$allocation_reconcile$;
+
+(
  p_agent_id text,p_allocation_limit_yocto numeric,p_actor_agent_id text
 ) returns jsonb
 language plpgsql security definer set search_path = ''
