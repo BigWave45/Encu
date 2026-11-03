@@ -39,13 +39,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "rejected", result: data });
   }
 
-  // Validate the current provider/network configuration and global transfer
+  // Validate provider configuration, executor identity, and global transfer
   // cap before consuming the one-time approval.
+  let providerConfig: ReturnType<typeof getOutLayerConfig>;
   try {
-    getOutLayerConfig();
+    providerConfig = getOutLayerConfig();
   } catch (error) {
     const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
     return NextResponse.json({ error: reason }, { status: 503 });
+  }
+
+  // Fail closed if the live OutLayer executor differs from the signer used for
+  // independent NEAR finality verification. Do this before consuming approval.
+  try {
+    const addressResponse = await fetch(`${providerConfig.baseUrl}/wallet/v1/address?chain=near`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${providerConfig.apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!addressResponse.ok) {
+      return NextResponse.json({ error: "outlayer_signer_unavailable" }, { status: 503 });
+    }
+    const addressBody = await addressResponse.json().catch(() => null) as Record<string, unknown> | null;
+    const actualAddress = addressBody && (
+      typeof addressBody.executor_account_id === "string" ? addressBody.executor_account_id :
+      typeof addressBody.address === "string" ? addressBody.address :
+      typeof addressBody.near_address === "string" ? addressBody.near_address :
+      typeof addressBody.account_id === "string" ? addressBody.account_id : null
+    );
+    if (!actualAddress || actualAddress !== providerConfig.nearAddress) {
+      return NextResponse.json({ error: "outlayer_signer_mismatch" }, { status: 503 });
+    }
+  } catch {
+    return NextResponse.json({ error: "outlayer_signer_unavailable" }, { status: 503 });
   }
 
   const { data: pending, error: pendingError } = await db.from("spend_reservations")
