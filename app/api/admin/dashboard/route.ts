@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       `request_id.ilike.%${search}%,agent_id.ilike.%${search}%,recipient.ilike.%${search}%,outlayer_tx_hash.ilike.%${search}%,outlayer_request_id.ilike.%${search}%`
     );
     reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
-    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult, controlsResult, policiesResult, allocationsResult] = await Promise.all([
+    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult, controlsResult, policiesResult, allocationsResult, recipientsResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
@@ -74,14 +74,18 @@ export async function GET(request: NextRequest) {
         .eq("id", "default")
         .maybeSingle(),
       db.from("agent_policies")
-        .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,allowed_recipients,updated_at,updated_by")
+        .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,updated_at,updated_by")
         .order("agent_id", { ascending: true }),
       db.from("agent_allocations")
         .select("agent_id,allocation_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at,updated_by")
+        .order("agent_id", { ascending: true }),
+      db.from("agent_authorized_recipients")
+        .select("agent_id,account_id,label,status,authorized_at,authorized_by,expires_at,revoked_at,revoked_by,updated_at")
         .order("agent_id", { ascending: true })
+        .order("account_id", { ascending: true })
     ]);
 
-    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error || controlsResult.error || policiesResult.error || allocationsResult.error || !controlsResult.data) {
+    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error || controlsResult.error || policiesResult.error || allocationsResult.error || recipientsResult.error || !controlsResult.data) {
       return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
     }
     if (!budgetResult.data) {
@@ -107,9 +111,20 @@ export async function GET(request: NextRequest) {
         maxTransferYocto: policy.max_transfer_yocto,
         dailyLimitYocto: policy.daily_limit_yocto,
         weeklyLimitYocto: policy.weekly_limit_yocto,
-        allowedRecipients: policy.allowed_recipients,
         updatedAt: policy.updated_at,
         updatedBy: policy.updated_by
+      })),
+      recipients: (recipientsResult.data ?? []).map((recipient) => ({
+        agentId: recipient.agent_id,
+        accountId: recipient.account_id,
+        label: recipient.label,
+        status: recipient.status,
+        authorizedAt: recipient.authorized_at,
+        authorizedBy: recipient.authorized_by,
+        expiresAt: recipient.expires_at,
+        revokedAt: recipient.revoked_at,
+        revokedBy: recipient.revoked_by,
+        updatedAt: recipient.updated_at
       })),
       allocations: (allocationsResult.data ?? []).map((allocation) => ({
         agentId: allocation.agent_id,
