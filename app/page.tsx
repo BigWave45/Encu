@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import "./dashboard.css";
 
 type BalanceResult = {
@@ -953,7 +953,7 @@ export default function Home() {
                   const released = ["failed", "rejected", "cancelled"].includes(item.status);
                   const providerLabel = item.providerRequestId || item.txHash ? "Reference recorded" : item.status === "needs_review" ? "Outcome ambiguous" : item.status === "reserved" ? "Submission in progress" : ["awaiting_approval", "rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No reference";
                   const finalityLabel = item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash";
-                  return <React.Fragment key={item.requestId}>
+                  return <Fragment key={item.requestId}>
                     <tr className="history-primary-row">
                       <td><strong className="history-amount">{near(item.amountYocto)} NEAR</strong><span className="history-subline">{item.requestId}</span></td>
                       <td><strong>{item.agentId}</strong><span className="history-subline">{item.recipient}</span></td>
@@ -980,7 +980,7 @@ export default function Home() {
                         {item.resolutionEvidenceReference && <div><span>Resolution evidence</span><code>{item.resolutionEvidenceReference}</code></div>}
                       </div>
                     </td></tr>
-                  </React.Fragment>;
+                  </Fragment>;
                 })}</tbody>
               </table>
             </div>}
