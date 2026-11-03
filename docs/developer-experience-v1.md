@@ -31,7 +31,7 @@ The administrator token is an operator credential. It is not a developer login a
 
 **Current capability:** `POST /api/agent/agents` creates an agent and returns its generated bearer token once. Allocation and policy controls exist in the dashboard/API.
 
-**Experience requirement:** collect a stable agent ID and display name, then configure its allocation, per-transfer cap, rolling spend limits and autonomous allowance. Explain that autonomous allowance is a sub-limit, not an increase to the agent allocation or shared treasury ceiling.
+**Experience requirement:** collect a stable agent ID and display name, then configure its allocation, per-transfer cap, rolling spend limits and autonomous allowance. Explain that autonomous allowance is a cumulative sub-limit, not an increase to the agent allocation or shared treasury ceiling. The current provisioning endpoint issues the token at creation; until setup is complete, the operator must not hand it to an active agent.
 
 **Acceptance:** creation is admin-only; generated token is shown once with an explicit copy/save warning; only its hash is persisted; duplicate/reserved IDs fail safely; allocation and policy updates cannot exceed treasury or committed exposure.
 
@@ -55,11 +55,45 @@ The administrator token is an operator credential. It is not a developer login a
 
 **Current capability:** `POST /api/agent/transfer` accepts a stable `requestId`, exact recipient account and integer `amountYocto`. The authenticated credential determines agent identity.
 
-**Experience requirement:** provide copyable curl/TypeScript examples, explain yoctoNEAR amounts, idempotency and response states. The developer should be able to run a non-broadcasting validation/health check before any value-moving request. Do not invent a dry-run endpoint unless one is implemented.
+**Experience requirement:** provide a copyable HTTP request example, explain yoctoNEAR amounts, idempotency and response states. The developer should be able to run a non-broadcasting validation/health check before any value-moving request. Do not invent a dry-run endpoint unless one is implemented.
 
 **Acceptance:** invalid recipient/amount, wrong identity, duplicate request ID and changed-payload replay have clear outcomes. Replays never create a second provider submission.
 
-### 6. Authorization, approval and execution
+## Copy-ready integration quickstart
+
+The following is the agent-side contract. Substitute values from the operator; never put the administrator token, OutLayer API key or Supabase service-role key in agent code.
+
+1. Check service readiness with `GET /api/health`. This endpoint is read-only and does not validate a particular transfer.
+2. Check the agent wallet balance with `GET /api/agent/balance`, using the agent bearer token.
+3. Submit a transfer only when the operator has completed allocation, spending-policy and recipient setup.
+
+Example request shape:
+
+```http
+POST /api/agent/transfer
+Authorization: Bearer <AGENT_TOKEN>
+Content-Type: application/json
+
+{
+  "requestId": "<STABLE_ID_FOR_THIS_LOGICAL_PAYMENT>",
+  "to": "<EXACT_AUTHORIZED_NEAR_ACCOUNT_ID>",
+  "amountYocto": "<POSITIVE_INTEGER_STRING>"
+}
+```
+
+`amountYocto` is an integer string in yoctoNEAR (1 NEAR = 10^24 yoctoNEAR). Do not use floating-point arithmetic. Generate a request ID once for a logical payment and reuse that exact ID only when retrying the same agent/recipient/amount operation. A changed payload under the same ID is an idempotency conflict.
+
+Interpret responses conservatively:
+- `202 awaiting_approval`: funds are reserved; ENCU has not called OutLayer. An administrator must review the request.
+- `202 needs_review`: the provider may have accepted the request or its outcome is ambiguous. Do not create a new request ID or blindly resubmit.
+- `403`: policy, recipient, allocation, limit or emergency-stop denial.
+- `409`: idempotency conflict.
+- `429`: rate limit.
+- `401`/`503`: authentication or service availability problem.
+
+A successful HTTP response is not proof of payment. Provider status is diagnostic only. ENCU settles the reservation only after reconciliation verifies the matching transaction on NEAR with FINAL execution evidence. The dashboard's Testnet request panel is a live request path, not a dry run.
+
+## 6. Authorization, approval and execution
 
 **Current capability:** ENCU atomically reserves shared treasury and agent allocation. Requests within the configured autonomous allowance can be submitted once after an atomic policy revalidation. Requests outside the allowance enter administrator approval. Tightened policy, revoked recipient or emergency stop before provider claim prevents autonomous submission and can downgrade it to approval.
 

@@ -155,7 +155,7 @@ function parseNearToYocto(value: string): bigint | null {
 }
 
 export default function Home() {
-  const [activeView, setActiveView] = useState("overview");
+  const [activeView, setActiveView] = useState("setup");
   const [token, setToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [result, setResult] = useState<BalanceResult | null>(null);
@@ -165,6 +165,7 @@ export default function Home() {
   const [outLayerPolicy, setOutLayerPolicy] = useState<OutLayerPolicyResult | null>(null);
   const [outLayerPolicyLoading, setOutLayerPolicyLoading] = useState(false);
   const [agentId, setAgentId] = useState("research-agent");
+  const [setupAgentId, setSetupAgentId] = useState("research-agent");
   const [agentName, setAgentName] = useState("Research Agent");
   const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -739,7 +740,16 @@ export default function Home() {
       });
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setAgentResult(body);
-      if (response.ok) await loadDashboard();
+      if (response.ok) {
+        const createdId = body.agent?.id;
+        if (createdId) {
+          setSetupAgentId(createdId);
+          setAllocationAgent(createdId);
+          setPolicyAgent(createdId);
+          setRecipientAgent(createdId);
+        }
+        await loadDashboard();
+      }
     } catch {
       setAgentResult({ error: "Could not reach ENCU. Check your connection and try again." });
     } finally {
@@ -785,6 +795,18 @@ export default function Home() {
   const panel = { marginTop: 24, padding: 20, border: "1px solid #e2e8f0", borderRadius: 12 };
   const inputStyle = { boxSizing: "border-box" as const, width: "100%", padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 16 };
   const buttonStyle = { marginTop: 12, padding: "11px 18px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontSize: 15, cursor: "pointer" as const };
+  const onboardingAgent = dashboard?.agents?.find(agent => agent.id === setupAgentId && agent.id !== "primary")
+    ?? dashboard?.agents?.find(agent => agent.id !== "primary");
+  const onboardingId = onboardingAgent?.id ?? setupAgentId;
+  const onboardingAllocation = dashboard?.allocations?.find(item => item.agentId === onboardingId);
+  const onboardingPolicy = dashboard?.policies?.find(item => item.agentId === onboardingId);
+  const onboardingRecipients = (dashboard?.recipients ?? []).filter(item =>
+    item.agentId === onboardingId && item.status === "active" && (!item.expiresAt || new Date(item.expiresAt).getTime() > Date.now())
+  );
+  const onboardingHealthReady = health?.status === "ok";
+  const onboardingPolicyReady = Boolean(onboardingPolicy && onboardingPolicy.autoSpendLimitYocto !== null
+    && BigInt(onboardingPolicy.autoSpendLimitYocto) > 0n);
+  const onboardingCredentialIssued = Boolean(agentResult?.token && agentResult.agent?.id === onboardingId);
 
   return (
     <main className="dashboard-shell encu-v2" style={{ maxWidth: 1440, margin: "0 auto", padding: "28px clamp(14px, 3vw, 44px) 72px", fontFamily: "Arial, sans-serif" }}>
@@ -851,10 +873,92 @@ export default function Home() {
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
         {dashboard && <nav className="dashboard-nav" aria-label="Dashboard views" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
           {[
-            ["overview", "01", "Overview"], ["treasury", "02", "Treasury"], ["agents", "03", "Agents"], ["recipients", "04", "Recipients"],
-            ["payments", "05", "Transfers"], ["security", "06", "Audit trail"], ["system", "07", "System"], ["developer", "08", "API test"], ["access", "09", "Credentials"]
+            ["setup", "01", "Connect agent"], ["overview", "02", "Overview"], ["treasury", "03", "Treasury"], ["agents", "04", "Agents"], ["recipients", "05", "Recipients"],
+            ["payments", "06", "Transfers"], ["security", "07", "Audit trail"], ["system", "08", "System"], ["developer", "09", "API test"], ["access", "10", "Credentials"]
           ].map(([view, number, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}><span className="nav-index">{number}</span><span>{label}</span></button>)}
         </nav>}
+        <div hidden={activeView !== "setup"} className="agent-onboarding-panel" style={{ marginTop: 18, padding: 20, border: "1px solid #cbd5e1", borderRadius: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div><span className="encu-eyebrow">FIRST-TIME SETUP</span><h3 style={{ margin: "5px 0", fontSize: 19 }}>Connect an agent</h3>
+              <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Configure authority before integrating the agent. This workflow does not submit a transfer.</p></div>
+            <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>
+              {dashboardLoading ? "Refreshing…" : "Refresh setup status"}
+            </button>
+          </div>
+          <label style={{ display: "block", marginTop: 18, fontSize: 13, fontWeight: 600 }}>Agent being configured
+            <select value={onboardingId} onChange={event => {
+              const id = event.target.value;
+              setSetupAgentId(id); setAllocationAgent(id); setPolicyAgent(id); setRecipientAgent(id);
+              const allocation = dashboard.allocations?.find(item => item.agentId === id);
+              const policy = dashboard.policies?.find(item => item.agentId === id);
+              setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
+              setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
+              setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
+              setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
+              setPolicyAuto(policy?.autoSpendLimitYocto != null ? yoctoToInput(policy.autoSpendLimitYocto) : "");
+            }} style={{ ...inputStyle, marginTop: 6 }}>
+              {(dashboard.agents ?? []).filter(agent => agent.id !== "primary").map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+            </select>
+          </label>
+          {!onboardingAgent && <p style={{ color: "#92400e", fontSize: 13, marginTop: 12 }}>No non-primary agent exists yet. Create one in Agent access before continuing.</p>}
+          <ol style={{ display: "grid", gap: 12, paddingLeft: 22, margin: "18px 0 0" }}>
+            <li>
+              <strong>Verify environment readiness</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Checks Supabase, OutLayer connectivity and signer match, plus the configured NEAR RPC network. Read-only; it does not move funds.</p>
+              <span className={onboardingHealthReady ? "status-pill status-executed" : "status-pill status-cancelled"}>{health ? String(health.status ?? "unknown") : "Not checked"}</span>
+              <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, display: "block" }}>{healthLoading ? "Checking…" : "Run readiness check"}</button>
+            </li>
+            <li>
+              <strong>Create the agent identity</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Provisioning creates the agent and returns its bearer token once. The token is issued at creation, before policy setup, so store it securely and do not give it to an unconfigured agent.</p>
+              <span className={onboardingAgent ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingAgent ? "Agent exists" : "Required"}</span>
+              <button type="button" onClick={() => setActiveView("access")} style={buttonStyle}>{onboardingAgent ? "Manage agent credentials" : "Create agent"}</button>
+            </li>
+            <li>
+              <strong>Assign treasury allocation and spending limits</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Allocation is the agent's hard sub-limit. Per-transfer and rolling 24-hour/7-day limits are additional caps. Autonomous allowance is a cumulative sub-limit within those ceilings; requests beyond it require administrator approval.</p>
+              <span className={onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "Allocation and autonomous allowance configured" : "Incomplete"}</span>
+              <button type="button" disabled={!onboardingAgent} onClick={() => setActiveView("agents")} style={buttonStyle}>Configure allocation and policy</button>
+            </li>
+            <li>
+              <strong>Authorize exact recipient account IDs</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Only active, unexpired exact NEAR account IDs are eligible. Labels do not affect authorization.</p>
+              <span className={onboardingRecipients.length ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingRecipients.length ? onboardingRecipients.length + " active recipient(s)" : "No active recipient"}</span>
+              <button type="button" disabled={!onboardingAgent} onClick={() => setActiveView("recipients")} style={buttonStyle}>Manage recipients</button>
+            </li>
+            <li>
+              <strong>Store the agent credential and integrate</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>The token is displayed once at creation or rotation. Store it in the agent's server-side secret manager. Never use the administrator token or OutLayer API key in agent code.</p>
+              <span className={onboardingCredentialIssued ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingCredentialIssued ? "New token available in credential panel" : "Credential handoff not confirmed in this session"}</span>
+              <button type="button" onClick={() => setActiveView("access")} style={buttonStyle}>Open credential handoff</button>
+            </li>
+          </ol>
+          <section aria-label="Agent API quickstart" style={{ marginTop: 18, padding: 16, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <strong>Agent API quickstart</strong>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`GET /api/health
+GET /api/agent/balance
+
+POST /api/agent/transfer
+Authorization: Bearer <AGENT_TOKEN>
+Content-Type: application/json
+
+{
+  "requestId": "<STABLE_ID_FOR_THIS_PAYMENT>",
+  "to": "<AUTHORIZED_NEAR_ACCOUNT_ID>",
+  "amountYocto": "<POSITIVE_INTEGER_STRING>"
+}`)} style={{ ...buttonStyle, marginTop: 0 }}>Copy request example</button>
+            </div>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>Use the agent token only. Keep it in your server-side secret manager. 1 NEAR = 10²⁴ yoctoNEAR; send amounts as positive integer strings, never floating-point values.</p>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>POST /api/agent/transfer
+Authorization: Bearer &lt;AGENT_TOKEN&gt;
+Content-Type: application/json
+
+{"requestId":"&lt;STABLE_ID_FOR_THIS_PAYMENT&gt;","to":"&lt;AUTHORIZED_NEAR_ACCOUNT_ID&gt;","amountYocto":"&lt;POSITIVE_INTEGER_STRING&gt;"}</pre>
+            <p style={{ color: "#64748b", fontSize: 12, marginBottom: 0 }}>Reuse the same request ID only for retries of the same logical payment. A 202 response is not proof of settlement; check the dashboard and wait for NEAR FINAL reconciliation.</p>
+          </section>
+          <p style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginTop: 18, color: "#64748b", fontSize: 12 }}>A completed checklist is not a guarantee that a transfer will execute. The live request path still revalidates current policy and provider state. Do not test with funds until the configured recipient, amount and execution intent have been reviewed.</p>
+        </div>
         <div hidden={activeView !== "system"}>
         <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
           <strong>System health</strong>

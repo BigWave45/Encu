@@ -37,7 +37,7 @@ These controls are functionally meaningful. They must not be deleted to simplify
 | Agent activate/deactivate | PATCH `/api/admin/agents/status`, `set_agent_active` RPC | Prevents new requests from inactive identities. Retain under agent access controls. |
 | Provision agent | POST `/api/agent/agents` | Creates identity and one-time bearer credential; new agent starts with zero allocation. |
 | Rotate agent credential | POST `/api/agent/agents/rotate` | Revokes old token and returns replacement once. Does not delete agent or alter its policy/allocation. |
-| Approve transfer | POST `/api/admin/approvals` | Revalidates current agent state, policy, recipient, emergency stop and allocation before provider submission. Current execution mode requires human approval for every transfer. |
+| Approve transfer | POST `/api/admin/approvals` | Revalidates current agent state, policy, recipient, emergency stop and allocation before provider submission. Requests outside the configured autonomous allowance require administrator approval; eligible requests can submit automatically after policy revalidation. |
 | Reject transfer | POST `/api/admin/approvals` | Marks pending request rejected and releases both treasury and agent reservations exactly once. |
 | Cancel expired request | POST `/api/admin/reservations/resolve` with `cancel_expired` | Only safe when strict proof shows it was never approved or submitted. Releases both ledgers once. |
 | Provider status | POST `/api/agent/provider-status` | OutLayer lookup/recovery. Informational; provider acceptance or a hash alone is not settlement. |
@@ -47,7 +47,7 @@ These controls are functionally meaningful. They must not be deleted to simplify
 | Admin audit pagination | Dashboard audit stream | Records administrator actions and policy changes. Retain. |
 | Security event pagination | Dashboard security stream | Records denials and security-relevant events. Retain. |
 | Agent balance lookup | GET `/api/agent/balance` | Read-only wallet utility. Separate from admin treasury authority. |
-| Live agent request test | POST `/api/agent/transfer` | Test/developer tool. Creates a reservation only; it does not call OutLayer directly. Keep clearly separated from admin approval and payment controls. |
+| Live agent request test | POST `/api/agent/transfer` | Live Testnet request path. A request inside the configured autonomous allowance can reach OutLayer and initiate a real transfer; requests outside it enter administrator review. This is not a dry run. Keep clearly separated from setup and admin controls. |
 | Copy newly provisioned/rotated token | Browser clipboard | Token is shown once. Do not persist credentials in browser storage. |
 
 ## Accounting invariants
@@ -98,7 +98,7 @@ The global treasury limit is the ceiling; allocations are sub-limits within it. 
 - Searchable transaction history and filters.
 - Request, agent, recipient, amount, reservation, provider reference and finality state.
 - Provider status and reconciliation actions within transaction detail.
-- Keep manual approval visible while it remains the actual execution mode.
+- Keep administrator approval visible for requests outside the autonomous allowance; do not imply every transfer requires human approval.
 
 ### 5. Security and audit
 - Emergency stop.
@@ -117,9 +117,9 @@ The global treasury limit is the ceiling; allocations are sub-limits within it. 
 - Agent balance lookup.
 - Reservation-only request test.
 - Test identity selection and token input.
-- Explicit warning that a test request reserves funds and that it does not submit directly to the provider.
+- Explicit warning that a request inside the autonomous allowance can submit through OutLayer and initiate a real Testnet transfer; this is not a dry run.
 
-The navigation can be a compact left rail on desktop and a compact top/tab navigation on mobile. The overview should be the initial screen after admin authentication. Avoid making the first screen a giant form. Use compact metric cards for treasury figures, clear tables for agents and transactions, and detail panels for editing one entity at a time. Destructive actions such as revoke, deactivate and emergency stop require explicit confirmation and clear consequences.
+The navigation can be a compact left rail on desktop and a compact top/tab navigation on mobile. The Connect agent setup checklist should be the initial screen after admin authentication; the overview remains a separate operational view. Avoid making the first screen a giant form. Use compact metric cards for treasury figures, clear tables for agents and transactions, and detail panels for editing one entity at a time. Destructive actions such as revoke, deactivate and emergency stop require explicit confirmation and clear consequences.
 
 ## Native NEAR treasury integration: future UI, not current controls
 
