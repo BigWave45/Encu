@@ -21,6 +21,7 @@ on:
       - "supabase/20261102100000_revoke_public_core_table_access.sql"
       - "supabase/20261102110000_grant_service_role_core_reads.sql"
       - "supabase/20261103000000_treasury_agent_allocations.sql"
+      - "supabase/20261103010000_enforce_agent_allocations.sql"
   workflow_dispatch:
 
 permissions:
@@ -87,6 +88,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103000000_treasury_agent_allocations.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103010000_enforce_agent_allocations.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $reserved_admin$
           BEGIN
@@ -201,8 +203,12 @@ jobs:
           $legacy_preservation$;
           SQL
           export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" | jq -e '.allocation_limit_yocto == "2000000000000000000000000"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.create_agent_with_audit('allocation-zero','Zero Allocation',repeat('a',64),'admin');" | jq -e '.allocation_limit_yocto == "0"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('allocation-zero-denied',1000000000000000000000,'recipient.testnet','allocation-zero');" | jq -e '.created == false and .reason == "agent_allocation_exceeded"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-v1-lifecycle-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('allocation-over-limit',1000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == false and .reason == "agent_allocation_exceeded"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
           DO $self_approval$
           BEGIN
@@ -223,17 +229,68 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-v1-lifecycle-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',3000000000000000000000000,'admin');" | jq -e '.allocation_limit_yocto == "3000000000000000000000000"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-reject-0001',500000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('migration-reject-0001','admin','test rejection');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-cancel-0001',500000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          UPDATE public.spend_reservations
+          SET approval_expires_at=now()-interval '1 minute'
+          WHERE request_id='migration-cancel-0001';
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.cancel_expired_agent_transfer('migration-cancel-0001','admin','expired test request');" | jq -e '.status == "cancelled"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-failed-0001',500000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-failed-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-failed-0001','failed',NULL,'verified failure test');" | jq -e '.status == "failed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-failed-final-0001',500000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('migration-failed-final-0001','admin');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('migration-failed-final-0001','mock-failed-final-hash','mock-failed-provider-request',NULL);" | jq -e '.status == "needs_review"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.resolve_agent_transfer_failed_final('migration-failed-final-0001','admin','NEAR FINAL failure test','near-final:mock-failed-final-hash');" | jq -e '.status == "failed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
+          DO $allocation_guards$
+          BEGIN
+            BEGIN
+              PERFORM public.set_agent_allocation('primary',1500000000000000000000000,'admin');
+              RAISE EXCEPTION 'allocation_floor_not_enforced';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM<>'allocation_below_committed_amounts' THEN RAISE; END IF;
+            END;
+            BEGIN
+              PERFORM public.set_agent_allocation('primary',6000000000000000000000000,'admin');
+              RAISE EXCEPTION 'treasury_allocation_ceiling_not_enforced';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM<>'allocations_exceed_treasury_limit' THEN RAISE; END IF;
+            END;
+            BEGIN
+              PERFORM public.update_agent_budget_limit(2000000000000000000000000,'admin');
+              RAISE EXCEPTION 'treasury_below_allocations_not_rejected';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM<>'budget_below_allocated_amounts' THEN RAISE; END IF;
+            END;
+          END
+          $allocation_guards$;
+          SQL
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
+                  v_agent_limit numeric; v_agent_spent numeric; v_agent_reserved numeric;
           BEGIN
             SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
               FROM public.agent_budgets WHERE id='default';
             SELECT count(*) INTO v_audit_count FROM public.agentguard_admin_audit
               WHERE target_id='migration-v1-lifecycle-0001'
                 AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized');
-            IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3 THEN
+            SELECT allocation_limit_yocto,spent_yocto,reserved_yocto
+              INTO v_agent_limit,v_agent_spent,v_agent_reserved
+              FROM public.agent_allocations WHERE agent_id='primary';
+            IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3
+               OR v_agent_limit<>3000000000000000000000000
+               OR v_agent_spent<>2000000000000000000000000 OR v_agent_reserved<>0
+               OR NOT EXISTS (SELECT 1 FROM public.agent_allocations WHERE agent_id='allocation-zero' AND allocation_limit_yocto=0) THEN
               RAISE EXCEPTION 'post_upgrade_ledger_or_audit_mismatch: reserved=%, spent=%, audit=%',
                 v_reserved,v_spent,v_audit_count;
             END IF;
