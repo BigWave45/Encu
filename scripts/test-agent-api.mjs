@@ -790,44 +790,32 @@ try {
   });
   assert(response.status === 200, "admin can re-enable transfers after emergency stop");
 
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+  });
+  assert(response.status === 200, "primary agent receives explicit autonomous allowance before transfer tests");
+
   const providerCountBeforePrimary = counters.provider;
   const recordCountBeforePrimary = counters.record;
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval", "agent transfer creates a pending approval request");
-  assert(counters.provider === providerCountBeforePrimary, "agent request cannot contact provider before admin approval");
-  mockSignerAddress = "unexpected.testnet";
-  response = await approveTransfer(primaryId);
-  payload = await response.json();
-  assert(response.status === 503 && payload.error === "outlayer_signer_mismatch", "approval fails closed when live OutLayer signer differs from configured signer");
-  assert(counters.provider === providerCountBeforePrimary && reservations.get(primaryId)?.status === "awaiting_approval", "signer mismatch does not consume approval or submit to OutLayer");
-  mockSignerAddress = "agentguard.testnet";
-  response = await approveTransfer(primaryId);
-  payload = await response.json();
-  assert(response.status === 202 && payload.status === "needs_review", "admin approval submits transfer and holds it for chain confirmation");
-  assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "approved request invokes provider once and atomically records provider references");
+  assert(response.status === 202 && payload.status === "needs_review", "agent transfer submits autonomously and waits for chain finality");
+  assert(counters.provider === providerCountBeforePrimary + 1 && counters.record === recordCountBeforePrimary + 1, "autonomous request invokes provider once and records provider references");
   assert(reservations.get(primaryId)?.providerRequestId === `mock-provider-${providerCountBeforePrimary + 1}`, "provider request ID is persisted atomically");
   assert(reservations.get(primaryId)?.txHash === `mock-tx-${providerCountBeforePrimary + 1}`, "transaction hash is persisted atomically");
-  response = await approveTransfer(primaryId);
-  assert(response.status === 409, "an already-consumed approval cannot be replayed");
-  assert(counters.provider === providerCountBeforePrimary + 1, "approval replay cannot call OutLayer twice");
 
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId });
   assert(response.status === 409, "identical request replay is rejected by API");
   assert(counters.provider === providerCountBeforePrimary + 1, "identical replay does not invoke provider again");
   assert(securityEvents.some(event => event.event_type === "transfer_replay_rejected" && event.request_id === primaryId), "duplicate transfer replay is recorded as a security event");
-
   response = await postTransfer({ token: "agent-one-token", requestId: primaryId, amount: "4000000000000000000000000" });
   assert(response.status === 409, "same request ID with changed amount is rejected");
-
   response = await postTransfer({ token: "agent-two-token", requestId: primaryId });
   assert(response.status === 409, "second agent cannot reuse another agent's request ID");
 
   const providerBeforeTimeout = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test", amount: "3000000000000000000000000" });
-  payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval", "timeout test transfer waits for administrator approval");
-  response = await approveTransfer("test-timeout-001");
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "ambiguous provider connection failure remains needs_review");
   assert(payload.reason === "outlayer_timeout_or_connection_error", "ambiguous provider failure is classified explicitly");
@@ -836,18 +824,8 @@ try {
 
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test", amount: "1000000000000000000000000" });
   payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval", "provider-error test transfer waits for approval");
-  response = await approveTransfer("test-provider-error-001");
-  payload = await response.json();
-  assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is not treated as proof of transfer failure");
+  assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is retained for reconciliation");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
-
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-reject-001" });
-  assert(response.status === 202, "rejection test creates pending approval");
-  response = await approveTransfer("test-reject-001", "reject");
-  payload = await response.json();
-  assert(response.status === 200 && payload.status === "rejected", "administrator can reject a pending transfer");
-  assert(reservations.get("test-reject-001")?.status === "rejected", "rejected transfer is terminal in the ledger");
 
   const expiredResolutionId = "test-expired-resolution-001";
   const expiredAmount = "1000000000000000000000";
@@ -896,9 +874,6 @@ try {
   assert(response.status === 200, "admin authorizes the no-hash provider test recipient");
   const providerBeforeNoHash = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
-  payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval", "provider no-hash test starts in the administrator approval queue");
-  response = await approveTransfer("test-provider-nohash-001");
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId === "mock-provider-recover" && payload.txHash === null, "provider success with request ID but no hash remains in review");
   assert(counters.provider === providerBeforeNoHash + 1 && reservations.get("test-provider-nohash-001")?.status === "needs_review", "provider no-hash response records one submission without settling");
