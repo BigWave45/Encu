@@ -325,7 +325,7 @@ export default function Home() {
     const weekly = policyWeekly.trim() ? parseNearToYocto(policyWeekly) : null;
     const auto = policyAuto.trim() ? parseNearToYocto(policyAuto) : null;
     if ((policyMax.trim() && (!max || max <= 0n)) || (policyDaily.trim() && (!daily || daily <= 0n)) || (policyWeekly.trim() && (!weekly || weekly <= 0n)) || (policyAuto.trim() && auto === null)) {
-      setPolicyMessage("Enter valid NEAR limits. Leave autonomous allowance blank to disable automatic spending.");
+      setPolicyMessage("Enter valid NEAR limits. Leave the rolling 24-hour autonomous allowance blank to disable automatic spending.");
       return;
     }
     setPolicyBusy(true);
@@ -923,7 +923,7 @@ export default function Home() {
               <label style={{ fontSize: 13 }}>Max per transfer (NEAR)<input value={policyMax} onChange={e => setPolicyMax(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
-              <label style={{ fontSize: 13 }}>Autonomous lifetime allowance (NEAR)<input inputMode="decimal" value={policyAuto} onChange={e => setPolicyAuto(e.target.value)} placeholder="Disabled" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Autonomous allowance per 24 hours (NEAR)<input inputMode="decimal" value={policyAuto} onChange={e => setPolicyAuto(e.target.value)} placeholder="Disabled" style={{ ...inputStyle, marginTop: 5 }} /></label>
             </div>
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
