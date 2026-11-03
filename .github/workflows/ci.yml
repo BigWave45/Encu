@@ -40,3 +40,7 @@ jobs:
         run: npx tsc --noEmit
       - name: Production build
         run: npm run build
+      - name: Agent API security and lifecycle tests
+        run: npm run test:agent-api
+      - name: NEAR finality reconciliation tests
+        run: npm run test:reconciliation
