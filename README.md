@@ -1,3 +1,18 @@
+# ENCU — current product and implementation status (2026-11-03)
+
+> This block is authoritative. The remainder of this README contains historical V1 notes and may describe superseded approval workflows, operator setup or provider coupling. Do not treat those older passages as current behavior.
+
+ENCU is a developer-facing financial authorization and accounting layer for autonomous agents. Developers create their own workspace, provision logical agents, receive agent-scoped bearer credentials and configure allocations, transfer limits, rolling limits, autonomous allowances and exact recipient permissions. End users of a developer's application do not need ENCU accounts.
+
+**Execution model:** valid requests that satisfy current policy are automatically reserved and submitted. Requests that violate policy are rejected. Ambiguous provider outcomes and finality exceptions enter the `needs_review` state for reconciliation; this is not a human approval queue. Humans configure policy and can deactivate agents or invoke platform emergency controls, but do not approve every transaction.
+
+**Provider boundary:** OutLayer is the V1 NEAR Testnet execution adapter only. The transfer route now calls the `ExecutionProvider` interface in `lib/execution-provider.ts`; the V1 adapter delegates signing/submission to OutLayer. ENCU's identity, policy evaluation, shared-budget reservations, agent allocations, idempotency, audit and NEAR finality accounting are separate from the provider. A future native NEAR treasury contract or alternative signer/provider must implement the execution interface and its security/finality requirements; setting an environment variable alone does not create another supported provider. Only OutLayer is currently implemented.
+
+**Frontend:** `/` redirects to the developer workspace at `/developers`. The platform operations console is separated at `/admin` and remains administrator-authenticated. The developer workspace is the primary product interface.
+
+**Release boundaries:** V1 is NEAR Testnet and uses the configured OutLayer test wallet. It is not a production custody service, does not provide isolated customer treasuries or customer wallet provisioning, and is not mainnet-ready. No production deployment or mainnet transfer is authorized by this status note.
+
+---
 # ENCU
 
 ENCU is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
