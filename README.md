@@ -514,3 +514,10 @@ Planned backend types are distinct:
 - **Direct NEAR Intents:** separate future signer/solver-relay integration. Deploying the native treasury contract does not automatically provide this capability.
 
 The first native contract release is scoped to native NEAR transfers. NEP-141 tokens and NEAR Intents swaps/cross-chain transfers require separate adapters and lifecycle tests. See [native NEAR treasury design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
+
+
+## NEAR Intents and other NEAR payment infrastructure
+
+OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. AgentGuard does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
+
+The planned native AgentGuard contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
