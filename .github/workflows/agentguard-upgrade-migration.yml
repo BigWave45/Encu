@@ -378,7 +378,7 @@ jobs:
           # Exercise rolling autonomous allowance against real PostgreSQL functions.
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('primary','rolling.testnet','rolling allowance regression',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',2,'admin');" | jq -e '.auto_spend_limit_yocto == "2"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',1,'admin');" | jq -e '.auto_spend_limit_yocto == "1"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-auto-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == false and .status == "awaiting_approval"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-does-not-consume-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
