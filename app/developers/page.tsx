@@ -5,6 +5,7 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 import Link from "next/link";
 import "./developers.css";
 import AgentConfiguration from "./agent-configuration";
+import AgentPlayground from "./agent-playground";
 
 type DeveloperAgent = {
   id: string;
@@ -329,6 +330,7 @@ export default function DeveloperPortal() {
                       </div>
                       <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
                       <AgentConfiguration agentId={agent.id} accessToken={session.access_token} />
+                      <AgentPlayground agentId={agent.id} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
