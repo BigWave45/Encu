@@ -401,6 +401,10 @@ export default function Home() {
   }
 
   async function inspectReservation(requestId: string, action: "provider-status" | "reconcile") {
+    if (!adminToken.trim()) {
+      setReservationActionError("Enter the administrator token before checking or reconciling a reservation.");
+      return;
+    }
     setReservationAction(requestId + ":" + action);
     setReservationActionError("");
     try {
@@ -408,7 +412,7 @@ export default function Home() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${token.trim()}`
+          authorization: `Bearer ${adminToken.trim()}`
         },
         body: JSON.stringify({ requestId }),
         cache: "no-store"
@@ -672,13 +676,13 @@ export default function Home() {
               {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 10, fontSize: 12, padding: "8px 10px", background: "#92400e" }}>{reservationAction === item.requestId + ":resolve" ? "Cancelling expired reservation…" : "Cancel expired, unsubmitted request"}</button>}
               {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 {item.providerRequestId && <button type="button"
-                  disabled={reservationAction !== null}
+                  disabled={reservationAction !== null || !adminToken.trim()}
                   onClick={() => inspectReservation(item.requestId, "provider-status")}
                   style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
                   {reservationAction === item.requestId + ":provider-status" ? "Checking provider…" : "Check provider"}
                 </button>}
                 {item.txHash && <button type="button"
-                  disabled={reservationAction !== null}
+                  disabled={reservationAction !== null || !adminToken.trim()}
                   onClick={() => inspectReservation(item.requestId, "reconcile")}
                   style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
                   {reservationAction === item.requestId + ":reconcile" ? "Checking NEAR…" : "Reconcile on NEAR"}
