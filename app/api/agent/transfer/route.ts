@@ -123,24 +123,6 @@ export async function POST(request: NextRequest) {
     }, { status: 409 });
   }
 
-  const { data: recipientGrant, error: recipientError } = await db
-    .from("agent_authorized_recipients")
-    .select("status,expires_at")
-    .eq("agent_id", identity.agentId)
-    .eq("account_id", to)
-    .maybeSingle();
-  if (recipientError || !recipientGrant || recipientGrant.status !== "active" ||
-      (recipientGrant.expires_at && Date.parse(recipientGrant.expires_at) <= Date.now())) {
-    await db.rpc("finish_agent_spend", {
-      p_request_id: requestId, p_outcome: "failed", p_tx_hash: null, p_error: "recipient_authorization_changed_before_submission"
-    });
-    await recordSecurityEvent({
-      actorAgentId: identity.agentId, eventType: "transfer_auto_submission_blocked",
-      requestId, details: { reason: "recipient_not_authorized_at_submission" }
-    });
-    return NextResponse.json({ status: "blocked", reason: "recipient_not_authorized" }, { status: 403 });
-  }
-
   let config: ReturnType<typeof getOutLayerConfig>;
   try {
     config = getOutLayerConfig();
@@ -165,6 +147,35 @@ export async function POST(request: NextRequest) {
       p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null, p_error: reason
     });
     return NextResponse.json({ status: "needs_review", requestId, reason }, { status: 202 });
+  }
+
+  // Claim the provider submission only after signer validation. The database
+  // RPC serializes this claim against recipient revocation.
+  const { data: submissionClaim, error: claimError } = await db.rpc("claim_agent_auto_submission", {
+    p_request_id: requestId,
+    p_agent_id: identity.agentId,
+    p_recipient: to
+  });
+  if (claimError) {
+    await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null,
+      p_error: "submission_claim_unavailable"
+    });
+    return NextResponse.json({ status: "needs_review", requestId, reason: "submission_claim_unavailable" }, { status: 202 });
+  }
+  if (submissionClaim?.claimed !== true) {
+    if (submissionClaim?.reason === "recipient_not_authorized") {
+      await db.rpc("finish_agent_spend", {
+        p_request_id: requestId, p_outcome: "failed", p_tx_hash: null,
+        p_error: "recipient_authorization_revoked_before_submission"
+      });
+      await recordSecurityEvent({
+        actorAgentId: identity.agentId, eventType: "transfer_auto_submission_blocked",
+        requestId, details: { reason: "recipient_not_authorized_at_submission" }
+      });
+      return NextResponse.json({ status: "blocked", reason: "recipient_not_authorized" }, { status: 403 });
+    }
+    return NextResponse.json({ status: "already_processing", requestId }, { status: 409 });
   }
 
   let txHash: string | null = null;
