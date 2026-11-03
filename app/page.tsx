@@ -943,43 +943,47 @@ export default function Home() {
             </select>
             <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
           </div>
-          {!dashboard.reservations?.length ? <p style={{ color: "#64748b", fontSize: 14 }}>No matching reservations.</p> :
-            <div style={{ display: "grid", gap: 10 }}>{dashboard.reservations.map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <strong>{item.agentId}</strong><strong>{item.status}</strong>
-              </div>
-              <div style={{ marginTop: 6 }}>{near(item.amountYocto)} NEAR → {item.recipient}</div>
-              <div style={{ color: "#64748b", marginTop: 4 }}>Created {new Date(item.createdAt).toLocaleString()} · {Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))} min ago</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8, padding: 9, background: "#f8fafc", borderRadius: 6 }}>
-                <div><strong>Provider</strong><div style={{ color: "#475569" }}>{item.providerRequestId || item.txHash ? "Submission reference recorded" : item.status === "needs_review" ? "Outcome ambiguous · no reference" : item.status === "reserved" ? "Submission claimed / in progress" : ["awaiting_approval", "rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No provider reference"}</div></div>
-                <div><strong>NEAR finality</strong><div style={{ color: "#475569" }}>{item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash"}</div></div>
-                <div><strong>Treasury ledger</strong><div style={{ color: "#475569" }}>{item.status === "executed" ? "Spent" : ["failed", "rejected", "cancelled"].includes(item.status) ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</div></div>
-                <div><strong>Agent allocation ledger</strong><div style={{ color: "#475569" }}>{item.status === "executed" ? "Spent" : ["failed", "rejected", "cancelled"].includes(item.status) ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</div></div>
-              </div>
-              <div style={{ color: "#64748b", marginTop: 5, overflowWrap: "anywhere" }}>Request: {item.requestId}</div>
-              {item.txHash && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Tx: {item.txHash}</div>}
-              {item.providerRequestId && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Provider request: {item.providerRequestId}</div>}
-              {item.lastError && <div style={{ color: "#92400e", marginTop: 4 }}>Review: {item.lastError}</div>}
-              {item.resolutionReason && <div style={{ color: "#475569", marginTop: 4 }}>Resolution: {item.resolutionReason} · by {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</div>}
-              {item.resolutionEvidenceReference && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Evidence: {item.resolutionEvidenceReference}</div>}
-              {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 10, fontSize: 12, padding: "8px 10px", background: "#92400e" }}>{reservationAction === item.requestId + ":resolve" ? "Cancelling expired reservation…" : "Cancel expired, unsubmitted request"}</button>}
-              {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-                {item.providerRequestId && <button type="button"
-                  disabled={reservationAction !== null || !adminToken.trim()}
-                  onClick={() => inspectReservation(item.requestId, "provider-status")}
-                  style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
-                  {reservationAction === item.requestId + ":provider-status" ? "Checking provider…" : "Check provider"}
-                </button>}
-                {item.txHash && <button type="button"
-                  disabled={reservationAction !== null || !adminToken.trim()}
-                  onClick={() => inspectReservation(item.requestId, "reconcile")}
-                  style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
-                  {reservationAction === item.requestId + ":reconcile" ? "Checking NEAR…" : "Reconcile on NEAR"}
-                </button>}
-                {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", "Provider confirms final failure", item.txHash)} style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", background: "#475569" }}>Resolve verified final failure</button>}
-                {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. This remains held until evidence proves no transfer was submitted. Do not retry or release it manually.</span>}
-              </div>}
-            </div>)}</div>}
+          {!dashboard.reservations?.length ? <div className="empty-state"><strong>No matching transactions</strong><p>Change the filters or search terms to see other records.</p></div> :
+            <div className="history-table-wrap">
+              <table className="history-table">
+                <thead><tr>
+                  <th>Transaction</th><th>Agent</th><th>Transfer</th><th>Status</th><th>Created</th><th>Network evidence</th><th>Actions</th>
+                </tr></thead>
+                <tbody>{dashboard.reservations.map(item => {
+                  const released = ["failed", "rejected", "cancelled"].includes(item.status);
+                  const providerLabel = item.providerRequestId || item.txHash ? "Reference recorded" : item.status === "needs_review" ? "Outcome ambiguous" : item.status === "reserved" ? "Submission in progress" : ["awaiting_approval", "rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No reference";
+                  const finalityLabel = item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash";
+                  return <React.Fragment key={item.requestId}>
+                    <tr className="history-primary-row">
+                      <td><strong className="history-amount">{near(item.amountYocto)} NEAR</strong><span className="history-subline">{item.requestId}</span></td>
+                      <td><strong>{item.agentId}</strong><span className="history-subline">{item.recipient}</span></td>
+                      <td><strong>{near(item.amountYocto)} NEAR</strong><span className="history-subline">Recipient transfer</span></td>
+                      <td><span className={`status-pill status-${item.status.replace(/[^a-z0-9_-]/g, "-")}`}>{item.status.replace(/_/g, " ")}</span></td>
+                      <td><strong>{new Date(item.createdAt).toLocaleDateString()}</strong><span className="history-subline">{new Date(item.createdAt).toLocaleTimeString()} · {Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))}m ago</span></td>
+                      <td><strong>{finalityLabel}</strong><span className="history-subline">Provider: {providerLabel}</span></td>
+                      <td><div className="history-actions">
+                        {item.providerRequestId && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "provider-status")}>{reservationAction === item.requestId + ":provider-status" ? "Checking…" : "Check provider"}</button>}
+                        {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "reconcile")}>{reservationAction === item.requestId + ":reconcile" ? "Checking…" : "Reconcile"}</button>}
+                        {item.txHash && (item.status === "needs_review" || item.status === "reserved") && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", "Provider confirms final failure", item.txHash)}>Resolve failure</button>}
+                        {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")}>Cancel expired</button>}
+                      </div></td>
+                    </tr>
+                    <tr className="history-detail-row"><td colSpan={7}>
+                      <div className="history-detail-grid">
+                        <div><span>Request ID</span><code>{item.requestId}</code></div>
+                        <div><span>Treasury ledger</span><strong>{item.status === "executed" ? "Spent" : released ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</strong></div>
+                        <div><span>Agent allocation</span><strong>{item.status === "executed" ? "Spent" : released ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</strong></div>
+                        <div><span>Provider request</span><code>{item.providerRequestId ?? "Not recorded"}</code></div>
+                        <div><span>NEAR transaction</span>{item.txHash ? <code>{item.txHash}</code> : <strong>No hash recorded</strong>}</div>
+                        {item.lastError && <div className="history-warning"><span>Review required</span><strong>{item.lastError}</strong></div>}
+                        {item.resolutionReason && <div><span>Resolution</span><strong>{item.resolutionReason} · {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</strong></div>}
+                        {item.resolutionEvidenceReference && <div><span>Resolution evidence</span><code>{item.resolutionEvidenceReference}</code></div>}
+                      </div>
+                    </td></tr>
+                  </React.Fragment>;
+                })}</tbody>
+              </table>
+            </div>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.reservationPage?.page ?? 1} of {dashboard.reservationPage?.totalPages ?? 1} · {dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} matching records</span>
             <div style={{ display: "flex", gap: 8 }}>
