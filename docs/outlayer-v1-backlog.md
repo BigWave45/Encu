@@ -1,0 +1,91 @@
+# OutLayer integration: current boundary and remaining V1 work
+
+Status: current code inspection on 2026-11-03. This document is the operational checklist for finishing the OutLayer-backed V1. It is separate from the native NEAR contract work.
+
+## What the repository currently does
+
+The OutLayer adapter is `lib/outlayer.ts`.
+
+- Requires `OUTLAYER_BASE_URL`, `OUTLAYER_API_KEY` and `OUTLAYER_NEAR_ADDRESS`.
+- Restricts the base URL to the official network-specific OutLayer API host.
+- Calls `GET /wallet/v1/address?chain=near` before admin approval submission and verifies the reported executor identity against the configured signer.
+- Calls `POST /wallet/v1/transfer` only from the administrator approval route.
+- Persists provider request IDs and transaction hashes when returned.
+- Preserves the reservation as `needs_review` when the provider outcome is ambiguous.
+- Looks up saved provider request IDs through `GET /wallet/v1/requests/{id}`.
+- Uses NEAR RPC with `wait_until: FINAL` and verifies signer, recipient, exactly one native transfer action and exact yocto amount before settlement.
+
+The agent transfer route only creates a policy-checked reservation. It does not call OutLayer. The current mode requires an administrator to approve every transfer. Agent bearer credentials do not contain the OutLayer API key.
+
+## Important correction: OutLayer has its own policy engine
+
+OutLayer's current Agent Custody documentation describes owner-controlled wallet policies encrypted and stored on-chain, decrypted and evaluated inside its TEE before transaction signing. Documented policy controls include per-transaction, hourly, daily and monthly caps, address allowlists/denylists, time restrictions, rate limits, transaction-type restrictions and multisig approval.
+
+Therefore AgentGuard must not claim that OutLayer lacks spending limits, recipient allowlists or approval controls. The correct relationship is defense in depth:
+
+- **OutLayer wallet policy:** an independent, wallet-level signing boundary. It should be configured by the wallet owner with conservative hard ceilings and recipient/transaction restrictions. Its TEE evaluates that policy before it signs.
+- **AgentGuard policy:** the application-level authorization boundary. It authenticates each logical agent, assigns per-agent allocations, applies the shared treasury exposure limit, checks the exact recipient, records the reservation, manages the approval workflow and maintains an attributable audit trail.
+- **NEAR finality:** AgentGuard independently checks the resulting transaction against the reservation before it settles its off-chain ledger.
+
+The current integration code does not create, read back, or verify the OutLayer owner policy. It only calls the wallet address and transfer endpoints. Do not describe OutLayer policy as configured in our deployment until the actual wallet policy has been inspected and its effective values recorded.
+
+The current integration uses one configured OutLayer wallet and one server-side API credential for all AgentGuard agents. The AgentGuard agent identity is not visibly passed as a distinct OutLayer principal in `transferNear(to, amount)`. Thus OutLayer's wallet policy is a wallet-wide backstop; AgentGuard remains responsible for differentiating Alpha, Beta and future logical agents and enforcing their separate allocations. Do not imply that OutLayer currently enforces AgentGuard's per-agent allocation ledger.
+
+OutLayer's TEE attestation documentation describes attestations for OutLayer code executions. The current AgentGuard integration does not fetch, store, display or independently verify an attestation as part of the transfer lifecycle. Do not claim AgentGuard currently presents independently verifiable attestation evidence for its wallet transfers without confirming that the wallet transfer endpoint returns such evidence and implementing its verification path.
+
+## OutLayer V1 backlog
+
+### A. Confirm provider wallet policy (configuration and evidence)
+
+- [ ] Inspect the actual Preview OutLayer wallet's owner policy in the OutLayer dashboard/API.
+- [ ] Record the effective per-transfer, hourly/daily/monthly limits, allowlist, transaction types, rate limits and approval requirements.
+- [ ] Confirm whether policy changes are owner-authorized and stored on-chain for this wallet.
+- [ ] Configure a wallet-wide hard ceiling that is at least as restrictive as the AgentGuard treasury limit and compatible with test flows.
+- [ ] Configure only the recipient/transaction scope required for the hackathon test.
+- [ ] Test a request that passes AgentGuard but is rejected by OutLayer policy; verify that AgentGuard retains exposure as ambiguous/needs-review until the actual NEAR outcome is established.
+- [ ] Capture evidence of the wallet policy configuration and its enforcement. Do not put API secrets in screenshots or repository files.
+
+### B. Finish AgentGuard accounting and lifecycle verification
+
+- [x] Atomic shared-treasury reservation race tested in disposable PostgreSQL: two individually eligible 3 NEAR requests against a 5 NEAR treasury produced one reservation and one `total_budget_exceeded`.
+- [x] Live Preview denied an unlisted recipient before reservation.
+- [x] Live Preview denied an approval after the recipient had been revoked.
+- [x] Live Preview blocked an amount above the agent's allocation without creating a reservation.
+- [x] A previous 0.001 NEAR Alpha transfer reached NEAR FINAL and was reconciled as executed.
+- [ ] Verify the post-rejection database counters and both reservation ledgers with a successful direct query. The UI/audit showed rejection; the earlier attempted database query used incorrect column names and did not establish the post-rejection counters.
+- [ ] Verify final successful settlement decrements treasury and agent reserved balances and increments both spent balances exactly once.
+- [ ] Verify final failed settlement releases both reserved balances exactly once.
+- [ ] Verify safe expiry cancellation releases both reserved balances exactly once and refuses any request that was approved or submitted.
+- [ ] Verify provider HTTP success with request ID but no hash remains reserved and is recoverable.
+- [ ] Verify timeout/connection loss after approval remains held and never triggers an automatic retry.
+- [ ] Verify provider-status lookup can recover a transaction hash without settling the ledger.
+- [ ] Verify hash conflict, signer mismatch, wrong recipient, wrong amount, multiple actions and non-FINAL RPC outcomes all remain held.
+- [ ] Verify recipient revocation, emergency stop and policy changes racing with approval/submission.
+- [ ] Verify failed approval attempts are recorded in the security/admin audit trail, including the current reason.
+- [ ] Verify reservation replay, idempotency conflict and exact-once settlement.
+- [ ] Complete one fresh low-value end-to-end Preview transfer only after the above checks, with explicit administrator approval and current state verification.
+
+### C. Execution mode and dashboard
+
+- [x] Current mode is explicit human approval for every transfer.
+- [ ] Keep approval visible until autonomous ALLOW execution and a risk-based HOLD workflow are implemented and tested.
+- [ ] Add an OutLayer wallet-policy status/evidence section to the admin dashboard only after the provider policy can be read or reliably attested. Do not create cosmetic policy controls that do not call the provider.
+- [ ] Show provider submission, provider request ID, transaction hash, NEAR finality and AgentGuard settlement as distinct states.
+- [ ] Add transaction detail view for the provider/NEAR evidence and both reservation ledgers.
+- [ ] Consider displaying an OutLayer attestation only if the transfer endpoint provides an attestation bound to the exact transfer and a verifier is implemented.
+
+### D. Release gate
+
+OutLayer V1 is complete only when:
+1. Provider owner policy is inspected and configured with evidence.
+2. All dual-ledger lifecycle and race tests above pass.
+3. A controlled live Preview transfer is independently verified at NEAR FINAL and both ledgers reconcile exactly once.
+4. Ambiguous provider cases remain safely reserved and can be resolved without blind retries.
+5. Admin audit and transaction detail show the full lifecycle.
+6. README, UI and demo language distinguish AgentGuard enforcement from OutLayer TEE custody/policy.
+
+This gate does not require mainnet deployment.
+
+## Separate native NEAR workstream
+
+Native contract work remains separate and does not close or replace any OutLayer checklist item. The native contract must independently enforce authorization for funds held in its own treasury account. Keep one treasury assigned to one execution backend until cross-provider exposure and replay protection are designed and tested.
