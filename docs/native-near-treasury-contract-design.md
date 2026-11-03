@@ -70,7 +70,11 @@ Names are provisional; final ABI follows the selected Rust SDK and implementatio
 - `set_agent_allocation(agent_id, allocation_limit)`
 - `authorize_recipient(agent_id, account_id, expires_at)`
 - `revoke_recipient(agent_id, account_id)`
+- `approve_transfer(request_id)`: revalidate current policy, recipient, agent state, pause and exposure; mark the exact reservation approved/executing and initiate the NEAR transfer promise.
+- `reject_transfer(request_id, reason)`: reject the pending request and release both reserved counters exactly once.
 - `withdraw(to, amount, request_id)`, only if withdrawal authority and multisig/confirmation policy are explicitly designed. This is not an agent method.
+
+For the first native release, every request requires controller approval, matching the current AgentGuard operating mode. Do not let `request_transfer` auto-submit a transfer. Autonomous ALLOW execution is a later mode that needs its own policy and tests.
 
 Controller methods must check `predecessor_account_id == controller_id`. The controller account must be different from the treasury account's agent restricted-key identity. The implementation must not treat every call from the treasury account as an administrator call.
 
@@ -80,7 +84,7 @@ Controller methods must check `predecessor_account_id == controller_id`. The con
 
 The method derives the agent from the signer public key. It rejects unknown/revoked keys, inactive agents, paused treasury, unauthorized/expired recipients, invalid amount, per-transfer violations, agent allocation exhaustion, treasury exposure exhaustion and reused request IDs/nonces.
 
-The contract must reserve treasury and agent exposure in the same receipt before creating the transfer promise. Because NEAR serializes state changes through receipts, concurrent requests are checked against the latest committed contract state. The second request cannot rely on a stale off-chain budget read.
+The contract reserves treasury and agent exposure in the same receipt and creates an `awaiting_approval` request. It does **not** initiate a transfer promise. The controller's separate `approve_transfer(request_id)` method revalidates current policy and recipient authorization, confirms the request is still pending and the treasury is not paused, then marks it executing and creates the transfer promise. Rejection releases both reservations exactly once. Because NEAR serializes state changes through receipts, concurrent requests are checked against the latest committed contract state. The second request cannot rely on a stale off-chain budget read.
 
 ## 6. Transfer lifecycle and asynchronous settlement
 
@@ -88,15 +92,17 @@ A native NEAR transfer initiated by a contract is asynchronous. Returning succes
 
 Required lifecycle:
 
-1. Validate signer, agent, policy, recipient, pause, nonce and available contract balance.
+1. Agent submits `request_transfer`; validate signer, agent, policy, recipient, pause, nonce and available contract balance.
 2. Check `spent + reserved + amount <= treasury_limit` and the equivalent agent allocation constraint.
-3. Persist a pending reservation and increment both reserved counters.
-4. Initiate `Promise::new(recipient).transfer(amount)`.
-5. Attach a private callback on the treasury contract with enough prepaid gas.
-6. In the callback, verify it is a private self-call and inspect the promise result.
-7. On successful transfer receipt, decrement both reserved counters, increment both spent counters and mark the reservation executed.
-8. On final failed transfer promise, decrement both reserved counters and mark it failed with a durable failure reason.
-9. Emit structured events for request accepted, transfer outcome, policy changes and emergency state.
+3. Persist `awaiting_approval` and increment both reserved counters. No transfer is submitted yet.
+4. Controller calls `approve_transfer(request_id)`. Revalidate current agent status, policy revision, recipient authorization/expiry, pause state, request status and reservation amounts.
+5. If valid, mark executing and initiate `Promise::new(recipient).transfer(amount)`.
+6. Attach a private callback on the treasury contract with enough prepaid gas.
+7. In the callback, verify it is a private self-call and inspect the promise result.
+8. On successful transfer receipt, decrement both reserved counters, increment both spent counters and mark the reservation executed.
+9. On final failed transfer promise, decrement both reserved counters and mark it failed with a durable failure reason.
+10. Controller rejection releases both reserved counters exactly once. Expired cancellation is allowed only with proof no approval or submission occurred.
+11. Emit structured events for request accepted, approval/rejection, transfer outcome, policy changes and emergency state.
 
 The callback must be idempotent. Duplicate callback attempts or replayed settlement calls must not change counters twice. A missing/failed callback must leave exposure reserved and create a recoverable pending state; never infer failure from a timeout and release funds optimistically.
 
