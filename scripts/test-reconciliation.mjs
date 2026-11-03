@@ -144,6 +144,7 @@ try {
     ["mismatch-recipient-001", reservation("mismatch-recipient-001")],
     ["mismatch-amount-001", reservation("mismatch-amount-001")],
     ["mismatch-signer-001", reservation("mismatch-signer-001")],
+    ["multiple-actions-001", reservation("multiple-actions-001")],
     ["receipt-only-001", reservation("receipt-only-001")],
     ["non-final-001", reservation("non-final-001")],
     ["rpc-error-001", reservation("rpc-error-001")],
@@ -167,6 +168,13 @@ try {
   const wrongSigner = matchingResult(mismatchSigner);
   wrongSigner.result.transaction.signer_id = "attacker.near";
   rpcResponses.set(mismatchSigner.outlayer_tx_hash, wrongSigner);
+  const multipleActions = reservations.get("multiple-actions-001");
+  const multipleActionResult = matchingResult(multipleActions);
+  multipleActionResult.result.transaction.actions = [
+    { Transfer: { deposit: String(multipleActions.amount_yocto) } },
+    { Transfer: { deposit: "1" } }
+  ];
+  rpcResponses.set(multipleActions.outlayer_tx_hash, multipleActionResult);
   const receiptOnly = reservations.get("receipt-only-001");
   rpcResponses.set(receiptOnly.outlayer_tx_hash, matchingResult(receiptOnly, { SuccessReceiptId: "pending-receipt" }));
   const nonFinal = reservations.get("non-final-001");
@@ -212,7 +220,7 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "transaction not found cannot settle or release funds");
 
-  for (const id of ["mismatch-recipient-001", "mismatch-amount-001", "mismatch-signer-001", "receipt-only-001", "non-final-001"]) {
+  for (const id of ["mismatch-recipient-001", "mismatch-amount-001", "mismatch-signer-001", "multiple-actions-001", "receipt-only-001", "non-final-001"]) {
     response = await postReconcile("agent-one-token", id);
     payload = await response.json();
     assert(response.status === 202 && payload.status === "needs_review", `${id}: non-matching or non-final transaction remains pending`);
