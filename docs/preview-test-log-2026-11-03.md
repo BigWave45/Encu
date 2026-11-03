@@ -22,9 +22,9 @@ The deployed frontend declares:
 - Maximum length: 48 characters
 - HTML pattern: `[a-z0-9_-]+`
 
-The agent creation API independently enforces the same character set and length range, and reserves only `admin` and `primary`. Therefore, the literal lowercase value `max` satisfies the declared frontend and API format rules. The observed browser message is not explained by the current source validation rules.
+The agent creation API independently enforces the same character set and length range, and reserves only `admin` and `primary`. Both `max` and `max-agent` satisfy those declared rules. The user reports that both attempts were rejected by the browser's format validation. This makes the issue reproducible at the UI level, but its cause is not yet established. Possibilities include a difference between the inspected source and the live page, an unexpected value in the input, or a browser/input interaction.
 
-Do not document `max` as invalid or change the API format speculatively. Re-test with a freshly cleared field and a simple value such as `max-agent`, ensuring there are no leading/trailing spaces or uppercase characters. If the browser still rejects it, capture the exact field value and a screenshot of the validation message before changing validation code.
+Do not weaken or replace backend validation speculatively. Before changing code, capture the exact value visible in the Agent ID field immediately before submission and a screenshot of the validation message. Also confirm the Preview URL and deployment commit shown in Vercel. Then inspect the live page's rendered input attributes and the actual POST response (if a request is sent). This will distinguish native HTML constraint validation from an API rejection.
 
 Agent creation remains unverified until a POST succeeds and the created agent appears in the signed-in user's agent list. Treat the returned bearer token as a one-time secret.
 
