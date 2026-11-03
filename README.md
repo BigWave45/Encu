@@ -10,7 +10,7 @@ AgentGuard is a transaction-control gateway for AI agents making NEAR transfers 
 - Request-ID idempotency and conflict detection.
 - Per-agent reservation attribution.
 - NEAR FINAL transaction reconciliation.
-- Admin-only dashboard, emergency stop, per-agent spending policies and mandatory human approval before provider submission.
+- Admin-only dashboard, emergency stop, per-agent hard allocations, recipient controls, rolling spend limits and a separate cumulative autonomous allowance. Requests inside the allowance are eligible for automatic submission; requests outside it require administrator approval.
 - Persistent per-agent rate limiting, recipient allowlists and rolling spend windows.
 
 This is a testnet V1. It is not a custody provider, smart contract, marketplace, or multi-chain gateway. A transfer has not been confirmed merely because OutLayer accepted a request or returned a transaction hash.
@@ -22,8 +22,8 @@ Agent
   -> AgentGuard API
   -> authenticated agent identity
   -> atomic policy and shared-budget reservation (Supabase)
-  -> administrator approval bound to exact recipient and amount
-  -> OutLayer transfer
+  -> autonomous authorization within admin-set per-agent allowance OR administrator approval
+  -> OutLayer transfer and independent OutLayer wallet-policy evaluation
   -> NEAR testnet
   -> NEAR FINAL reconciliation
   -> settled shared ledger
@@ -31,7 +31,7 @@ Agent
 
 Supabase is the source of truth for the shared budget and reservation ledger. OutLayer is the configured transfer provider. NEAR RPC is used to independently verify final transaction execution.
 
-**Product boundary:** OutLayer supplies a TEE-backed custody and wallet-policy boundary. Its owner policy can enforce wallet-wide limits and transaction restrictions before signing. AgentGuard adds a separate application authorization boundary: logical agent identities, per-agent allocations, shared-treasury exposure accounting, request idempotency, exact-recipient authorization, approval workflow, attributable audit and NEAR-finality-based ledger settlement. The current integration uses one OutLayer wallet/API credential and does not map each AgentGuard agent to a distinct OutLayer signer or provider policy. AgentGuard's per-agent allocation ledger is therefore enforced by AgentGuard, while OutLayer's wallet policy is an independent wallet-wide backstop. OutLayer is the only execution provider implemented in V1. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md) for the provider-policy inspection and remaining integration tests.
+**Product boundary:** OutLayer supplies a TEE-backed custody and wallet-policy boundary. Its owner policy can enforce wallet-wide limits and transaction restrictions before signing. AgentGuard adds a separate application authorization boundary: logical agent identities, per-agent allocations, shared-treasury exposure accounting, request idempotency, exact-recipient authorization, approval workflow, attributable audit and NEAR-finality-based ledger settlement. The current integration uses one OutLayer wallet/API credential and does not map each AgentGuard agent to a distinct OutLayer signer or provider policy. AgentGuard's per-agent allocation ledger is therefore enforced by AgentGuard, while OutLayer's wallet policy is an independent wallet-wide backstop. An administrator can assign each AgentGuard agent a cumulative autonomous allowance separate from its absolute allocation ceiling. An agent may submit automatically only while its request fits within that allowance; excess requests enter AgentGuard's administrator approval queue. OutLayer may still impose a separate wallet approval requirement, so AgentGuard autonomy does not by itself guarantee provider-level unattended execution. The actual Preview wallet policy has not yet been inspected. OutLayer is the only execution provider implemented in V1. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md) for the provider-policy inspection and remaining integration tests.
 
 ## Environment variables
 
@@ -74,8 +74,11 @@ The V1 forward migrations, in required order, are:
 4. `supabase/20261102090000_reserve_admin_agent_id.sql`
 5. `supabase/20261102100000_revoke_public_core_table_access.sql`
 6. `supabase/20261102110000_grant_service_role_core_reads.sql`
+7. `supabase/20261103030000_agentguard_autonomy_controls.sql`
+8. `supabase/20261103040000_agentguard_autonomy_rpcs.sql`
+9. `supabase/20261103050000_agentguard_autonomy_recipient_guard.sql`
 
-The security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory administrator approval before provider submission. The submission-audit migration replaces the provider-submission RPC with an audited implementation and restricts `service_role` on both audit tables to SELECT and INSERT. The administrator-identity migration separates the admin audit identity from agent identities and blocks self-approval. The next migration reserves the `admin` agent identifier and intentionally aborts if that identifier is already occupied. Investigate the existing record and audit history rather than renaming or deleting it automatically. The fifth migration revokes direct table privileges on the core agent, budget and reservation tables from `PUBLIC`, `anon` and `authenticated`. The sixth explicitly grants the trusted `service_role` backend SELECT access to those tables for server-side dashboard reads; write operations remain behind privileged RPCs.
+The security-controls migration adds fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit, and mandatory administrator approval before provider submission. The submission-audit migration replaces the provider-submission RPC with an audited implementation and restricts `service_role` on both audit tables to SELECT and INSERT. The administrator-identity migration separates the admin audit identity from agent identities and blocks self-approval. The next migration reserves the `admin` agent identifier and intentionally aborts if that identifier is already occupied. Investigate the existing record and audit history rather than renaming or deleting it automatically. The fifth migration revokes direct table privileges on the core agent, budget and reservation tables from `PUBLIC`, `anon` and `authenticated`. The sixth explicitly grants the trusted `service_role` backend SELECT access to those tables for server-side dashboard reads; write operations remain behind privileged RPCs. The autonomy migrations add a distinct cumulative per-agent autonomous allowance, mark autonomous reservations, route requests within the allowance to the provider-submission path, and retain database-level active-recipient authorization. The absolute agent allocation and shared treasury limit remain hard ceilings. These migrations must be applied in order to a fresh or correctly upgraded test database before enabling autonomy.
 
 Older installations may also require the earlier multi-agent, request-ID, reconciliation, cleanup, admin-dashboard, security-event, privileged-RPC and atomic-submission scripts before the four V1 migrations above. Those scripts are:
 
