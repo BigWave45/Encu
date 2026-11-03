@@ -17,6 +17,9 @@ begin
   select * into v_budget from public.agent_budgets where id='default' for update;
   if not found then raise exception 'budget_not_configured'; end if;
 
+  -- Legacy provisioning did not lock the treasury row; block concurrent agent inserts until backfill completes.
+  lock table public.agents in share row exclusive mode;
+
   insert into public.agent_allocations(agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto)
   select a.id,0,0,0 from public.agents a
   where not exists (select 1 from public.agent_allocations aa where aa.agent_id=a.id);
