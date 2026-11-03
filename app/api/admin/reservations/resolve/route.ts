@@ -9,12 +9,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-    action: z.literal("failed_final"),
-    requestId: z.string().min(8).max(128),
-    reason: z.string().trim().min(3).max(500),
-    evidenceReference: z.string().trim().min(8).max(500)
-  })
-]);
+  action: z.literal("failed_final"),
+  requestId: z.string().min(8).max(128),
+  reason: z.string().trim().min(3).max(500),
+  evidenceReference: z.string().trim().min(8).max(500)
+});
 
 type NearTxResult = {
   final_execution_status?: string;
