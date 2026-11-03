@@ -185,6 +185,8 @@ jobs:
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-auto-policy-downgrade','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',NULL,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',NULL,NULL,NULL,NULL,'admin');" >/dev/null
           echo "PASS: tightened policy downgrades autonomous request to approval and preserves both ledgers."
 
 
