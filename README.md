@@ -487,7 +487,7 @@ Keep the current dashboard and preserve its working controls. Reorganize the exi
 7. **System health:** Supabase, NEAR RPC and configured execution-provider diagnostics.
 8. **Developer tools:** balance lookup and reservation-only agent request testing, clearly separated from administrator payment controls.
 
-The current single-page component can be reorganized into these sections without deleting its actions. Keep the admin-only boundary. Controls must remain visible only where the authenticated administrator can use them. Clearly distinguish current OutLayer execution status from the future native-contract backend. Do not add UI switches for unimplemented policy versioning, risk scoring or provider selection.
+The first UI pass has widened the single-page layout and added sticky in-page navigation to the existing controls. It preserves the current forms and API actions; it does not yet split the page into independent routes or tab panels. Continue the refactor incrementally without deleting actions. Keep the admin-only boundary. Controls must remain visible only where the authenticated administrator can use them. Clearly distinguish current OutLayer execution status from the future native-contract backend. Do not add UI switches for unimplemented policy versioning, risk scoring or provider selection.
 
 ### Next engineering sequence
 
