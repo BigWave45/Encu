@@ -322,3 +322,5 @@ commit;
 -- CI trigger for revised finality-audit assertion.
 
 -- CI trigger after narrowing the migration-suite finality audit assertion.
+
+-- CI trigger: final migration assertions reconnect with the postgres test password.
