@@ -208,8 +208,8 @@ jobs:
           # Rebalance without changing total treasury authority. The primary
           # receives 4 NEAR and the research agent 1 NEAR for this race.
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',4000000000000000000000000,'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',1000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',4000000000000000000000000,'admin');" >/dev/null
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           req_a="ag-concurrency-${suffix}-primary"
           req_b="ag-concurrency-${suffix}-research"
