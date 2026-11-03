@@ -1,4 +1,9 @@
-import { getOutLayerConfig, transferNear, type OutLayerTransferResult } from "@/lib/outlayer";
+import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
+
+export type ExecutionTransferResponse = {
+  httpStatus: number;
+  body: { tx_hash?: string; request_id?: string; requestId?: string; error?: string; status?: string; [key: string]: unknown };
+};
 
 export type NativeTransfer = {
   recipient: string;
@@ -9,7 +14,7 @@ export interface ExecutionProvider {
   readonly id: string;
   assertConfigured(): void;
   verifyExecutionAccount(): Promise<void>;
-  submitNativeTransfer(input: NativeTransfer): Promise<OutLayerTransferResult>;
+  submitNativeTransfer(input: NativeTransfer): Promise<ExecutionTransferResponse>;
 }
 
 /**
