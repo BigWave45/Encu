@@ -136,7 +136,7 @@ jobs:
             END IF;
           END
           $allocation_backfill$;
-          DO $
+          DO $legacy_preservation$
           DECLARE
             v_agent_id text;
             v_status text;
@@ -198,7 +198,7 @@ jobs:
               RAISE EXCEPTION 'core_table_grants_invalid';
             END IF;
           END
-          $$;
+          $legacy_preservation$;
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
