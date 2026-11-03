@@ -10,6 +10,7 @@ security definer
 set search_path = ''
 as $function$
 declare
+  v_budget public.agent_budgets%rowtype;
   v_allocation public.agent_allocations%rowtype;
   v_recipient public.agent_authorized_recipients%rowtype;
   v_reservation public.spend_reservations%rowtype;
@@ -24,7 +25,7 @@ begin
     raise exception 'invalid_submission_claim';
   end if;
 
-  perform 1 from public.agent_budgets where id = 'default' for update;
+  select * into v_budget from public.agent_budgets where id = 'default' for update;
   if not found then raise exception 'budget_not_configured'; end if;
 
   select * into v_allocation from public.agent_allocations
