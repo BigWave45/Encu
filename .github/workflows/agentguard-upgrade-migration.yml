@@ -233,6 +233,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.create_agent_with_audit('allocation-zero','Zero Allocation',repeat('a',64),'admin');" | jq -e '.allocation_limit_yocto == "0"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT count(*) FROM public.agent_authorized_recipients WHERE agent_id='allocation-zero';" | grep -qx '0'
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('allocation-zero','recipient.testnet','zero allocation test',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('allocation-zero-denied',1000000000000000000000,'recipient.testnet','allocation-zero');" | jq -e '.created == false and .reason == "agent_allocation_exceeded"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-v1-lifecycle-0001',1000000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true and .status == "awaiting_approval"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('allocation-over-limit',1000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == false and .reason == "agent_allocation_exceeded"' >/dev/null
