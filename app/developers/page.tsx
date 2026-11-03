@@ -260,6 +260,9 @@ export default function DeveloperPortal() {
     ? Number((value * 10000n) / authorityTotals.allocated) / 100
     : 0;
   const activeAgentCount = agents.filter(agent => agent.active).length;
+  const recentConfirmedCount = transactions.filter(item => item.status === "executed").length;
+  const recentReviewCount = transactions.filter(item => item.status === "needs_review").length;
+  const recentRejectedCount = transactions.filter(item => item.status === "rejected" || item.status === "failed").length;
 
   async function copyToken() {
     if (!issuedToken) return;
@@ -284,6 +287,11 @@ export default function DeveloperPortal() {
         <p className="developer-lede">
           {session ? "Monitor agent capacity, manage permissions and inspect every execution request from one place." : "Provision independent agent identities, assign spending authority and manage execution permissions from one workspace."}
         </p>
+        {session && <nav className="developer-workspace-nav" aria-label="Workspace navigation">
+          <a href="#workspace-overview">Overview</a>
+          <a href="#workspace-agents">Agents and authority</a>
+          <a href="#workspace-activity">Execution activity</a>
+        </nav>}
 
         {!session ? (
           <div className="developer-grid">
@@ -312,7 +320,7 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
-          <section className="developer-overview" aria-label="Workspace authority overview">
+          <section id="workspace-overview" className="developer-overview" aria-label="Workspace authority overview">
               <div className="developer-overview-head">
                 <div>
                   <span className="developer-section-kicker">WORKSPACE SNAPSHOT</span>
@@ -363,6 +371,13 @@ export default function DeveloperPortal() {
                   </div>
                 </> : <p className="developer-authority-empty">{authorityConsistent ? "Create an agent and assign an allocation to see its authority distribution." : "The combined spent and reserved amount exceeds assigned authority. Review the underlying agent records before relying on this total."}</p>}
               </div>
+
+              <div className="developer-activity-summary" aria-label="Latest transaction request outcomes">
+                <div><span>Confirmed executions</span><strong>{recentConfirmedCount}</strong></div>
+                <div><span>Needs review</span><strong>{recentReviewCount}</strong></div>
+                <div><span>Rejected or failed</span><strong>{recentRejectedCount}</strong></div>
+                <p>Counts are calculated from the latest {transactions.length} transaction records loaded for this workspace, not lifetime totals.</p>
+              </div>
               {agentError && <p className="developer-overview-error" role="alert">{agentError}</p>}
             </section>
             <div className="developer-grid">
@@ -382,7 +397,7 @@ export default function DeveloperPortal() {
               {agentError && <div className="developer-message developer-error" role="alert">{agentError}</div>}
               {issuedToken && <div className="developer-token"><strong>New agent token</strong><code>{issuedToken}</code><button className="developer-button secondary" type="button" onClick={copyToken}>Copy token</button><p>{issuedWarning}</p></div>}
 
-              <div className="developer-list">
+              <div id="workspace-agents" className="developer-list">
                 {agentsBusy && <p>Loading your agents…</p>}
                 {!agentsBusy && agents.length === 0 && <p>You have not created any agents yet.</p>}
                 {agents.map(agent => {
@@ -409,7 +424,7 @@ export default function DeveloperPortal() {
                   );
                 })}
               </div>
-              <section className="developer-activity" aria-label="Recent transaction activity">
+              <section id="workspace-activity" className="developer-activity" aria-label="Recent transaction activity">
                 <div className="developer-activity-head">
                   <div><span className="developer-section-kicker">ACTIVITY</span><h2>Recent transactions</h2></div>
                   <button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => session && void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh"}</button>
