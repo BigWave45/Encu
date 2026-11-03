@@ -225,8 +225,7 @@ export default function DeveloperPortal() {
         <div className="developer-eyebrow">Developer workspace</div>
         <h1 className="developer-title">Connect your agents<br />to controlled execution.</h1>
         <p className="developer-lede">
-          Create a developer account, provision your agents and manage their API credentials.
-          ENCU operators retain control of treasury allocation, spending policy and approved recipients.
+          Create a developer account, provision agents, manage credentials and configure each agent’s bounded spending authority.
         </p>
 
         {!session ? (
@@ -251,8 +250,8 @@ export default function DeveloperPortal() {
             <aside className="developer-panel">
               <h2>What your account controls</h2>
               <p>Your workspace is isolated from other developers. You can create agents, view their assigned allocation and rotate or deactivate their credentials.</p>
-              <p>New agents start with zero spending authority. An ENCU operator must assign an allocation, configure limits and authorize recipients before transfers can be submitted.</p>
-              <p>Developer accounts cannot change the shared treasury ceiling, operator settings or emergency stop.</p>
+              <p>New agents start with zero spending authority. You configure each agent’s allocation, transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
+              <p>Developer accounts cannot change the shared treasury ceiling or platform emergency stop.</p>
             </aside>
           </div>
         ) : (
@@ -303,8 +302,8 @@ export default function DeveloperPortal() {
             <aside className="developer-panel">
               <h2>Configure bounded execution</h2>
               <p>1. Create your agent and securely store its bearer token.</p>
-              <p>2. An ENCU operator reviews the agent and assigns its share of the shared Testnet treasury.</p>
-              <p>3. The operator configures transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
+              <p>2. You assign an allocation from the shared Testnet treasury, subject to ENCU’s platform-wide ceiling.</p>
+              <p>3. You set transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
               <p>4. Your backend sends requests using the agent token. ENCU enforces the current policy before OutLayer submission.</p>
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
             </aside>
