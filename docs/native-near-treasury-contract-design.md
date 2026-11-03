@@ -4,11 +4,11 @@ Status: approved architecture direction; specification only. No contract code, k
 
 ## 1. Objective
 
-Add a native NEAR execution backend without weakening or replacing AgentGuard's existing authorization model and without making OutLayer a permanent dependency.
+Add a native NEAR execution backend without weakening or replacing ENCU's existing authorization model and without making OutLayer a permanent dependency.
 
-The native backend must enforce critical spending restrictions on-chain. Supabase and the AgentGuard API remain useful for administration, workflow, reporting and audit, but a compromised API must not be able to bypass the on-chain treasury's hard limits.
+The native backend must enforce critical spending restrictions on-chain. Supabase and the ENCU API remain useful for administration, workflow, reporting and audit, but a compromised API must not be able to bypass the on-chain treasury's hard limits.
 
-The first native implementation is a dedicated AgentGuard treasury account with a contract deployed to that account. The contract holds the NEAR balance and initiates native transfers. It is not a wrapper around an externally held full-access key.
+The first native implementation is a dedicated ENCU treasury account with a contract deployed to that account. The contract holds the NEAR balance and initiates native transfers. It is not a wrapper around an externally held full-access key.
 
 ## 2. Actors and key boundaries
 
@@ -20,7 +20,7 @@ A dedicated account, for example `agentguard-treasury.testnet`, holds the contra
 
 A separately controlled administrator account is the contract's `controller_id`. It calls privileged contract methods to configure treasury limits, register/revoke agent public keys, set allocations, authorize/revoke recipients, pause/unpause and perform explicitly governed withdrawals or recovery.
 
-The treasury account's full-access key is a critical custody boundary. It must not be stored in the AgentGuard application or handed to agents. Keep it under offline/hardware or threshold/multisig control. The contract cannot prevent the holder of the treasury account's full-access key from bypassing the contract with direct account actions. The deployment must therefore minimize and protect full-access authority.
+The treasury account's full-access key is a critical custody boundary. It must not be stored in the ENCU application or handed to agents. Keep it under offline/hardware or threshold/multisig control. The contract cannot prevent the holder of the treasury account's full-access key from bypassing the contract with direct account actions. The deployment must therefore minimize and protect full-access authority.
 
 ### Agent function-call access keys
 
@@ -30,7 +30,7 @@ The contract identifies the agent using the transaction's signer public key (`en
 
 The restricted key's private key can be held by the agent runtime, or by a separate hardened signing service if the agent cannot safely manage keys. If a signing service is used, it must not expose a treasury full-access key. The restricted function-call key still limits the damage from a compromised signer.
 
-AgentGuard bearer tokens and NEAR function-call keys are different credentials. The bearer token authenticates an agent to the off-chain API; the public key identifies the agent to the on-chain contract. Provisioning must bind them explicitly. Rotating a bearer token must not silently rotate or delete the NEAR key, and vice versa.
+ENCU bearer tokens and NEAR function-call keys are different credentials. The bearer token authenticates an agent to the off-chain API; the public key identifies the agent to the on-chain contract. Provisioning must bind them explicitly. Rotating a bearer token must not silently rotate or delete the NEAR key, and vice versa.
 
 ## 3. Trust model
 
@@ -74,7 +74,7 @@ Names are provisional; final ABI follows the selected Rust SDK and implementatio
 - `reject_transfer(request_id, reason)`: reject the pending request and release both reserved counters exactly once.
 - `withdraw(to, amount, request_id)`, only if withdrawal authority and multisig/confirmation policy are explicitly designed. This is not an agent method.
 
-For the first native release, every request requires controller approval, matching the current AgentGuard operating mode. Do not let `request_transfer` auto-submit a transfer. Autonomous ALLOW execution is a later mode that needs its own policy and tests.
+For the first native release, every request requires controller approval, matching the current ENCU operating mode. Do not let `request_transfer` auto-submit a transfer. Autonomous ALLOW execution is a later mode that needs its own policy and tests.
 
 Controller methods must check `predecessor_account_id == controller_id`. The controller account must be different from the treasury account's agent restricted-key identity. The implementation must not treat every call from the treasury account as an administrator call.
 
@@ -130,7 +130,7 @@ Provision:
 1. Generate a unique agent keypair in the agent runtime or hardened signer.
 2. Add a function-call access key to the treasury account, restricted to receiver = treasury contract and method = `request_transfer`.
 3. Register the public key and agent policy in the contract.
-4. Bind the public key to the agent's off-chain identity in AgentGuard.
+4. Bind the public key to the agent's off-chain identity in ENCU.
 5. Verify that an unregistered key, wrong receiver, wrong method and wrong agent identity cannot spend.
 
 The key must have no direct transfer authority. If the access-key addition and contract registration are separate transactions, keep the key unusable until both steps are complete.
@@ -145,7 +145,7 @@ Rotating a key provisions and verifies a replacement before revoking the old key
 
 ## 9. Native execution adapter
 
-Implement a separate adapter behind the existing AgentGuard execution boundary. The adapter must:
+Implement a separate adapter behind the existing ENCU execution boundary. The adapter must:
 - Build the contract method call with a stable request ID and nonce.
 - Sign only with the agent's restricted function-call key or an explicitly isolated signer service.
 - Submit to the configured NEAR network.
@@ -202,7 +202,7 @@ No mainnet deployment, unrestricted server-side treasury key, dual-provider spen
 
 ### Stable developer-facing interface
 
-The developer should integrate with AgentGuard's payment API/SDK, not directly choose or call an execution provider for each request. A conceptual request is:
+The developer should integrate with ENCU's payment API/SDK, not directly choose or call an execution provider for each request. A conceptual request is:
 
 ```json
 {
@@ -223,18 +223,18 @@ The stable response should expose a provider-neutral lifecycle such as `accepted
 
 Use explicit treasury backend types:
 
-- `outlayer_wallet`: current V1. OutLayer holds/signs from its custody wallet; AgentGuard calls its API and independently reconciles NEAR finality.
-- `near_contract`: planned native treasury. A dedicated AgentGuard contract account holds native NEAR and enforces agent keys, recipients, allocations, pause and reservation accounting on-chain.
+- `outlayer_wallet`: current V1. OutLayer holds/signs from its custody wallet; ENCU calls its API and independently reconciles NEAR finality.
+- `near_contract`: planned native treasury. A dedicated ENCU contract account holds native NEAR and enforces agent keys, recipients, allocations, pause and reservation accounting on-chain.
 - `near_intents_outlayer`: future Intents route using OutLayer's custody wallet and its Intents API. This remains OutLayer custody/execution even though NEAR Intents performs the swap/settlement.
-- `near_intents_direct`: separate future integration in which AgentGuard or a designated signer controls an account/key registered for NEAR Intents and signs the required intent payloads before submitting them to the solver relay.
+- `near_intents_direct`: separate future integration in which ENCU or a designated signer controls an account/key registered for NEAR Intents and signs the required intent payloads before submitting them to the solver relay.
 
-Do not present `near_contract` and `near_intents_direct` as the same backend. A contract can custody NEAR and make supported on-chain calls. NEAR Intents uses signed intents, a solver/message-bus flow and Verifier settlement. A contract's ordinary `request_transfer` method does not automatically create or authorize a solver-routed cross-chain intent. Direct Intents support needs its own signer/key lifecycle, intent construction, quote/solver integration, approval binding and asynchronous settlement adapter. OutLayer already exposes Intents operations through its own Agent Custody API, so an AgentGuard adapter calling those endpoints would be an OutLayer-backed Intents route, not native AgentGuard contract execution.
+Do not present `near_contract` and `near_intents_direct` as the same backend. A contract can custody NEAR and make supported on-chain calls. NEAR Intents uses signed intents, a solver/message-bus flow and Verifier settlement. A contract's ordinary `request_transfer` method does not automatically create or authorize a solver-routed cross-chain intent. Direct Intents support needs its own signer/key lifecycle, intent construction, quote/solver integration, approval binding and asynchronous settlement adapter. OutLayer already exposes Intents operations through its own Agent Custody API, so an ENCU adapter calling those endpoints would be an OutLayer-backed Intents route, not native ENCU contract execution.
 
 ### Initial native scope and extension path
 
 The first native contract release should support native NEAR transfers only. NEP-141 tokens require a separate token adapter and token-contract storage/transfer handling. NEAR Intents swaps, cross-chain withdrawals, limit orders and confidential flows are separate capabilities and must not be implied by a native NEAR transfer implementation.
 
-A later Intents adapter can support cross-chain payments and swaps without changing the developer-facing AgentGuard request interface, provided the asset and destination schema can represent the route and the selected treasury backend supports it. The adapter must bind the exact token, amount, destination, quote/route artifact and expiry to the AgentGuard request before approval. It must not approve a vague instruction such as "swap to USDC" and then accept a materially different route at execution.
+A later Intents adapter can support cross-chain payments and swaps without changing the developer-facing ENCU request interface, provided the asset and destination schema can represent the route and the selected treasury backend supports it. The adapter must bind the exact token, amount, destination, quote/route artifact and expiry to the ENCU request before approval. It must not approve a vague instruction such as "swap to USDC" and then accept a materially different route at execution.
 
 ### Backend selection and treasury isolation
 
@@ -246,32 +246,32 @@ A migration from OutLayer to a native contract requires pausing new requests, re
 
 NEAR Intents is a protocol route, not simply another native transfer method. Its documented flow has users sign intents, publish them to a solver relay/message bus, receive competing quotes from solvers, and settle selected intents through the Verifier contract. Account keys are registered with the Verifier for named accounts; supported external wallets can also derive implicit accounts.
 
-There are two practical AgentGuard routes:
+There are two practical ENCU routes:
 
-1. **Fastest extension from current V1:** add an OutLayer Intents adapter. OutLayer documents endpoints for Intents deposits, withdrawals, swaps and transfers. AgentGuard would still authenticate agents, reserve its own budget and bind the approved operation, while OutLayer owns the custody/signing step. This is not a native-contract backend.
-2. **Independent direct integration:** implement a dedicated NEAR Intents adapter with its own account/key registration, intent signing, quote and solver-relay interaction, status polling and settlement verification. This does not automatically follow from deploying the AgentGuard treasury contract. A contract account cannot sign arbitrary off-chain intent payloads merely because it holds funds.
+1. **Fastest extension from current V1:** add an OutLayer Intents adapter. OutLayer documents endpoints for Intents deposits, withdrawals, swaps and transfers. ENCU would still authenticate agents, reserve its own budget and bind the approved operation, while OutLayer owns the custody/signing step. This is not a native-contract backend.
+2. **Independent direct integration:** implement a dedicated NEAR Intents adapter with its own account/key registration, intent signing, quote and solver-relay interaction, status polling and settlement verification. This does not automatically follow from deploying the ENCU treasury contract. A contract account cannot sign arbitrary off-chain intent payloads merely because it holds funds.
 
 The direct integration must specify who controls the Intents signing key, how that key is restricted, and how an approved quote is cryptographically or operationally bound to the exact asset, amount and destination. A generic "approval required" flag is insufficient if the solver artifact can change after approval.
 
-Provider documentation also describes limits of its own policy model. OutLayer's cumulative hourly/daily/monthly usage counters are documented as best-effort under concurrent requests, and its documented multisig path for certain Trusted Intents operations relies on gateway-supplied quote/deposit artifacts for some terms. AgentGuard must retain its own atomic reservations and must not claim that its approval proves the final solver route unless the adapter verifies that binding.
+Provider documentation also describes limits of its own policy model. OutLayer's cumulative hourly/daily/monthly usage counters are documented as best-effort under concurrent requests, and its documented multisig path for certain Trusted Intents operations relies on gateway-supplied quote/deposit artifacts for some terms. ENCU must retain its own atomic reservations and must not claim that its approval proves the final solver route unless the adapter verifies that binding.
 
 ## 14. Capability matrix (planned)
 
 | Capability | OutLayer current adapter | Native contract V1 | Future Intents adapter |
 |---|---|---|---|
 | Native NEAR transfer | Implemented | Planned | Can be a route/withdrawal |
-| Agent identity and allocation | AgentGuard off-chain | Contract-enforced | AgentGuard plus adapter key mapping |
-| Shared treasury reservation | AgentGuard atomic DB ledger | Contract-enforced on-chain | AgentGuard reservation plus protocol-specific settlement |
-| Recipient allowlist | AgentGuard; OutLayer wallet policy is separate | Contract-enforced | Exact destination/route checks required |
+| Agent identity and allocation | ENCU off-chain | Contract-enforced | ENCU plus adapter key mapping |
+| Shared treasury reservation | ENCU atomic DB ledger | Contract-enforced on-chain | ENCU reservation plus protocol-specific settlement |
+| Recipient allowlist | ENCU; OutLayer wallet policy is separate | Contract-enforced | Exact destination/route checks required |
 | NEP-141 token transfer | Not in current adapter | Not in V1 | Depends on supported Intents route |
-| NEAR Intents swap/cross-chain | Not in current AgentGuard adapter | Not in native V1 | Separate adapter required |
-| TEE custody/attestation | OutLayer provides TEE; current AgentGuard adapter does not surface/verify transfer attestation | Not provided by contract | Depends on selected signer/provider |
-| Independent on-chain policy enforcement | No AgentGuard treasury contract yet | Core purpose of native backend | Depends on account/contract/key architecture |
+| NEAR Intents swap/cross-chain | Not in current ENCU adapter | Not in native V1 | Separate adapter required |
+| TEE custody/attestation | OutLayer provides TEE; current ENCU adapter does not surface/verify transfer attestation | Not provided by contract | Depends on selected signer/provider |
+| Independent on-chain policy enforcement | No ENCU treasury contract yet | Core purpose of native backend | Depends on account/contract/key architecture |
 
 
 ## 15. What native contract integration can and cannot do
 
-The native treasury contract is a NEAR smart contract, not a universal payment rail. In the first release it will hold native NEAR and perform native NEAR account transfers under on-chain AgentGuard policy.
+The native treasury contract is a NEAR smart contract, not a universal payment rail. In the first release it will hold native NEAR and perform native NEAR account transfers under on-chain ENCU policy.
 
 A NEAR contract can later call other NEAR contracts, including NEP-141 token contracts and selected DeFi/payment contracts, using explicit cross-contract calls. Each integration needs a purpose-built adapter, argument validation, attached-deposit/gas policy, callback handling and settlement reconciliation. It is not safe to expose an unrestricted arbitrary `call` method to agents: that can turn a transfer guard into a generic asset-draining contract caller.
 
@@ -281,5 +281,5 @@ Therefore:
 - Native contract V1: native NEAR transfers only.
 - Native contract + NEP-141: later, through an explicit token adapter and token-specific accounting.
 - Native contract + other NEAR protocols: later, one audited adapter per protocol; no generic unrestricted contract-call permission.
-- NEAR Intents through OutLayer: possible via OutLayer's documented API, but still OutLayer custody and currently mainnet-only; AgentGuard integration is not implemented.
-- Direct NEAR Intents: separate project phase requiring a dedicated signer/Verifier integration and independent proof that the signed intent exactly matches AgentGuard's approved request.
+- NEAR Intents through OutLayer: possible via OutLayer's documented API, but still OutLayer custody and currently mainnet-only; ENCU integration is not implemented.
+- Direct NEAR Intents: separate project phase requiring a dedicated signer/Verifier integration and independent proof that the signed intent exactly matches ENCU's approved request.
