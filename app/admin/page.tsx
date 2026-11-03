@@ -745,7 +745,7 @@ export default function Home() {
 
       <section className="encu-intro">
         <div><p className="encu-eyebrow">TREASURY OPERATIONS / 01</p><h1>Control what your agents can move.</h1><p className="encu-lede">One treasury. Independent agent identities. Policy checks before every transfer.</p></div>
-        <div className="encu-intro-note"><span className="encu-note-kicker">EXECUTION MODEL</span><strong>OutLayer · NEAR</strong><span>Shared executor with ENCU-enforced agent allocations and recipient controls.</span></div>
+        <div className="encu-intro-note"><span className="encu-note-kicker">EXECUTION MODEL</span><strong>Configured execution backend · NEAR</strong><span>Shared executor with ENCU-enforced agent allocations and recipient controls.</span></div>
       </section>
 
       <form className="console-panel credential-panel encu-access-panel" onSubmit={checkBalance}>
@@ -889,7 +889,7 @@ Content-Type: application/json
           <div><strong>Network</strong><div>{String(health.network ?? "unknown")}</div></div>
           <div><strong>Supabase</strong><div>{String(health.supabase ?? health.status ?? "unknown")}</div></div>
           <div><strong>NEAR RPC</strong><div>{String(health.nearRpc ?? "unknown")}</div></div>
-          <div><strong>OutLayer</strong><div>{String(health.outlayer ?? "unknown")}</div></div>
+          <div><strong>Execution provider</strong><div>{String(health.outlayer ?? "unknown")}</div></div>
           <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
         </div>}
         </div>
@@ -1138,7 +1138,7 @@ Content-Type: application/json
         <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Testnet transfer request</h2>
         <div role="alert" className="history-warning" style={{ margin: "12px 0", padding: 14 }}>
           <strong>Live execution warning</strong>
-          <p style={{ margin: "6px 0 0", color: "#ffc0b4" }}>This sends a real authenticated transfer request. If ENCU authorizes it within the agent&apos;s autonomous allowance, ENCU can submit it to OutLayer and initiate a NEAR Testnet transfer. Requests outside that allowance enter administrator review. This is not a dry run.</p>
+          <p style={{ margin: "6px 0 0", color: "#ffc0b4" }}>This sends a real authenticated transfer request. If ENCU authorizes it under the agent&apos;s current policy, ENCU submits it through the configured execution backend and may initiate a NEAR Testnet transfer. Requests outside policy are rejected. This is not a dry run.</p>
         </div>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
           Use only a testnet agent, an explicitly authorized recipient and an amount you intend to transfer. The agent token is held only in this page&apos;s memory and cleared after submission.
