@@ -791,3 +791,142 @@ body {
   font-size: 11px !important;
   overflow-wrap: anywhere;
 }
+
+
+/* Overview, system health and treasury control surfaces */
+.metric-card {
+  min-height: 112px;
+  padding: 18px !important;
+  border: 1px solid #3c4739 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, #202920, #191f19) !important;
+}
+.metric-card > div:first-child {
+  color: #bdc7b7 !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.metric-card > div:last-child {
+  margin-top: 15px !important;
+  color: #f5f2e8 !important;
+  font-size: 27px !important;
+  font-weight: 800 !important;
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+}
+.metric-card > div:last-child span {
+  color: #c5cdbd !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0;
+}
+.health-grid {
+  padding: 15px !important;
+  border: 1px solid #3e493b !important;
+  border-radius: 9px !important;
+  background: #171f17 !important;
+}
+.health-grid > div {
+  min-height: 65px;
+  padding: 11px 12px;
+  border: 1px solid #354033;
+  border-radius: 7px;
+  background: #202920;
+}
+.health-grid > div > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #b9c5b4 !important;
+  font-size: 10px !important;
+  font-weight: 850 !important;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.health-grid > div > div {
+  color: #f0f2e9 !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  overflow-wrap: anywhere;
+}
+.credential-panel {
+  max-width: 100%;
+  background: #1a211a !important;
+}
+.credential-panel > label {
+  color: #f0f2e9 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+.provider-policy-panel {
+  background: #1b231b !important;
+}
+.provider-policy-panel > div:first-child strong {
+  font-size: 15px !important;
+  font-weight: 850 !important;
+}
+.provider-policy-panel pre {
+  max-height: 360px;
+  overflow: auto;
+}
+.emergency-panel {
+  padding: 18px !important;
+  border: 1px solid #8f5147 !important;
+  border-left: 4px solid #d46f5c !important;
+  border-radius: 9px !important;
+  background: #2b1d1b !important;
+}
+.emergency-panel > div strong {
+  color: #ffe0d8 !important;
+  font-size: 15px !important;
+  font-weight: 850 !important;
+}
+.emergency-panel button {
+  border: 1px solid #a65c4f !important;
+  background: #612e27 !important;
+  color: #fff0e9 !important;
+  font-weight: 850 !important;
+}
+.dashboard-workspace > .dashboard-heading {
+  padding-bottom: 17px;
+  border-bottom: 1px solid #3a4439;
+}
+.dashboard-heading h2 {
+  color: #f3f1e8 !important;
+  font-size: 24px !important;
+  font-weight: 800 !important;
+}
+.dashboard-heading p {
+  max-width: 620px;
+  color: #bdc6b8 !important;
+  font-size: 13px !important;
+}
+.dashboard-heading button {
+  border: 1px solid #66735d !important;
+  background: #2b3729 !important;
+  color: #f5f2e8 !important;
+  font-weight: 750 !important;
+}
+.dashboard-workspace > form.console-panel,
+.dashboard-workspace > section.console-panel {
+  margin-top: 14px !important;
+}
+.console-panel > p {
+  color: #bdc6b8 !important;
+}
+.console-panel > label {
+  color: #e9ede3 !important;
+  font-weight: 750 !important;
+}
+.dashboard-workspace form button[type="submit"] {
+  border: 1px solid #806b43 !important;
+  background: #49391f !important;
+  color: #ffe6b7 !important;
+  font-weight: 800 !important;
+}
+@media (max-width: 520px) {
+  .metric-card { min-height: 90px; padding: 14px !important; }
+  .metric-card > div:last-child { font-size: 22px !important; }
+  .health-grid > div { min-height: 58px; }
+}
