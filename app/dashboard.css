@@ -339,3 +339,136 @@ body {
   .dashboard-heading button { width: 100%; }
   .dashboard-nav { margin-left: -2px !important; width: calc(100% + 4px); }
 }
+
+/* Contrast and readability pass: override legacy inline light-theme styles. */
+:root {
+  --encu-bg: #0e110e;
+  --encu-surface: #171c17;
+  --encu-surface-raised: #202720;
+  --encu-ink: #f2f0e8;
+  --encu-muted: #b5bbae;
+  --encu-line: #3a4439;
+  --encu-line-soft: #30392f;
+  --encu-amber: #dfb66f;
+  --encu-amber-wash: #3b3020;
+}
+.dashboard-workspace { min-height: 0; }
+.dashboard-workspace p,
+.dashboard-workspace label,
+.dashboard-workspace span,
+.dashboard-workspace small,
+.dashboard-workspace li,
+.dashboard-workspace td,
+.dashboard-workspace th,
+.dashboard-workspace div {
+  color: inherit;
+}
+.dashboard-workspace p,
+.dashboard-workspace label,
+.dashboard-workspace li {
+  font-size: 14px;
+}
+.dashboard-workspace p,
+.dashboard-workspace label,
+.dashboard-workspace span,
+.dashboard-workspace small,
+.dashboard-workspace div,
+.dashboard-workspace td {
+  line-height: 1.6;
+}
+.dashboard-workspace p[style*="color"],
+.dashboard-workspace label[style*="color"],
+.dashboard-workspace span[style*="color"],
+.dashboard-workspace div[style*="color"] {
+  color: var(--encu-muted) !important;
+}
+.dashboard-workspace > section,
+.dashboard-workspace > form,
+.dashboard-workspace section[style],
+.dashboard-workspace form[style],
+.dashboard-workspace div[style*="background: #f8fafc"],
+.dashboard-workspace div[style*="background:#f8fafc"],
+.dashboard-workspace div[style*="background: rgb(248, 250, 252)"],
+.dashboard-workspace section[style*="background"],
+.dashboard-workspace div[style*="background: white"],
+.dashboard-workspace div[style*="background: #fff"] {
+  background: var(--encu-surface-raised) !important;
+  border-color: var(--encu-line) !important;
+  color: var(--encu-ink) !important;
+}
+.dashboard-workspace [style*="border: 1px solid #e2e8f0"],
+.dashboard-workspace [style*="border: 1px solid #cbd5e1"] {
+  border-color: var(--encu-line) !important;
+}
+.dashboard-workspace [style*="color: #64748b"],
+.dashboard-workspace [style*="color: #475569"],
+.dashboard-workspace [style*="color: #94a3b8"] {
+  color: var(--encu-muted) !important;
+}
+.dashboard-workspace h2,
+.dashboard-workspace h3,
+.dashboard-workspace h4,
+.dashboard-workspace strong {
+  color: var(--encu-ink) !important;
+}
+.dashboard-workspace h2 { font-size: 24px !important; line-height: 1.25; }
+.dashboard-workspace h3 { font-size: 16px !important; line-height: 1.35; }
+.dashboard-workspace label { font-size: 13px !important; }
+.dashboard-workspace input,
+.dashboard-workspace select,
+.dashboard-workspace textarea {
+  font: inherit;
+  font-size: 15px !important;
+  color: var(--encu-ink) !important;
+  background: #111611 !important;
+  border-color: #4a5548 !important;
+}
+.dashboard-workspace button {
+  font-size: 13px !important;
+  min-height: 42px;
+}
+.dashboard-nav {
+  background: #171c17 !important;
+  border-color: #3a4439 !important;
+}
+.dashboard-nav-item {
+  color: #d0d5ca !important;
+  font-size: 13px !important;
+}
+.dashboard-nav-item.is-active {
+  color: #ffe0a5 !important;
+  background: #40331f !important;
+  border-color: #80683f !important;
+}
+.dashboard-workspace table { background: var(--encu-surface-raised) !important; }
+.dashboard-workspace th { color: #d0d6c9 !important; }
+.dashboard-workspace td { color: #e8ebe2 !important; }
+.dashboard-workspace pre {
+  color: #e8ebe2 !important;
+  background: #101510 !important;
+}
+#developer-tools,
+#agent-access {
+  width: 100%;
+  min-width: 0;
+  margin: 18px 0 0 !important;
+  padding: 22px !important;
+  background: var(--encu-surface-raised) !important;
+  border: 1px solid var(--encu-line) !important;
+}
+#developer-tools > form { width: 100%; max-width: 760px; }
+#developer-tools [aria-live="polite"] {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  background: #151b15 !important;
+  border-color: var(--encu-line) !important;
+  color: var(--encu-ink) !important;
+}
+#developer-tools pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .dashboard-workspace { min-height: 0; }
+  #developer-tools, #agent-access { padding: 16px !important; }
+  .dashboard-workspace p { font-size: 13px; }
+  .dashboard-workspace h2 { font-size: 21px !important; }
+}
