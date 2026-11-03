@@ -938,6 +938,12 @@ export default function Home() {
               </div>
               <div style={{ marginTop: 6 }}>{near(item.amountYocto)} NEAR → {item.recipient}</div>
               <div style={{ color: "#64748b", marginTop: 4 }}>Created {new Date(item.createdAt).toLocaleString()} · {Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))} min ago</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 6, marginTop: 8, padding: 9, background: "#f8fafc", borderRadius: 6 }}>
+                <div><strong>Provider</strong><div style={{ color: "#475569" }}>{item.providerRequestId || item.txHash ? "Submission reference recorded" : item.status === "needs_review" ? "Outcome ambiguous · no reference" : item.status === "reserved" ? "Submission claimed / in progress" : ["awaiting_approval", "rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No provider reference"}</div></div>
+                <div><strong>NEAR finality</strong><div style={{ color: "#475569" }}>{item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash"}</div></div>
+                <div><strong>Treasury ledger</strong><div style={{ color: "#475569" }}>{item.status === "executed" ? "Spent" : ["failed", "rejected", "cancelled"].includes(item.status) ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</div></div>
+                <div><strong>Agent allocation ledger</strong><div style={{ color: "#475569" }}>{item.status === "executed" ? "Spent" : ["failed", "rejected", "cancelled"].includes(item.status) ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</div></div>
+              </div>
               <div style={{ color: "#64748b", marginTop: 5, overflowWrap: "anywhere" }}>Request: {item.requestId}</div>
               {item.txHash && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Tx: {item.txHash}</div>}
               {item.providerRequestId && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Provider request: {item.providerRequestId}</div>}
