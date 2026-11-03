@@ -118,30 +118,33 @@ The Preview health endpoint now confirms Supabase connectivity, the default budg
 
 This is a verified test-environment snapshot, not a guarantee that later environment edits remain deployed. Re-check the branch-specific Preview settings and test database before running state-mutating tests. Never apply Preview migrations to Production.
  
-### Live multi-agent test checkpoint (2026-11-03)
+### Isolated Preview environment: current handoff (2026-11-03)
 
-This section supersedes the earlier statement that the isolated Preview database had no test agents. It records the latest verified state and is the handoff point for the next engineering session.
+This section supersedes the earlier test-agent and transfer-state snapshots above. The earlier entries are retained only as historical records; do not use them as current operational instructions.
 
-- Preview deployment: `https://agentguard-iy27t3qjn-resonances-projects-13e560cd.vercel.app`, commit `0507d40213de4952d5aafa576737390b554bfa4a`. The deployment was READY and its health endpoint returned HTTP 200 on 2026-11-02.
-- Health verification passed for the isolated Supabase project, NEAR testnet RPC, OutLayer API connectivity, and the configured OutLayer executor signer.
-- The isolated Supabase project is `AgentGuard Test` (`rrvrlvitjithqizwutfl`, region `eu-west-3`). Do not use the original/production Supabase project for these tests.
-- Current agent rows verified directly from the test database: `primary` (Primary Agent, active) and `test-agent-alpha` (AgentGuard Multi-Agent Alpha, active). `test-agent-beta` does not exist yet.
-- Shared test budget remains 5 NEAR (`5000000000000000000000000` yoctoNEAR), spent = 0, reserved = 0.
-- `agentguard_system_controls.transfers_enabled` is currently `false`. No test reservations exist. No OutLayer transfer has been submitted.
-- The Preview admin dashboard and admin-control endpoints reject unauthenticated requests with `admin_required`, as expected. This only verifies that the admin gate is active; it does not verify the configured admin token.
-- A previous attempt to provision the second test agent and change test policies via a multi-statement SQL tool call was interrupted. A fresh read-only query confirmed that none of those attempted changes took effect. Do not assume they succeeded.
+- Preview uses the dedicated Supabase project `AgentGuard Test` (`rrvrlvitjithqizwutfl`). Production Supabase and Production Vercel have not been intentionally modified during this work.
+- The isolated database contains the current multi-agent, security-control, treasury allocation and recipient-registry schema. The allocation migrations and recipient-registry migration have been applied to this test project.
+- Test agents `test-agent-alpha` and `test-agent-beta` exist. Do not recreate them or reset their credentials without checking current state.
+- Shared treasury ceiling is 5 NEAR. Alpha previously completed a 0.001 NEAR testnet transfer to `lensherr.testnet`; its transaction hash is `7oQL5u2Thnp895SVEqzEV574BJYZZXDY1YRxTfjK1aGM`. This is a historical transaction record, not authorization for another transfer.
+- Beta's allocation was set to 0.001 NEAR for the controlled allocation tests. An authorized-recipient request was submitted, revoked while pending, correctly blocked at approval, then rejected by the administrator. The recipient was subsequently re-authorized. Re-check live state before relying on its current status.
+- Verified live Preview behaviour: an unlisted recipient was blocked with `recipient_not_authorized`; an authorized Beta request entered `awaiting_approval` and reserved both treasury and agent allocation; revocation prevented its approval; administrator rejection was recorded; a 0.02 NEAR request against Beta's 0.001 NEAR allocation was blocked with `agent_allocation_exceeded` and created no reservation.
+- A prior 0.001 NEAR transfer from Alpha was independently reconciled to NEAR FINAL and recorded as executed. Do not confuse this with Beta's approval/rejection test.
+- The Vercel Preview branch has been used for authenticated UI testing. Verify the current deployment SHA and health before any further live test. No new transfer should be initiated without explicit user approval.
 
-#### Next test sequence
+#### Verified allocation and reservation invariants
 
-1. Obtain authenticated access to the Preview admin dashboard without exposing the administrator token in chat. Verify the dashboard loads and confirms the above state.
-2. Provision `test-agent-beta` through `POST /api/agent/agents` (the application endpoint), then store each returned agent token securely. Tokens are shown only once. Do not create credentials by inserting guessed token hashes.
-3. Set both test-agent policies to a 0.004 NEAR maximum transfer, 0.004 NEAR daily and weekly caps, and an allowlist containing only `lensherr.testnet`. Confirm these settings through the dashboard.
-4. Enable transfers only in the isolated test environment so requests can reach the atomic reservation path. Keep every request unapproved while testing policy blocks, shared-budget contention, idempotent replay, and conflicting request IDs. The global emergency stop blocks reservation itself, so it cannot remain enabled during these reservation tests.
-5. Reject pending requests and verify reservations are released. Then activate the emergency stop and verify that new requests and approval/submission attempts are blocked. Re-check the budget ledger and reservation states.
-6. Re-enable transfers only for the final controlled test. Before approval, verify the exact destination, amount, testnet, executor identity, and available balance. The user has explicitly authorized one test transfer only: 0.001 NEAR from the configured OutLayer executor to `lensherr.testnet`. Submit it only through AgentGuard's authenticated request → reservation → admin approval → OutLayer → NEAR finality reconciliation path. Never send directly through OutLayer.
-7. Verify the final NEAR transaction and AgentGuard settlement, then replay the same request ID and confirm no second provider submission occurs. Record the transaction hash, finality result, reservation state, and budget counters here.
+The migration `20261103010000_enforce_agent_allocations.sql` applies treasury-first, allocation-second, reservation-third row locking to money-moving RPCs. New reservations atomically reserve against both ledgers. Approval revalidates current authorization without changing exposure. Rejection and safe expired cancellation release both reservations once. Provider submission and `needs_review` retain exposure. NEAR FINAL success/failure settlement updates the counters with the terminal state.
 
-**Credential/access blocker:** the administrator token is configured as a sensitive Preview environment variable and is not readable through the deployment configuration API. Do not retrieve or print it, and do not ask the user to paste it into chat. Until there is a safe authenticated way to submit admin requests, agent provisioning and policy configuration remain blocked. Do not bypass the application authorization layer with direct provider calls.
+The corrected disposable PostgreSQL concurrency workflow passed on commit `bb1a82a67fe20171155fb4c8ba73f0f8ea1c2350` (run [41599131269](https://github.com/BigWave45/agentguard/actions/runs/41599131269)). Its isolated race gave two agents 3 NEAR allocation each against a 5 NEAR treasury, submitted both reservations concurrently, verified exactly one 3 NEAR reservation and one `total_budget_exceeded` block, and verified cleanup released the winning reservation. The normal CI workflow for the same commit also passed (run [41599131195](https://github.com/BigWave45/agentguard/actions/runs/41599131195)).
+
+These checks establish the shared-treasury race and CI suite on that commit. They do not establish production readiness, mainnet readiness, policy versioning, autonomous execution or native-contract enforcement.
+
+#### Next safe verification
+
+1. Re-check current Preview deployment SHA and health.
+2. Read the current isolated database state before changing allocations, recipients, or transfer controls.
+3. Verify final settlement, safe cancellation and ambiguous provider submission against both treasury and agent ledgers using disposable tests.
+4. Keep Production untouched. Do not repeat the live transfer without explicit authorization.
 
 ## Authentication and agents
 
