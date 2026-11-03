@@ -541,6 +541,7 @@ export default function Home() {
       });
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setAgentResult(body);
+      if (response.ok) await loadDashboard();
     } catch {
       setAgentResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
     } finally {
