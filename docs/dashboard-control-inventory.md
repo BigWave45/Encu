@@ -88,3 +88,19 @@ The dashboard now reads the per-agent allocation ledger and exposes an administr
 - Lock order: treasury row, agent allocation row, reservation row. The enforcement migration re-backfills under the treasury lock and takes a table lock on agents to cover legacy provisioning between the additive schema and enforcement migrations.
 
 The two migrations are applied to the isolated AgentGuard Test Supabase project only. Production remains unchanged. The Vercel Preview deployment has not yet been updated because the Hobby team build-rate limit is still outstanding.
+
+
+## Recipient-authorization addendum (2026-11-03)
+
+Recipient authorization is being separated from general per-agent spend policy.
+
+- Canonical registry: `agent_authorized_recipients`, keyed by exact `(agent_id, account_id)`.
+- Admin API: `POST /api/admin/agents/recipients` authorizes or reauthorizes an exact account ID; `DELETE` revokes it.
+- Dashboard read: `GET /api/admin/dashboard` returns recipient status, label, authorizer, expiry and revocation metadata.
+- Dashboard UI: dedicated Authorized recipients panel supports exact account ID, display label, optional expiry and revocation. It reports pending approvals and claimed/provider-submitted work affected by revocation.
+- General agent policy no longer edits recipient allowlists. It retains per-transfer, daily and weekly caps.
+- Reservation and approval RPCs recheck active, unexpired recipient authorization. Labels are never used for matching.
+- Revocation does not release funds or cancel reservations. Administrators must reject pending requests or safely cancel expired requests. Claimed/provider-submitted work is reported as in-flight and cannot be recalled by revocation.
+- Backfill copies only explicit legacy allowlist entries. Legacy NULL/unrestricted policies become deny-by-default.
+
+The migration and API/UI code are in the branch and undergoing disposable PostgreSQL/API CI. Do not apply the recipient migration to Preview until those tests pass. The allocation migrations already applied to Preview are independent and remain active.
