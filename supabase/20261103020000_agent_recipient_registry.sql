@@ -318,3 +318,5 @@ grant execute on function public.approve_agent_transfer(text,text) to service_ro
 commit;
 
 -- Upgrade suite assertion refinement: distinguish missing from duplicate finality audit events.
+
+-- CI trigger for revised finality-audit assertion.
