@@ -608,3 +608,150 @@ body {
 @media (max-width: 700px) {
   .history-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+
+/* ENCU infrastructure-console components */
+.console-panel {
+  padding: 20px !important;
+  border: 1px solid #414b40 !important;
+  border-radius: 11px !important;
+  background: #1a211a !important;
+}
+.console-panel > strong {
+  display: block;
+  margin-bottom: 9px;
+  color: #f4f2e9 !important;
+  font-size: 16px;
+  font-weight: 800;
+}
+.console-table {
+  width: 100%;
+  border: 1px solid #414b40 !important;
+  border-collapse: separate !important;
+  border-spacing: 0;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #171d17 !important;
+}
+.console-table th {
+  padding: 13px 14px !important;
+  background: #252e24 !important;
+  color: #d0d8ca !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.console-table td {
+  padding: 14px !important;
+  border-top: 1px solid #343e33 !important;
+  color: #edf0e7 !important;
+  font-size: 13px !important;
+  font-weight: 560;
+}
+.console-table tr:hover td { background: #222b21 !important; }
+.console-table button {
+  min-height: 32px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #66745f !important;
+  border-radius: 6px !important;
+  background: #303b2e !important;
+  color: #f5f4ec !important;
+  font-size: 11px !important;
+  font-weight: 750 !important;
+}
+.recipient-record {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 13px;
+  margin-top: 8px;
+  border: 1px solid #3b4639;
+  border-radius: 8px;
+  background: #202820;
+}
+.recipient-record > div:first-child { display: grid; gap: 6px; min-width: 180px; flex: 1; }
+.record-title { color: #f5f3e9 !important; font-size: 14px !important; font-weight: 800 !important; }
+.record-identifier {
+  color: #e7c98e !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.record-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #c0c9bb !important; font-size: 11px; }
+.approval-record {
+  padding: 17px !important;
+  border: 1px solid #85672f !important;
+  border-left: 4px solid #e1b75f !important;
+  border-radius: 9px !important;
+  background: #2a251a !important;
+  color: #f5f0e2 !important;
+  font-size: 13px !important;
+}
+.approval-record > strong { color: #fff1ce !important; font-size: 15px !important; font-weight: 850 !important; }
+.approval-record code { color: #f0cf91 !important; }
+.event-record {
+  padding: 15px 16px !important;
+  margin-top: 8px;
+  border: 1px solid #3d483b !important;
+  border-left: 3px solid #77856e !important;
+  border-radius: 8px !important;
+  background: #1b231b !important;
+  color: #edf0e7 !important;
+  font-size: 13px !important;
+}
+.event-record > strong {
+  display: inline-block;
+  color: #f4f1e7 !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+.audit-record { border-left-color: #b99452 !important; }
+.security-record { border-left-color: #b56d5d !important; }
+.event-record > div { color: #c0c9bb !important; font-size: 12px !important; }
+.event-record > div:last-child {
+  margin-top: 9px !important;
+  padding: 9px 11px;
+  border: 1px solid #354034;
+  border-radius: 6px;
+  background: #141a14;
+  color: #e5e9df !important;
+  overflow-wrap: anywhere;
+}
+.developer-result {
+  width: 100%;
+  margin-top: 18px !important;
+  padding: 18px !important;
+  border: 1px solid #56634f !important;
+  border-radius: 10px !important;
+  background: #192219 !important;
+  color: #f3f1e8 !important;
+}
+.developer-result > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: #f4d69e !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+.developer-result pre {
+  margin: 0;
+  padding: 16px !important;
+  border: 1px solid #3c493a !important;
+  border-radius: 8px !important;
+  background: #0e140e !important;
+  color: #e7eee2 !important;
+  font-size: 13px !important;
+  line-height: 1.65 !important;
+}
+@media (max-width: 680px) {
+  .console-panel { padding: 15px !important; }
+  .recipient-record { align-items: flex-start; }
+  .record-meta { align-items: flex-start; }
+  .console-table { min-width: 540px; }
+  .event-record { padding: 13px !important; }
+  .developer-result { padding: 13px !important; }
+}
