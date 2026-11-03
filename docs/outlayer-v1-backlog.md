@@ -9,13 +9,13 @@ The OutLayer adapter is `lib/outlayer.ts`.
 - Requires `OUTLAYER_BASE_URL`, `OUTLAYER_API_KEY` and `OUTLAYER_NEAR_ADDRESS`.
 - Restricts the base URL to the official network-specific OutLayer API host.
 - Calls `GET /wallet/v1/address?chain=near` before admin approval submission and verifies the reported executor identity against the configured signer.
-- Calls `POST /wallet/v1/transfer` only from the administrator approval route.
+- Calls `POST /wallet/v1/transfer` from either the autonomous agent-transfer path (only after an atomic AgentGuard authorization) or the administrator approval route.
 - Persists provider request IDs and transaction hashes when returned.
 - Preserves the reservation as `needs_review` when the provider outcome is ambiguous.
 - Looks up saved provider request IDs through `GET /wallet/v1/requests/{id}`.
 - Uses NEAR RPC with `wait_until: FINAL` and verifies signer, recipient, exactly one native transfer action and exact yocto amount before settlement.
 
-The agent transfer route only creates a policy-checked reservation. It does not call OutLayer. The current mode requires an administrator to approve every transfer. Agent bearer credentials do not contain the OutLayer API key.
+The agent transfer route now branches on the database's atomic authorization result. A reservation inside the administrator-configured cumulative autonomous allowance is marked `auto_approved` and submitted once by the server; a request outside that allowance enters `awaiting_approval`. Both paths remain subject to the absolute per-agent allocation, shared treasury ceiling, per-transfer and rolling limits, emergency stop, and active recipient registry. Agent bearer credentials do not contain the OutLayer API key. The provider may independently hold an automatically submitted request for its own wallet approval; AgentGuard's authorization does not bypass OutLayer policy.
 
 ## Important correction: OutLayer has its own policy engine
 
@@ -37,12 +37,14 @@ OutLayer's TEE attestation documentation describes attestations for OutLayer cod
 
 ### A. Confirm provider wallet policy (configuration and evidence)
 
-- [ ] Inspect the actual Preview OutLayer wallet's owner policy in the OutLayer dashboard/API.
+- [ ] Inspect the actual Preview OutLayer wallet's owner policy in the OutLayer dashboard/API, including the effective approval threshold and whether native NEAR transfers are excluded from approval.
 - [ ] Record the effective per-transfer, hourly/daily/monthly limits, allowlist, transaction types, rate limits and approval requirements.
 - [ ] Confirm whether policy changes are owner-authorized and stored on-chain for this wallet.
+- [ ] Decide whether the Preview wallet should retain owner approval for every native transfer or allow AgentGuard-authorized requests to execute without a second human approval. This is an explicit wallet-owner security decision, not an application default.
 - [ ] Configure a wallet-wide hard ceiling that is at least as restrictive as the AgentGuard treasury limit and compatible with test flows.
 - [ ] Configure only the recipient/transaction scope required for the hackathon test.
-- [ ] Test a request that passes AgentGuard but is rejected by OutLayer policy; verify that AgentGuard retains exposure as ambiguous/needs-review until the actual NEAR outcome is established.
+- [ ] Test a request that passes AgentGuard but is rejected or held by OutLayer policy; verify that AgentGuard retains exposure as ambiguous/needs-review until the actual NEAR outcome is established.
+- [ ] Verify the exact provider status value returned when OutLayer waits for wallet approval, and confirm the dashboard renders that state accurately.
 - [ ] Capture evidence of the wallet policy configuration and its enforcement. Do not put API secrets in screenshots or repository files.
 
 ### B. Finish AgentGuard accounting and lifecycle verification
@@ -67,8 +69,11 @@ OutLayer's TEE attestation documentation describes attestations for OutLayer cod
 
 ### C. Execution mode and dashboard
 
-- [x] Current mode is explicit human approval for every transfer.
-- [ ] Keep approval visible until autonomous ALLOW execution and a risk-based HOLD workflow are implemented and tested.
+- [x] Implemented per-agent cumulative autonomous allowance, distinct from the absolute agent allocation.
+- [x] Implemented atomic auto-authorization and one-time provider submission for eligible requests; excess requests remain administrator approval-gated.
+- [x] Added dashboard configuration for the autonomous allowance and a provider-status message that distinguishes a provider approval wait from AgentGuard authorization.
+- [ ] Verify the provider approval state against an actual OutLayer response. The dashboard currently recognizes `pending_approval` as a likely hold state and displays other provider states verbatim.
+- [ ] Decide and configure the OutLayer owner policy after inspecting its actual effective settings.
 - [ ] Add an OutLayer wallet-policy status/evidence section to the admin dashboard only after the provider policy can be read or reliably attested. Do not create cosmetic policy controls that do not call the provider.
 - [ ] Show provider submission, provider request ID, transaction hash, NEAR finality and AgentGuard settlement as distinct states.
 - [ ] Add transaction detail view for the provider/NEAR evidence and both reservation ledgers.
