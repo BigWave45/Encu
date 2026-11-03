@@ -1,8 +1,8 @@
 # ENCU
 
-ENCU is an application-level transaction authorization and control layer for AI agents making native NEAR transfers.
+ENCU is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
 
-**Naming note:** ENCU is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
+**Naming note:** ENCU is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product.
 
 ## V1 release scope — 2026-11-03
 
