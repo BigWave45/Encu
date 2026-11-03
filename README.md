@@ -426,78 +426,78 @@ Prioritize these attack surfaces because failure would invalidate AgentGuard's c
 
 Behavioural anomaly detection and reputation scoring are possible later enhancements. They must supplement deterministic controls, never replace hard limits or authorization. A valid identity or approved recipient does not prove that an agent's intent or the recipient is trustworthy.
 
-### Current implementation status at handoff
+### Current implementation status (2026-11-03)
 
-Latest known branch: `agentguard/build-v1`.
+This is the current implementation record. Earlier dated database snapshots above are historical and must not be treated as current state.
 
-Latest known commit: `f83233d8452925e69826e6603be066e1a835881f`.
+**Implemented in the branch and isolated Preview test environment**
+- Separate agent bearer credentials and administrator authentication.
+- Agent provisioning, activation/deactivation and credential rotation.
+- Shared treasury ceiling and atomic per-agent allocation ledger.
+- Atomic reservation across treasury and agent exposure.
+- Per-agent transfer, daily and weekly caps.
+- Exact recipient registry with administrator authorization, expiry and revocation.
+- Revalidation of agent state, recipient authorization, emergency stop and allocation exposure during approval.
+- Mandatory administrator approval before OutLayer submission.
+- Request-ID idempotency and conflict protection.
+- Safe rejection and expired unsubmitted-request cancellation.
+- OutLayer submission tracking, signer identity verification and NEAR FINAL reconciliation.
+- Admin dashboard controls for treasury limits, agent allocation, agent policies, recipient authorization, approvals, transaction history, emergency stop, audit and security events.
+- Disposable PostgreSQL concurrency test for cross-agent treasury reservations.
 
-The latest CI run for that commit, GitHub Actions run `41562915525`, completed successfully for the build, API security/transfer lifecycle tests and NEAR finality reconciliation tests.
+**Verified live or automated**
+- Controlled Alpha 0.001 NEAR testnet transfer reconciled to NEAR FINAL and recorded as executed. Transaction: `7oQL5u2Thnp895SVEqzEV574BJYZZXDY1YRxTfjK1aGM`.
+- Live Preview blocks an unauthorized recipient with `recipient_not_authorized`.
+- Live Preview blocks a request exceeding an agent's allocation with `agent_allocation_exceeded` and creates no reservation.
+- Live Preview prevents approval after the recipient is revoked.
+- Disposable PostgreSQL race test passed on commit `bb1a82a67fe20171155fb4c8ba73f0f8ea1c2350`: two concurrent 3 NEAR reservations against a 5 NEAR treasury produced exactly one reservation and one `total_budget_exceeded` denial; cleanup released the reservation. See [workflow run 41599131269](https://github.com/BigWave45/agentguard/actions/runs/41599131269).
+- Normal CI passed on the same commit. See [workflow run 41599131195](https://github.com/BigWave45/agentguard/actions/runs/41599131195).
 
-Existing implementation includes agent authentication, admin-only management and approvals, per-agent policies, recipient allowlists, emergency stop, persistent rate limiting, shared-budget atomic reservation, idempotency, provider signer verification, audit events and NEAR finality reconciliation. Existing transfer requests still enter `awaiting_approval`; the admin approval endpoint is currently the only application path that calls `transferNear`.
+These results are scoped to the tested commit and isolated environment. Re-check current branch, Preview deployment and database before further mutations.
 
-The signer-verification patch checks OutLayer's reported executor account against the configured `OUTLAYER_NEAR_ADDRESS` before consuming approval or submitting a transfer. The test suite verifies that a signer mismatch returns an error and does not submit. The actual OutLayer endpoint contract should still be checked against authoritative provider documentation; a passing mock test does not prove the live response schema.
+**Not implemented or not yet fully verified**
+- Autonomous execution for deterministic ALLOW decisions. All current transfers still require administrator approval.
+- Immutable policy versioning and policy-version binding on reservations.
+- Risk-based HOLD scoring, review quotas, deduplication and escalation.
+- Native NEAR treasury smart contract and native contract execution adapter.
+- Alternative execution providers.
+- Mainnet readiness, high-throughput claims or production security certification.
+- Full adversarial verification of every approval/rejection/cancellation/finality race in the current branch.
 
-A controlled NEAR testnet transfer was completed and reconciled:
+### Execution architecture and provider independence
 
-- Agent: `test-agent-alpha`
-- Amount: `0.001 NEAR`
-- Recipient: `lensherr.testnet`
-- AgentGuard request ID: `ag-8ad9a18e-e917-436d-bf66-d6764ce43dca`
-- Transaction hash: `7oQL5u2Thnp895SVEqzEV574BJYZZXDY1YRxTfjK1aGM`
-- Final status: `executed`
-- Finality reconciliation recorded `transfer_finalized`; `last_error=null`.
+OutLayer remains the only implemented execution provider. AgentGuard's policy engine is intended to remain provider-independent: it authenticates the agent, evaluates the current policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. An execution adapter performs signing and submission.
 
-This proves one controlled testnet transfer through the current approval-based path. It does not prove high-throughput execution, autonomous policy-authorized execution, mainnet readiness, or production security.
+The next execution backend is planned as a **dedicated AgentGuard treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
-### Implementation gaps and next engineering sequence
+This is an approved architectural direction, not implemented functionality. Before deployment, specify and test contract ownership, key rotation/recovery, deposit and withdrawal authority, asynchronous transfer promises/callbacks, pending/failed settlement, duplicate calls, contract upgrades and emergency recovery. Supabase remains the off-chain policy, workflow and audit store; the contract becomes the authoritative on-chain enforcement boundary for funds held by that contract. Reconciliation must compare contract state and NEAR FINAL outcomes with the off-chain ledger.
 
-Do not treat the architecture decisions above as implemented. Before changing execution behavior:
+OutLayer should remain available as the existing adapter. Initially, each treasury should be assigned to one execution backend; do not let the same treasury spend through OutLayer and a native contract concurrently until cross-provider exposure accounting and duplicate-spend prevention are explicitly designed and tested.
 
-1. Verify the actual OutLayer address/signer endpoint and transfer API contract against authoritative provider documentation. Confirm what signer identity the provider reports and how transfer submission behaves under timeouts, duplicate requests and rate limits.
-2. Inspect the current schema and RPCs on the isolated Preview test database. Determine whether the existing shared budget is truly treasury-scoped and whether agent allocations exist. Do not assume the current single shared budget already implements treasury plus sub-allocations.
-3. Design treasury and agent allocation accounting. Define allocated, spent, reserved/committed and available values precisely. Enforce treasury and agent ceilings in one atomic reservation operation.
-4. Add administrator-managed recipient lifecycle and exact-account authorization, including revocation checks at execution time.
-5. Define risk-hold quotas, deduplication, reservation expiry/reconciliation and escalation.
-6. Add policy versioning and revalidation immediately before provider submission.
-7. Add an explicit execution profile per agent and a hard system-level provider/infrastructure ceiling.
-8. Implement policy-authorized autonomous execution through the existing trusted server path. Reuse signer verification, idempotency, atomic reservation, audit and finality reconciliation. Do not create a second provider execution path with weaker checks.
-9. Retain manual approval as a configurable stricter mode and use human review for risk holds.
-10. Add adversarial tests for concurrent cross-agent reservations, aggregate treasury limits, payment splitting, recipient revocation, stale policy versions, review-queue flooding, emergency-stop races, provider timeouts and duplicate submission.
-11. Update the dashboard to reflect treasury allocations, committed exposure, agent execution profiles, recipient management, review queue and audit history.
-12. Verify the Preview deployment and test environment end to end. Keep Production untouched unless explicitly authorized. Do not initiate another live transfer without explicit user approval.
+### Dashboard information architecture
 
-### Scope discipline
+Keep the current dashboard and preserve its working controls. Reorganize the existing interface in place; do not replace it with a new application or remove useful controls.
 
-Current target remains the NEAR hackathon AI Security & Defense track. Do not expand the implementation into multi-provider support, a marketplace, a generic agent framework, reputation scoring or broad commercial features before the core policy-enforced execution path is working and demonstrable. Future provider integrations may be documented as an extension point only.
+1. **Overview:** treasury ceiling, total allocated, spent, reserved/committed, available headroom, emergency-stop state, recent activity and system status.
+2. **Agents:** identity, active state, allocation, per-transfer/daily/weekly limits, recipient permissions, credential provisioning and rotation.
+3. **Recipients:** exact NEAR account ID, label, expiry, active/revoked state, authorizing administrator and affected pending requests.
+4. **Payments:** searchable/filterable transaction history, amount, recipient, agent, request ID, provider reference, reservation and finality status.
+5. **Review queue:** pending approvals in the current manual-approval mode; later, risk-based HOLD cases. Do not hide the current approval control until autonomous execution and risk review are implemented.
+6. **Security and audit:** emergency stop, admin actions, policy changes, security events and reconciliation exceptions.
+7. **System health:** Supabase, NEAR RPC and configured execution-provider diagnostics.
+8. **Developer tools:** balance lookup and reservation-only agent request testing, clearly separated from administrator payment controls.
 
+The current single-page component can be reorganized into these sections without deleting its actions. Keep the admin-only boundary. Controls must remain visible only where the authenticated administrator can use them. Clearly distinguish current OutLayer execution status from the future native-contract backend. Do not add UI switches for unimplemented policy versioning, risk scoring or provider selection.
 
-### Dashboard control inventory (2026-11-03)
+### Next engineering sequence
 
-A read-only control-to-backend audit is maintained in [`docs/dashboard-control-inventory.md`](docs/dashboard-control-inventory.md). It maps the current dashboard interactions to their API routes and database operations, records the current enforcement boundaries, and identifies which controls should be preserved, reorganized or added only after backend enforcement exists.
+1. Complete remaining lifecycle and adversarial tests for both ledgers: final success, final failure, safe expiry cancellation, rejection, ambiguous provider submission, replay, recipient revocation, emergency-stop races and exact-once counter changes.
+2. Verify the current Preview deployment SHA, environment and database state. Do not rely on historical README snapshots for live state.
+3. Specify the NEAR treasury contract's authority model, storage, methods, state transitions, event schema and asynchronous transfer settlement.
+4. Build and test the contract in a disposable/local NEAR environment before deploying to testnet.
+5. Implement a separate native-contract execution adapter behind the existing AgentGuard authorization boundary. Preserve the OutLayer adapter.
+6. Reconcile contract events and NEAR FINAL transaction outcomes against the treasury and agent ledgers.
+7. Reorganize the existing dashboard in place, preserving all current controls and clearly displaying the selected execution backend.
+8. Run the full security suite and a controlled, low-value NEAR testnet transfer through the new contract only after explicit approval.
 
-The audit confirms that the current schema has one shared `default` budget row and no per-agent allocation ledger. Existing per-agent policies are caps and recipient allowlists, not allocations. The current UI is a single client component in `app/page.tsx`. Do not represent proposed allocations, recipient lifecycle, policy versioning, execution profiles or autonomous execution as implemented until their database and API enforcement is complete.
-
-The inventory commit is `f2c97b3bc4dbb30a25d977b973115d4114b21d3d`. This documentation-only commit does not change application behaviour.
-
-
-### Treasury and agent allocation design
-
-The allocation model and migration requirements are documented in [`docs/treasury-agent-allocation-design.md`](docs/treasury-agent-allocation-design.md). This is a reviewed design only; no allocation migration has been applied and no application enforcement has changed. The document records the current Preview ledger/RPC behaviour, atomic dual-ledger invariants, migration/backfill requirements and required tests. Commit: `02b859ee12ccaef16e15a5dcf2ed7a888fe2f5a3`.
-
-
-### Treasury and agent allocations (2026-11-03)
-
-Implemented in `supabase/20261103010000_enforce_agent_allocations.sql`. The obsolete empty migration scaffold has been removed.
-
-- Adds the per-agent allocation ledger and backfills historical spent/reserved exposure from reservations. The migration aborts if the existing treasury counters do not reconcile.
-- Enforces treasury and agent limits atomically across reservation, approval, rejection, safe expiry cancellation, settlement and verified final-failure resolution.
-- New agents receive zero spending authority. Treasury allocations cannot exceed the treasury ceiling, and an allocation cannot be lowered below committed exposure.
-- The migration is applied to the isolated AgentGuard Test Supabase project. Preview ledger last verified: treasury ceiling 5 NEAR, spent 0.001 NEAR, reserved 0; primary allocation 0, test-agent-alpha allocation/spent 0.001 NEAR, test-agent-beta allocation 0.
-- Allocation API and dashboard controls are deployed to Preview. Production Supabase and Production Vercel remain untouched.
-
-The allocation phase passed the API security/lifecycle tests, PostgreSQL upgrade/backfill tests, concurrent reservation tests and Next.js build. The recipient registry phase below is separate and has not yet been applied to Preview.
-
-### Recipient authorization phase
-
-The next security phase is specified in [`docs/recipient-authorization-design.md`](docs/recipient-authorization-design.md). The branch now contains the recipient registry migration, admin authorize/revoke endpoints, dashboard recipient panel and tests. The migration copies only explicit legacy allowlists; legacy NULL/unrestricted policies become deny-by-default. The migration is not yet applied to Preview. It must pass the disposable upgrade and concurrency workflows before rollout. Production remains untouched.
+Production Supabase and Production Vercel remain out of scope unless the user explicitly authorizes changes. Do not merge the pull request or initiate another live transfer without authorization.
