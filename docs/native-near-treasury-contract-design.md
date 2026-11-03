@@ -222,7 +222,7 @@ Use explicit treasury backend types:
 - `near_intents_outlayer`: future Intents route using OutLayer's custody wallet and its Intents API. This remains OutLayer custody/execution even though NEAR Intents performs the swap/settlement.
 - `near_intents_direct`: separate future integration in which AgentGuard or a designated signer controls an account/key registered for NEAR Intents and signs the required intent payloads before submitting them to the solver relay.
 
-Do not present `near_contract` and `near_intents_direct` as the same backend. A contract can custody NEAR and make supported on-chain calls. NEAR Intents uses signed intents, a solver/message-bus flow and Verifier settlement. A contract's ordinary `request_transfer` method does not automatically create or authorize a solver-routed cross-chain intent. Direct Intents support needs its own signer/key lifecycle, intent construction, quote/solver integration, approval binding and asynchronous settlement adapter.
+Do not present `near_contract` and `near_intents_direct` as the same backend. A contract can custody NEAR and make supported on-chain calls. NEAR Intents uses signed intents, a solver/message-bus flow and Verifier settlement. A contract's ordinary `request_transfer` method does not automatically create or authorize a solver-routed cross-chain intent. Direct Intents support needs its own signer/key lifecycle, intent construction, quote/solver integration, approval binding and asynchronous settlement adapter. OutLayer already exposes Intents operations through its own Agent Custody API, so an AgentGuard adapter calling those endpoints would be an OutLayer-backed Intents route, not native AgentGuard contract execution.
 
 ### Initial native scope and extension path
 
@@ -261,3 +261,19 @@ Provider documentation also describes limits of its own policy model. OutLayer's
 | NEAR Intents swap/cross-chain | Not in current AgentGuard adapter | Not in native V1 | Separate adapter required |
 | TEE custody/attestation | OutLayer provides TEE; current AgentGuard adapter does not surface/verify transfer attestation | Not provided by contract | Depends on selected signer/provider |
 | Independent on-chain policy enforcement | No AgentGuard treasury contract yet | Core purpose of native backend | Depends on account/contract/key architecture |
+
+
+## 15. What native contract integration can and cannot do
+
+The native treasury contract is a NEAR smart contract, not a universal payment rail. In the first release it will hold native NEAR and perform native NEAR account transfers under on-chain AgentGuard policy.
+
+A NEAR contract can later call other NEAR contracts, including NEP-141 token contracts and selected DeFi/payment contracts, using explicit cross-contract calls. Each integration needs a purpose-built adapter, argument validation, attached-deposit/gas policy, callback handling and settlement reconciliation. It is not safe to expose an unrestricted arbitrary `call` method to agents: that can turn a transfer guard into a generic asset-draining contract caller.
+
+NEAR Intents is a separate signed-intent protocol. The Verifier maps named accounts to registered public keys; users sign intent payloads and submit them to a solver relay, which coordinates quotes and on-chain settlement. A native treasury contract does not automatically control that off-chain signing flow. Giving an agent a key registered to the treasury's Intents identity could let it sign Intents outside the contract's `request_transfer` checks. Do not register agent-controlled signing keys to the treasury's Intents identity unless an independent authorization/signing design prevents that bypass.
+
+Therefore:
+- Native contract V1: native NEAR transfers only.
+- Native contract + NEP-141: later, through an explicit token adapter and token-specific accounting.
+- Native contract + other NEAR protocols: later, one audited adapter per protocol; no generic unrestricted contract-call permission.
+- NEAR Intents through OutLayer: possible via OutLayer's documented API, but still OutLayer custody and currently mainnet-only; AgentGuard integration is not implemented.
+- Direct NEAR Intents: separate project phase requiring a dedicated signer/Verifier integration and independent proof that the signed intent exactly matches AgentGuard's approved request.
