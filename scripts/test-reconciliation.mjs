@@ -107,6 +107,7 @@ const env = {
   OUTLAYER_API_KEY: "test-outlayer-key",
   OUTLAYER_NEAR_ADDRESS: signerId,
   AGENTGUARD_NETWORK: "testnet",
+  AGENTGUARD_ADMIN_TOKEN: "test-admin-token",
   CI: "true",
   AGENTGUARD_TEST_MODE: "true",
   PORT: String(appPort),
@@ -175,6 +176,7 @@ try {
   rpcResponses.set(reservations.get("rpc-error-001").outlayer_tx_hash, "throw");
   rpcResponses.set(reservations.get("rpc-missing-001").outlayer_tx_hash, "missing");
   rpcResponses.set(reservations.get("finalize-error-001").outlayer_tx_hash, matchingResult(reservations.get("finalize-error-001")));
+  rpcResponses.set(reservations.get("wrong-agent-001").outlayer_tx_hash, matchingResult(reservations.get("wrong-agent-001")));
 
   await new Promise((resolve, reject) => {
     mock.once("error", reject);
@@ -192,6 +194,10 @@ try {
 
   response = await postReconcile("agent-two-token", "success-001");
   assert(response.status === 404, "agent cannot inspect another agent's reservation");
+
+  response = await postReconcile("test-admin-token", "wrong-agent-001");
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "executed", "administrator can reconcile another agent's reservation");
 
   response = await postReconcile("agent-one-token", "missing-001");
   assert(response.status === 404, "unknown reservation is not found");
