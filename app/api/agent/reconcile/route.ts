@@ -129,19 +129,24 @@ export async function POST(request: NextRequest) {
   }
 
   const result = rpc.result;
-  const transferMatches =
-    result.final_execution_status === "FINAL" &&
-    result.transaction?.signer_id === signerId &&
-    result.transaction?.receiver_id === reservation.recipient &&
-    Array.isArray(result.transaction?.actions) &&
-    result.transaction.actions.length === 1 &&
-    result.transaction.actions[0].Transfer?.deposit === String(reservation.amount_yocto);
+  const actions = result.transaction?.actions;
+  const checks = {
+    finality: result.final_execution_status === "FINAL",
+    signer: result.transaction?.signer_id === signerId,
+    recipient: result.transaction?.receiver_id === reservation.recipient,
+    singleAction: Array.isArray(actions) && actions.length === 1,
+    transferAction: Array.isArray(actions) && actions.length === 1 && Boolean(actions[0]?.Transfer),
+    amount: Array.isArray(actions) && actions.length === 1 &&
+      actions[0]?.Transfer?.deposit === String(reservation.amount_yocto)
+  };
+  const transferMatches = Object.values(checks).every(Boolean);
 
   if (!transferMatches) {
     return NextResponse.json({
       status: "needs_review",
       requestId: reservation.request_id,
-      reason: "final_transaction_does_not_match_reserved_transfer"
+      reason: "final_transaction_does_not_match_reserved_transfer",
+      checks
     }, { status: 202 });
   }
 
