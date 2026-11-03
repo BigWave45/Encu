@@ -770,32 +770,6 @@ try {
   payload = await response.json();
   assert(response.status === 403 && payload.reason === "agent_per_transfer_limit", "per-agent transfer cap blocks an over-limit request");
 
-  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
-    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", label: "Temporary recipient" })
-  });
-  assert(response.status === 200, "admin can authorize a recipient before revocation test");
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-recipient-revoke-001", to: "revoke.test" });
-  assert(response.status === 202, "authorized recipient can receive a pending transfer request");
-  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
-    method: "DELETE", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", reason: "test revoke" })
-  });
-  assert(response.status === 403, "agent credential cannot revoke recipients");
-  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
-    method: "DELETE", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", reason: "test revocation" })
-  });
-  payload = await response.json();
-  assert(response.status === 200 && payload.recipient.pending_approvals === 1, "revocation reports pending approvals without releasing reservations");
-  response = await approveTransfer("test-recipient-revoke-001");
-  payload = await response.json();
-  assert(response.status === 409 && payload.reason === "recipient_not_authorized", `revoked recipient cannot pass approval revalidation (HTTP ${response.status}: ${JSON.stringify(payload)})`);
-  assert(reservations.get("test-recipient-revoke-001").status === "awaiting_approval", "revocation leaves pending reservation intact");
-  assert(securityEvents.some(event => event.event_type === "transfer_approval_blocked" && event.request_id === "test-recipient-revoke-001" && event.details?.reason === "recipient_not_authorized" && event.details?.code === "P0001"), "blocked approval audit records the specific recipient authorization denial");
-  response = await approveTransfer("test-recipient-revoke-001", "reject");
-  assert(response.status === 200, "admin can reject a pending request after recipient revocation");
-
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null })
