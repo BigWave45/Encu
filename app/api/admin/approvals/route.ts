@@ -4,6 +4,7 @@ import { authenticateAdmin } from "@/lib/agent-auth";
 import { getSupabase } from "@/lib/supabase";
 import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
 import { adminRateLimitResponse } from "@/lib/admin-rate-limit";
+import { recordSecurityEvent } from "@/lib/security-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,9 +92,24 @@ export async function POST(request: NextRequest) {
     p_request_id: parsed.data.requestId,
     p_actor_agent_id: identity.agentId
   });
-  if (approvalError) return NextResponse.json({ error: "transfer_approval_failed", reason: approvalError.message }, { status: 409 });
+  if (approvalError) {
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: "transfer_approval_blocked",
+      requestId: parsed.data.requestId,
+      details: { reason: "approval_rpc_error", code: approvalError.code ?? null }
+    });
+    return NextResponse.json({ error: "transfer_approval_failed", reason: approvalError.message }, { status: 409 });
+  }
   if (approved?.approved === false) {
-    return NextResponse.json({ error: String(approved.reason ?? "transfer_approval_blocked") }, { status: 409 });
+    const reason = String(approved.reason ?? "transfer_approval_blocked");
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: "transfer_approval_blocked",
+      requestId: parsed.data.requestId,
+      details: { reason }
+    });
+    return NextResponse.json({ error: reason }, { status: 409 });
   }
 
   const requestId = String(approved.request_id);
