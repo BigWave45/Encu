@@ -393,7 +393,8 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-does-not-consume-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-aged-out-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == false and .status == "awaiting_approval"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $rolling_allowance$
           BEGIN
             BEGIN
