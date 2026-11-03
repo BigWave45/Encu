@@ -467,3 +467,12 @@ Do not treat the architecture decisions above as implemented. Before changing ex
 ### Scope discipline
 
 Current target remains the NEAR hackathon AI Security & Defense track. Do not expand the implementation into multi-provider support, a marketplace, a generic agent framework, reputation scoring or broad commercial features before the core policy-enforced execution path is working and demonstrable. Future provider integrations may be documented as an extension point only.
+
+
+### Dashboard control inventory (2026-11-03)
+
+A read-only control-to-backend audit is maintained in [`docs/dashboard-control-inventory.md`](docs/dashboard-control-inventory.md). It maps the current dashboard interactions to their API routes and database operations, records the current enforcement boundaries, and identifies which controls should be preserved, reorganized or added only after backend enforcement exists.
+
+The audit confirms that the current schema has one shared `default` budget row and no per-agent allocation ledger. Existing per-agent policies are caps and recipient allowlists, not allocations. The current UI is a single client component in `app/page.tsx`. Do not represent proposed allocations, recipient lifecycle, policy versioning, execution profiles or autonomous execution as implemented until their database and API enforcement is complete.
+
+The inventory commit is `f2c97b3bc4dbb30a25d977b973115d4114b21d3d`. This documentation-only commit does not change application behaviour.
