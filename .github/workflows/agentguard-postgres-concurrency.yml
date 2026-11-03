@@ -135,10 +135,11 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-weekly-a',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-weekly-b',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_weekly_limit"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-policy-weekly-a','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,ARRAY[]::text[],'primary');" >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-empty-allowlist',1000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "recipient_not_allowed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.revoke_agent_recipient('research-agent','agentguard-test.near','test recipient revocation','admin');" | jq -e '.status == "revoked"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-revoked-recipient',1000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "recipient_not_authorized"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('research-agent','agentguard-test.near','test recipient',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,NULL,'admin');" >/dev/null
-          echo "PASS: per-transfer, daily, weekly, and empty-recipient policies are enforced atomically."
+          echo "PASS: per-transfer, daily, weekly, recipient revocation and reauthorization are enforced atomically."
 
           # Persistent rate limits must serialize requests from independent clients.
           for i in $(seq 1 10); do
