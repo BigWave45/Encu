@@ -331,7 +331,6 @@ jobs:
           $allocation_guards$;
           SQL
           export PGPASSWORD=agentguard_test_only
-          psql -Atc "SELECT b.reserved_yocto||'|'||b.spent_yocto||'|'||a.allocation_limit_yocto||'|'||a.spent_yocto||'|'||a.reserved_yocto||'|'||(SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized')) FROM public.agent_budgets b JOIN public.agent_allocations a ON a.agent_id='primary' WHERE b.id='default'"
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $allocation_final$
           DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
