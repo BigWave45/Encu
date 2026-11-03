@@ -906,6 +906,9 @@ try {
   const providerBeforeNoHash = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
   payload = await response.json();
+  assert(response.status === 202 && payload.status === "awaiting_approval", "provider no-hash test starts in the administrator approval queue");
+  response = await approveTransfer("test-provider-nohash-001");
+  payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId === "mock-provider-recover" && payload.txHash === null, "provider success with request ID but no hash remains in review");
   assert(counters.provider === providerBeforeNoHash + 1 && reservations.get("test-provider-nohash-001")?.status === "needs_review", "provider no-hash response records one submission without settling");
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
@@ -1023,6 +1026,9 @@ try {
   assert(counters.provider === providerBeforePolicyDowngrade && reservations.get("test-auto-policy-downgrade-001")?.status === "awaiting_approval", "policy downgrade prevents provider submission and preserves reservation");
   response = await approveTransfer("test-auto-policy-downgrade-001", "reject");
   assert(response.status === 200 && reservations.get("test-auto-policy-downgrade-001")?.status === "rejected", "administrator can safely reject downgraded request");
+  const restoredPolicy = agentPolicies.get("primary") ?? {};
+  restoredPolicy.p_max_transfer_yocto = null;
+  agentPolicies.set("primary", restoredPolicy);
 
   const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
