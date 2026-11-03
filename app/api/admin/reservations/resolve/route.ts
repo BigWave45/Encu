@@ -8,13 +8,7 @@ import { getNearRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("cancel_expired"),
-    requestId: z.string().min(8).max(128),
-    reason: z.string().trim().min(3).max(500)
-  }),
-  z.object({
+const schema = z.object({
     action: z.literal("failed_final"),
     requestId: z.string().min(8).max(128),
     reason: z.string().trim().min(3).max(500),
@@ -48,19 +42,6 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
   const db = getSupabase();
-  if (parsed.data.action === "cancel_expired") {
-    const { data, error } = await db.rpc("cancel_expired_agent_transfer", {
-      p_request_id: parsed.data.requestId,
-      p_actor_agent_id: identity.agentId,
-      p_reason: parsed.data.reason
-    });
-    if (error) {
-      const status = error.message.includes("reservation_not_found") ? 404 : 409;
-      return NextResponse.json({ error: "expired_transfer_cancellation_failed", reason: error.message }, { status });
-    }
-    return NextResponse.json({ status: "cancelled", result: data });
-  }
-
   const { data: reservation, error: lookupError } = await db.from("spend_reservations")
     .select("request_id,status,outlayer_tx_hash,recipient,amount_yocto::text,agent_id")
     .eq("request_id", parsed.data.requestId)
