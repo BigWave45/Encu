@@ -692,7 +692,7 @@ export default function Home() {
                   style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", opacity: reservationAction !== null ? 0.55 : 1 }}>
                   {reservationAction === item.requestId + ":reconcile" ? "Checking NEAR…" : "Reconcile on NEAR"}
                 </button>}
-                {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", item.txHash)} style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", background: "#475569" }}>Resolve verified final failure</button>}
+                {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", "Provider confirms final failure", item.txHash)} style={{ ...buttonStyle, marginTop: 0, fontSize: 12, padding: "8px 10px", background: "#475569" }}>Resolve verified final failure</button>}
                 {!item.providerRequestId && !item.txHash && <span style={{ color: "#92400e", fontSize: 12 }}>No provider reference or transaction hash. This remains held until evidence proves no transfer was submitted. Do not retry or release it manually.</span>}
               </div>}
             </div>)}</div>}
