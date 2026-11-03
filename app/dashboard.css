@@ -1096,3 +1096,53 @@ body {
   border-color: #263d2c !important;
   color: #fff !important;
 }
+
+
+/* Bulk administrator controls */
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #e0e5dd;
+  border-radius: 10px;
+  background: #f7f8f5;
+  color: #46534a;
+  font-size: 12px;
+}
+.bulk-toolbar > span { margin-right: auto; font-weight: 700; }
+.bulk-toolbar button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5c1;
+  border-radius: 7px;
+  background: #fff;
+  color: #263d2c;
+  font-size: 12px;
+  font-weight: 700;
+}
+.bulk-toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.bulk-select-row { display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.bulk-select-row input, .console-table input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  accent-color: #31583a;
+}
+.bulk-message {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #dce3d9;
+  border-radius: 8px;
+  background: #f7f8f5;
+  color: #34483a;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+@media(max-width:560px) {
+  .bulk-toolbar { align-items: stretch; }
+  .bulk-toolbar > span { width: 100%; }
+  .bulk-toolbar button { flex: 1 1 42%; }
+}
