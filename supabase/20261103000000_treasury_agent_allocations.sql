@@ -1,0 +1,2 @@
+-- Treasury and per-agent allocation ledger migration.
+-- Forward-only change. Apply to isolated Preview only after review.
