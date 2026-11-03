@@ -93,10 +93,21 @@ Native contract work remains separate and does not close or replace any OutLayer
 
 ## NEAR Intents and OutLayer policy caveats
 
-The current AgentGuard adapter only calls `POST /wallet/v1/transfer`; it does not call OutLayer's Intents endpoints. OutLayer's public Agent Custody documentation separately describes Intents deposits, withdrawals, swaps and transfers. Therefore those capabilities are available in OutLayer's documented product surface but are **not integrated into AgentGuard V1**.
+The current AgentGuard adapter only calls `POST /wallet/v1/transfer`; it does not call OutLayer's Intents endpoints. OutLayer's current Agent Custody documentation describes Intents deposits, withdrawals, swaps, transfers, cross-chain withdrawals, and limit orders. Those capabilities exist in OutLayer's documented product surface but are **not integrated into AgentGuard V1**. The same documentation says Intents-dependent endpoints return HTTP 503 on testnet because there are no testnet solvers; these flows are mainnet-only. Therefore we cannot use OutLayer Intents for a testnet hackathon demonstration, and we should not test them with production value merely to validate an unfinished adapter.
 
 Two provider-policy caveats matter for AgentGuard:
-- OutLayer documents its cumulative hourly/daily/monthly usage counters as best-effort under concurrent requests because concurrent operations can read the same pre-spend counter. Keep AgentGuard's own atomic shared-budget and per-agent reservation checks. Do not delegate the hard aggregate cap to the OutLayer velocity counter.
-- OutLayer documents that for certain Trusted Intents operations, the TEE's multisig approval pins the recipient and verifies approver signatures, while some token/amount/route artifacts are supplied by the gateway at execution. Before supporting those operations, AgentGuard must bind the exact approved asset, amount, destination and quote/route artifact and verify that the submitted operation matches. If the API cannot provide a verifiable binding, do not describe the operation as exact-term approval.
+- The public Agent Custody page lists hourly/daily/monthly caps and rate limits, but the page reviewed here does not specify their exact concurrency semantics. Do not assume those counters provide a hard atomic cross-agent ceiling. Keep AgentGuard's own atomic shared-budget and per-agent reservation checks.
+- OutLayer documents that for certain Trusted Intents operations, the TEE's multisig approval pins the recipient and verifies approver signatures, while some token/amount/route artifacts are supplied by the gateway at execution. Before supporting those operations, AgentGuard must bind the exact approved asset, amount, destination and quote/route artifact and verify that the submitted operation matches. The OutLayer docs explicitly note a trust boundary in some Trusted Intents approvals: the TEE pins recipient and verifies approver signatures, but token/amount/route artifacts are gateway-supplied at execution and are not independently re-checked by the TEE. If the API cannot provide a verifiable binding, do not describe the operation as exact-term approval.
 
 The public documentation is not evidence of the actual wallet's configured policy. The deployed Preview wallet policy remains uninspected because reading `GET /wallet/v1/policy` requires the wallet's authenticated API key. No API key was retrieved or exposed during this review.
+
+
+## Current OutLayer Intents capability, verified from public docs
+
+OutLayer Agent Custody already exposes documented endpoints for Intents deposit, cross-chain deposit, swap, withdrawal, transfer within Intents, and limit orders. These are OutLayer capabilities, not AgentGuard capabilities yet. The current AgentGuard adapter remains the native NEAR `/wallet/v1/transfer` route only.
+
+**Network restriction:** OutLayer's current documentation states that Intents-dependent endpoints return HTTP 503 on testnet because there are no testnet solvers; they are mainnet-only. Keep the hackathon's live tests on testnet and do not move production value to mainnet just to test an unfinished integration.
+
+**Approval binding:** OutLayer's docs state that for certain Trusted Intents operations the TEE pins the recipient and verifies approver signatures, but token/amount/route artifacts are supplied by the gateway at execution and are not independently re-checked by the TEE. AgentGuard must not claim exact-terms approval for those flows without an adapter that verifies the quote/artifact against the original AgentGuard-approved request.
+
+**Actual wallet policy:** Public docs list the policy features; they do not establish the current Preview wallet's configured values. Inspect `GET /wallet/v1/policy` using the wallet's authenticated API key or the owner dashboard. Do not copy the API key into the repository or chat. Record only non-secret effective policy values and evidence.
