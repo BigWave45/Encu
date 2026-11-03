@@ -255,7 +255,9 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-v1-lifecycle-0001','executed','mock-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           echo "CHECK: finality audit is written immediately on successful settlement"
-          psql -Atc "SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='transfer_finalized'" | grep -qx '1'
+          psql -Atc "SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='transfer_finalized'" > /tmp/agentguard-immediate-finality-count.txt
+          cat /tmp/agentguard-immediate-finality-count.txt
+          grep -qx '1' /tmp/agentguard-immediate-finality-count.txt
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('migration-legacy-0001','executed','mock-legacy-tx-hash',NULL);" | jq -e '.status == "executed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',3000000000000000000000000,'admin');" | jq -e '.allocation_limit_yocto == "3000000000000000000000000"' >/dev/null
