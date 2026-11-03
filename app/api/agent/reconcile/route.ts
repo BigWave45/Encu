@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { agentRateLimitResponse } from "@/lib/agent-rate-limit";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
-import { authenticateAgent } from "@/lib/agent-auth";
+import { authenticateAdmin, authenticateAgent } from "@/lib/agent-auth";
 import { getNearRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
@@ -38,7 +38,8 @@ type NearRpcResponse = {
 export async function POST(request: NextRequest) {
   let identity: Awaited<ReturnType<typeof authenticateAgent>>;
   try {
-    identity = await authenticateAgent(request.headers.get("authorization"));
+    const authorization = request.headers.get("authorization");
+    identity = authenticateAdmin(authorization) ?? await authenticateAgent(authorization);
   } catch {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
