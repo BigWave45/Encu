@@ -21,6 +21,11 @@ on:
       - "supabase/20261103000000_treasury_agent_allocations.sql"
       - "supabase/20261103010000_enforce_agent_allocations.sql"
       - "supabase/20261103020000_agent_recipient_registry.sql"
+      - "supabase/20261103030000_agentguard_autonomy_controls.sql"
+      - "supabase/20261103040000_agentguard_autonomy_rpcs.sql"
+      - "supabase/20261103050000_agentguard_autonomy_recipient_guard.sql"
+      - "supabase/20261103060000_atomic_recipient_submission_claim.sql"
+      - "supabase/20261103070000_revalidate_auto_policy_before_submission.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -80,6 +85,11 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261103010000_enforce_agent_allocations.sql
           psql -v ON_ERROR_STOP=1 -c "UPDATE public.agent_policies SET allowed_recipients=ARRAY['agentguard-test.near'] WHERE agent_id='primary';"
           psql -v ON_ERROR_STOP=1 -f supabase/20261103020000_agent_recipient_registry.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103030000_agentguard_autonomy_controls.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103040000_agentguard_autonomy_rpcs.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103050000_agentguard_autonomy_recipient_guard.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103060000_atomic_recipient_submission_claim.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103070000_revalidate_auto_policy_before_submission.sql
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'admin');" | jq -e '.transfers_enabled == true' >/dev/null
           export PGPASSWORD=agentguard_test_only
@@ -140,6 +150,37 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('research-agent','agentguard-test.near','test recipient',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,NULL,'admin');" >/dev/null
           echo "PASS: per-transfer, daily, weekly, recipient revocation and reauthorization are enforced atomically."
+
+          # A policy tightened after autonomous reservation but before provider
+          # claim must downgrade to manual approval, preserving both reservations.
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.authorize_agent_recipient('primary','agentguard-test.near','test recipient',NULL,'admin');" | jq -e '.status == "active"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',1000000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',1000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-auto-policy-downgrade',500000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true and .auto_approved == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('primary',100000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.claim_agent_auto_submission('ag-auto-policy-downgrade','primary','agentguard-test.near');" | jq -e '.claimed == false and .awaiting_approval == true and .reason == "agent_per_transfer_limit"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
+          DO $agentguard_test$
+          DECLARE row_status text; auto_flag boolean; claim_at timestamptz; treasury_reserved numeric; agent_reserved numeric;
+          BEGIN
+            SELECT status,auto_approved,submission_claimed_at INTO row_status,auto_flag,claim_at
+              FROM public.spend_reservations WHERE request_id='ag-auto-policy-downgrade';
+            SELECT reserved_yocto INTO treasury_reserved FROM public.agent_budgets WHERE id='default';
+            SELECT reserved_yocto INTO agent_reserved FROM public.agent_allocations WHERE agent_id='primary';
+            IF row_status<>'awaiting_approval' OR auto_flag OR claim_at IS NOT NULL
+               OR treasury_reserved<>500000000000000000000000
+               OR agent_reserved<>500000000000000000000000 THEN
+              RAISE EXCEPTION 'auto_policy_downgrade_mismatch: status=%, auto=%, claim=%, treasury_reserved=%, agent_reserved=%',
+                row_status,auto_flag,claim_at,treasury_reserved,agent_reserved;
+            END IF;
+          END
+          $agentguard_test$;
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-auto-policy-downgrade','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          echo "PASS: tightened policy downgrades autonomous request to approval and preserves both ledgers."
+
 
           # Persistent rate limits must serialize requests from independent clients.
           for i in $(seq 1 10); do
