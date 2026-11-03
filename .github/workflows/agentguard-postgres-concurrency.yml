@@ -343,6 +343,11 @@ jobs:
           \$\$
           SQL
           echo "PASS: concurrent conflicting finalisations produce one terminal outcome and consistent budget accounting."
+          # Reserve the remaining treasury headroom for primary before direct
+          # fixture inserts below; keep total allocations at the treasury ceiling.
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',0,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',5000000000000000000000000,'admin');" >/dev/null
           # Expired, never-approved requests may be cancelled and release their reservation.
           req_cancel="ag-concurrency-${suffix}-expired-cancel"
           cancel_amount=1000000000000000000000
