@@ -30,6 +30,9 @@ export async function PATCH(request: NextRequest) {
     if (message.includes("budget_below_committed_amounts")) {
       return NextResponse.json({ error: "budget_below_spent_plus_reserved" }, { status: 409 });
     }
+    if (message.includes("budget_below_allocated_amounts")) {
+      return NextResponse.json({ error: "budget_below_agent_allocations" }, { status: 409 });
+    }
     if (message.includes("budget_not_configured")) {
       return NextResponse.json({ error: "budget_not_configured" }, { status: 503 });
     }
