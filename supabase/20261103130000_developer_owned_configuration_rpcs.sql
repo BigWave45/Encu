@@ -14,6 +14,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if p_owner_user_id is null then raise exception 'developer_authentication_required'; end if;
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   perform 1 from public.agents
    where id = p_agent_id and owner_user_id = p_owner_user_id
    for update;
@@ -32,6 +34,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if p_owner_user_id is null then raise exception 'developer_authentication_required'; end if;
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   perform 1 from public.agents
    where id = p_agent_id and owner_user_id = p_owner_user_id
    for update;
@@ -49,6 +53,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if p_owner_user_id is null then raise exception 'developer_authentication_required'; end if;
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   perform 1 from public.agents
    where id = p_agent_id and owner_user_id = p_owner_user_id
    for update;
@@ -67,6 +73,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if p_owner_user_id is null then raise exception 'developer_authentication_required'; end if;
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   perform 1 from public.agents
    where id = p_agent_id and owner_user_id = p_owner_user_id
    for update;
@@ -84,6 +92,8 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if p_owner_user_id is null then raise exception 'developer_authentication_required'; end if;
+  perform 1 from public.agent_budgets where id = 'default' for update;
+  if not found then raise exception 'budget_not_configured'; end if;
   perform 1 from public.agents
    where id = p_agent_id and owner_user_id = p_owner_user_id
    for update;
