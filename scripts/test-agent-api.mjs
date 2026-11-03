@@ -1048,7 +1048,13 @@ try {
   restoredPolicy.p_max_transfer_yocto = null;
   agentPolicies.set("primary", restoredPolicy);
 
-  // A historical autonomous payment must not consume the current rolling window.\n  reservations.set("test-auto-aged-out-001", {\n    amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",\n    status: "executed", autoApproved: true, createdAt: Date.now() - 25 * 60 * 60 * 1000\n  });\n\n  const providerBeforeAuto = counters.provider;
+  // A historical autonomous payment must not consume the current rolling window.
+  reservations.set("test-auto-aged-out-001", {
+    amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
+    status: "executed", autoApproved: true, createdAt: Date.now() - 25 * 60 * 60 * 1000
+  });
+
+  const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId, "within-allowance transfer submits to provider without per-transfer admin approval");
