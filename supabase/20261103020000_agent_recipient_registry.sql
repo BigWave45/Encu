@@ -1,3 +1,4 @@
+-- CI trigger: exercise recipient registry in the legacy upgrade and concurrent reservation suites.
 -- Per-agent exact NEAR recipient authorization registry.
 -- Requires treasury/agent allocation ledger migrations.
 begin;
