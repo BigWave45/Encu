@@ -226,7 +226,7 @@ export default function Home() {
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setResult(body);
     } catch {
-      setResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
+      setResult({ error: "Could not reach ENCU. Check your connection and try again." });
     } finally {
       setLoading(false);
     }
@@ -707,8 +707,8 @@ export default function Home() {
   return (
     <main className="dashboard-shell" style={{ maxWidth: 1180, margin: "32px auto", padding: "24px clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
       <p style={{ color: "#64748b", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>NEAR · Agent Security</p>
-      <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>AgentGuard</h1>
-      <p style={{ color: "#475569", lineHeight: 1.6 }}>Control agent spending through a shared budget and policy gateway.</p>
+      <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>ENCU</h1>
+      <p style={{ color: "#475569", lineHeight: 1.6 }}>A policy control plane for agent-initiated NEAR transfers.</p>
 
       <form onSubmit={checkBalance} style={{ ...panel, marginTop: 28 }}>
         <label htmlFor="agent-token" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Agent or admin token</label>
@@ -731,7 +731,7 @@ export default function Home() {
 
       <section className="dashboard-workspace" style={panel}>
         <div className="dashboard-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Workspace overview</h2>
+          <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Treasury workspace</h2>
             <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Shared budget, agent identities and recent payments. Pending payments can be checked and reconciled here.</p></div>
           <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}
             style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || dashboardLoading ? 0.55 : 1 }}>
