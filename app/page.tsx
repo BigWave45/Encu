@@ -18,6 +18,15 @@ type AgentResult = {
   error?: string;
 };
 
+type OutLayerPolicyResult = {
+  status?: string;
+  network?: string;
+  executorAddress?: string;
+  policy?: { rules?: unknown; capabilities?: unknown; approval?: unknown; updatedAt?: string | null; version?: string | number | null };
+  error?: string;
+  providerHttpStatus?: number;
+};
+
 
 type Dashboard = {
   status?: string;
@@ -151,6 +160,8 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
+  const [outLayerPolicy, setOutLayerPolicy] = useState<OutLayerPolicyResult | null>(null);
+  const [outLayerPolicyLoading, setOutLayerPolicyLoading] = useState(false);
   const [agentId, setAgentId] = useState("research-agent");
   const [agentName, setAgentName] = useState("Research Agent");
   const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
@@ -255,6 +266,24 @@ export default function Home() {
       setDashboardError("Could not reach AgentGuard. Check your connection and try again.");
     } finally {
       setDashboardLoading(false);
+    }
+  }
+
+  async function loadOutLayerPolicy() {
+    if (!adminToken.trim()) return;
+    setOutLayerPolicyLoading(true);
+    setOutLayerPolicy(null);
+    try {
+      const response = await fetch("/api/admin/outlayer-policy", {
+        headers: { authorization: `Bearer ${adminToken.trim()}` },
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setOutLayerPolicy(body);
+    } catch {
+      setOutLayerPolicy({ error: "Could not reach AgentGuard. OutLayer policy was not verified." });
+    } finally {
+      setOutLayerPolicyLoading(false);
     }
   }
 
@@ -706,8 +735,23 @@ export default function Home() {
             style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || dashboardLoading ? 0.55 : 1 }}>
             {dashboardLoading ? "Loading…" : dashboard ? "Refresh dashboard" : "Load dashboard"}
           </button>
+          <button type="button" onClick={() => loadOutLayerPolicy()} disabled={!adminToken.trim() || outLayerPolicyLoading}
+            style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || outLayerPolicyLoading ? 0.55 : 1 }}>
+            {outLayerPolicyLoading ? "Reading OutLayer policy…" : "Inspect OutLayer wallet policy"}
+          </button>
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
+        {outLayerPolicy && <section aria-label="OutLayer wallet policy" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>OutLayer wallet policy</strong>
+            <span style={{ fontSize: 12, color: "#64748b" }}>{outLayerPolicy.network ?? "Network unavailable"}</span>
+          </div>
+          {outLayerPolicy.error
+            ? <p role="alert" style={{ color: "#b91c1c", marginBottom: 0 }}>{outLayerPolicy.error}{outLayerPolicy.providerHttpStatus ? ` (HTTP ${outLayerPolicy.providerHttpStatus})` : ""}</p>
+            : <><p style={{ fontSize: 12, color: "#64748b" }}>Executor: {outLayerPolicy.executorAddress}</p>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, maxHeight: 360, overflow: "auto" }}>{JSON.stringify(outLayerPolicy.policy, null, 2)}</pre>
+              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 0 }}>Read-only provider response. No wallet policy was changed.</p></>}
+        </section>}
         {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
         {dashboard && <nav aria-label="Dashboard sections" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
