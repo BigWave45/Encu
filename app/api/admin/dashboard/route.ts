@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
     const pageSize = Number.isSafeInteger(requestedPageSize) ? Math.min(50, Math.max(1, requestedPageSize)) : 20;
     const status = url.searchParams.get("status") ?? "all";
-    const allowedStatuses = ["all", "awaiting_approval", "reserved", "needs_review", "executed", "failed", "rejected", "cancelled", "aged"];
+    const allowedStatuses = ["all", "reserved", "needs_review", "executed", "failed", "rejected", "cancelled", "aged"];
     if (!allowedStatuses.includes(status)) {
       return NextResponse.json({ error: "invalid_status_filter" }, { status: 400 });
     }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const securityPage = Number.isSafeInteger(securityPageInput) && securityPageInput > 0 ? securityPageInput : 1;
     const activityPageSize = 20;
     let reservationsQuery = db.from("spend_reservations")
-      .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at,approval_expires_at,approved_at,approved_by,rejected_at,rejected_by,approval_reason,cancelled_at,cancelled_by,resolved_at,resolved_by,resolution_reason,resolution_evidence_reference", { count: "exact" })
+      .select("request_id,agent_id,recipient,amount_yocto::text,status,outlayer_tx_hash,outlayer_request_id,last_error,created_at,updated_at,cancelled_at,cancelled_by,resolved_at,resolved_by,resolution_reason,resolution_evidence_reference", { count: "exact" })
       .order("created_at", { ascending: false });
     if (status === "aged") {
       const agedBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -152,12 +152,6 @@ export async function GET(request: NextRequest) {
         lastError: item.last_error,
         createdAt: item.created_at,
         updatedAt: item.updated_at,
-        approvalExpiresAt: item.approval_expires_at,
-        approvedAt: item.approved_at,
-        approvedBy: item.approved_by,
-        rejectedAt: item.rejected_at,
-        rejectedBy: item.rejected_by,
-        approvalReason: item.approval_reason,
         cancelledAt: item.cancelled_at,
         cancelledBy: item.cancelled_by,
         resolvedAt: item.resolved_at,
