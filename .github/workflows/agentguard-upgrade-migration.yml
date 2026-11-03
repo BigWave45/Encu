@@ -331,11 +331,12 @@ jobs:
           $allocation_guards$;
           SQL
           export PGPASSWORD=agentguard_test_only
-          echo "DEBUG_ALLOCATION_LEDGER=$(psql -Atc "SELECT b.reserved_yocto||'|'||b.spent_yocto||'|'||a.allocation_limit_yocto||'|'||a.spent_yocto||'|'||a.reserved_yocto||'|'||(SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized')) FROM public.agent_budgets b JOIN public.agent_allocations a ON a.agent_id='primary' WHERE b.id='default'")"
+          psql -Atc "SELECT b.reserved_yocto||'|'||b.spent_yocto||'|'||a.allocation_limit_yocto||'|'||a.spent_yocto||'|'||a.reserved_yocto||'|'||(SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized')) FROM public.agent_budgets b JOIN public.agent_allocations a ON a.agent_id='primary' WHERE b.id='default'"
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $allocation_final$
           DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
                   v_agent_limit numeric; v_agent_spent numeric; v_agent_reserved numeric;
+                  v_total_limit numeric; v_allocated numeric;
           BEGIN
             SELECT reserved_yocto,spent_yocto INTO v_reserved,v_spent
               FROM public.agent_budgets WHERE id='default';
