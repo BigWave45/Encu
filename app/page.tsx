@@ -997,7 +997,7 @@ export default function Home() {
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} className="event-record audit-record">
               <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
-              <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>{JSON.stringify(entry.details)}</div>
+              <pre className="event-payload">{JSON.stringify(entry.details, null, 2)}</pre>
             </div>)}</div>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.audit?.page ?? 1} of {dashboard.activityPages?.audit?.totalPages ?? 1}</span>
@@ -1011,7 +1011,7 @@ export default function Home() {
             <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} className="event-record security-record">
               <strong>{event.eventType}</strong>
               <div style={{ color: "#64748b", marginTop: 4 }}>Agent: {event.actorAgentId ?? "Unauthenticated"} · {new Date(event.createdAt).toLocaleString()}</div>
-              {event.requestId && <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>Request: {event.requestId}</div>}
+              {event.requestId && <div className="event-reference"><span>Request reference</span><code>{event.requestId}</code></div>}<pre className="event-payload">{JSON.stringify(event.details, null, 2)}</pre>
             </div>)}</div>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.security?.page ?? 1} of {dashboard.activityPages?.security?.totalPages ?? 1}</span>
