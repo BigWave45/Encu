@@ -483,27 +483,17 @@ The inventory commit is `f2c97b3bc4dbb30a25d977b973115d4114b21d3d`. This documen
 The allocation model and migration requirements are documented in [`docs/treasury-agent-allocation-design.md`](docs/treasury-agent-allocation-design.md). This is a reviewed design only; no allocation migration has been applied and no application enforcement has changed. The document records the current Preview ledger/RPC behaviour, atomic dual-ledger invariants, migration/backfill requirements and required tests. Commit: `02b859ee12ccaef16e15a5dcf2ed7a888fe2f5a3`.
 
 
-### Allocation implementation checkpoint (2026-11-03)
+### Treasury and agent allocations (2026-11-03)
 
-Phase 1 is committed in `supabase/20261103000000_treasury_agent_allocations.sql` (commit `d102c4b661494dd88c4ce5c21e39a8f8ebaa02e9`). It adds an allocation ledger with per-agent limit, spent and reserved counters, a historical backfill, a treasury-counter reconciliation preflight, integer/nonnegative constraints, an overcommit constraint, RLS, and service-role read access.
+Implemented in `supabase/20261103010000_enforce_agent_allocations.sql`. The obsolete empty migration scaffold has been removed.
 
-This is schema-only. It does not enforce allocations in reservation, approval, cancellation, settlement, failure resolution, or provisioning RPCs. It is not safe to apply independently to Preview or Production until the follow-up enforcement migration and API integration are ready. No database was changed.
+- Adds the per-agent allocation ledger and backfills historical spent/reserved exposure from reservations. The migration aborts if the existing treasury counters do not reconcile.
+- Enforces treasury and agent limits atomically across reservation, approval, rejection, safe expiry cancellation, settlement and verified final-failure resolution.
+- New agents receive zero spending authority. Treasury allocations cannot exceed the treasury ceiling, and an allocation cannot be lowered below committed exposure.
+- The migration is applied to the isolated AgentGuard Test Supabase project. Preview ledger last verified: treasury ceiling 5 NEAR, spent 0.001 NEAR, reserved 0; primary allocation 0, test-agent-alpha allocation/spent 0.001 NEAR, test-agent-beta allocation 0.
+- Allocation API and dashboard controls are deployed to Preview. Production Supabase and Production Vercel remain untouched.
 
-The upgrade migration workflow was updated to apply this phase against disposable PostgreSQL and verify a legacy reserved reservation is backfilled as one agent allocation with matching reserved exposure. Commit `51a5ec25ed1f18bbce909e9531873e3348d97cbc`. The disposable PostgreSQL upgrade workflow passed on rerun (`41568054607`): legacy reservation backfill, table grants, and the existing approval/submission/finality lifecycle checks all passed. Vercel deployment check is separately blocked by the Hobby team's build-rate limit. Current Preview treasury remains 5 NEAR limit, 0.001 NEAR spent, zero reserved; Production untouched.
-
-
-### Allocation enforcement checkpoint (2026-11-03)
-
-Phase 2 is committed in `supabase/20261103010000_enforce_agent_allocations.sql` (commit `b67c0a43188cb97903d9d395c83522d0a5cffb9e`). It adds the administrator allocation RPC, checks allocation headroom before reservation, updates per-agent and treasury counters atomically on reserve/reject/cancel/final success/failure, preserves exposure through provider submission and `needs_review`, locks allocation rows in lifecycle paths, seeds new agents at zero allocation, and prevents treasury limits from being lowered below total allocations.
-
-The disposable PostgreSQL upgrade workflow passed on commit `bf758fe11e3af31ccdac48890ea606621bd9e824` (run `41568275042`). It applies both allocation migrations to a pre-V1 database and verifies legacy backfill, zero-allocation provisioning, per-agent denial, allocation/treasury ceiling checks, rejection, expired cancellation, failed settlement, NEAR-FINAL failed resolution, and exactly-once executed settlement. This is CI evidence on disposable PostgreSQL, not yet a Preview Supabase deployment.
-
-The migration pair was applied to the isolated Supabase AgentGuard Test project only. Preview verification confirmed treasury spent and reserved counters equal the sums of agent counters; current backfill is: primary 0 allocation, test-agent-alpha 0.001 NEAR allocated/spent, test-agent-beta 0 allocation. Total treasury remains 5 NEAR, spent 0.001 NEAR, reserved 0. A database-only reserve probe inside an explicit transaction returned `awaiting_approval`; the transaction was rolled back and a follow-up query confirmed no probe reservation or counter change. No OutLayer call or NEAR transfer occurred.
-
-Privilege checks passed: RLS is enabled on `agent_allocations`; anon/authenticated have no table SELECT and service_role has SELECT; the allocation and transfer RPCs are executable by service_role only. Disposable PostgreSQL CI passed the upgrade/backfill/lifecycle workflow (`41568821735`) and the concurrent reservation workflow (`41568821906`). The API security/lifecycle suite and Next.js build passed on `f672edf` (`41568539324`). Production Supabase remains untouched.
-
-The admin API and dashboard controls are deployed to Vercel Preview: deployment `dpl_CpNGhPfqLRTGvCRiMjdhYvXhDV4y` is `READY` for commit `d1c88ec22b07e9482455fa0a4b3da037d21c214b`. The branch Preview URL is `https://agentguard-mzgq7hc2p-resonances-projects-13e560cd.vercel.app`. Its live health endpoint returned HTTP 200 with Supabase, budget, NEAR testnet RPC and OutLayer connected, and `signerMatches: true`. An unauthenticated dashboard request returned HTTP 403 (`admin_required`). The earlier Hobby build-rate limit is no longer blocking this deployment. Production Vercel and Production Supabase were not changed.
-
+The allocation phase passed the API security/lifecycle tests, PostgreSQL upgrade/backfill tests, concurrent reservation tests and Next.js build. The recipient registry phase below is separate and has not yet been applied to Preview.
 
 ### Recipient authorization phase
 
