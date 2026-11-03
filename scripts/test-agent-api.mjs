@@ -210,7 +210,7 @@ const mock = createServer(async (req, res) => {
       if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
       if (!systemControls.transfers_enabled) return send(res, 400, { message: "emergency_stop" });
       const recipientAuth = recipientAuthorizations.get(`${row.agentId}|${row.recipient}`);
-      if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 200, { approved: false, reason: "recipient_not_authorized" });
+      if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 400, { code: "P0001", message: "recipient_not_authorized", details: null, hint: null });
       row.status = "reserved";
       row.claimed = true;
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_approved", target_id: body.p_request_id, details: {} });
@@ -708,7 +708,7 @@ try {
   payload = await response.json();
   assert(response.status === 409 && payload.reason === "recipient_not_authorized", `revoked recipient cannot pass approval revalidation (HTTP ${response.status}: ${JSON.stringify(payload)})`);
   assert(reservations.get("test-recipient-revoke-001").status === "awaiting_approval", "revocation leaves pending reservation intact");
-  assert(securityEvents.some(event => event.event_type === "transfer_approval_blocked" && event.request_id === "test-recipient-revoke-001"), "blocked approval attempt is recorded in the security event log");
+  assert(securityEvents.some(event => event.event_type === "transfer_approval_blocked" && event.request_id === "test-recipient-revoke-001"), `blocked approval attempt is recorded in the security event log (${JSON.stringify(securityEvents.filter(event => event.request_id === "test-recipient-revoke-001"))})`);
   response = await approveTransfer("test-recipient-revoke-001", "reject");
   assert(response.status === 200, "admin can reject a pending request after recipient revocation");
 
