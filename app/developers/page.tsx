@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import "./developers.css";
+import AgentConfiguration from "./agent-configuration";
 
 type DeveloperAgent = {
   id: string;
@@ -289,7 +290,8 @@ export default function DeveloperPortal() {
                         <div><span>Allocated authority</span><strong>{near(limit)}</strong></div>
                         <div><span>Spent / reserved</span><strong>{near(allocation?.spent_yocto)} / {near(allocation?.reserved_yocto)}</strong></div>
                       </div>
-                      <p>{ready ? "Allocation exists. Configure transfer limits, autonomous allowance and authorized recipients below to enable bounded execution." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
+                      <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
+                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
