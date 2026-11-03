@@ -37,14 +37,14 @@ OutLayer's TEE attestation documentation describes attestations for OutLayer cod
 
 ### A. Confirm provider wallet policy (configuration and evidence)
 
-- [ ] Inspect the actual Preview OutLayer wallet's owner policy in the OutLayer dashboard/API, including the effective approval threshold and whether native NEAR transfers are excluded from approval.
-- [ ] Record the effective per-transfer, hourly/daily/monthly limits, allowlist, transaction types, rate limits and approval requirements.
+- [x] Inspect the actual Preview OutLayer wallet policy. The 2026-11-03 read returned `approval: null`; this establishes that no approval rule was returned in the policy object, not that every provider request is guaranteed to execute without another hold.
+- [x] Record the effective Preview policy values supplied on 2026-11-03: 1 NEAR per transaction; 5 NEAR hourly, daily and monthly; transaction type `transfer` only; EVM and Solana signing disabled. The returned object did not establish allowlist or rate-limit values. `approval`, `version` and `updatedAt` were null.
 - [ ] Confirm whether policy changes are owner-authorized and stored on-chain for this wallet.
 - [ ] Decide whether the Preview wallet should retain owner approval for every native transfer or allow AgentGuard-authorized requests to execute without a second human approval. This is an explicit wallet-owner security decision, not an application default.
-- [ ] Configure a wallet-wide hard ceiling that is at least as restrictive as the AgentGuard treasury limit and compatible with test flows.
-- [ ] Configure only the recipient/transaction scope required for the hackathon test.
+- [x] Preview wallet caps were configured during Testnet setup. Its 1 NEAR per-transaction cap is stricter than AgentGuard's 3 NEAR Preview cap. Aggregate cap semantics and enforcement under concurrency remain unverified.
+- [ ] Confirm the provider-side recipient scope. The policy response established `transfer`-only transaction types but did not establish an address allowlist.
 - [ ] Test a request that passes AgentGuard but is rejected or held by OutLayer policy; verify that AgentGuard retains exposure as ambiguous/needs-review until the actual NEAR outcome is established.
-- [ ] Verify the exact provider status value returned when OutLayer waits for wallet approval, and confirm the dashboard renders that state accurately.
+- [ ] Verify an actual OutLayer response for a provider-side approval/hold. The API mock returns `pending`; the dashboard recognizes `pending_approval`, but neither mock value proves the exact live provider status contract.
 - [ ] Capture evidence of the wallet policy configuration and its enforcement. Do not put API secrets in screenshots or repository files.
 
 ### B. Finish AgentGuard accounting and lifecycle verification
@@ -55,16 +55,16 @@ OutLayer's TEE attestation documentation describes attestations for OutLayer cod
 - [x] Live Preview blocked an amount above the agent's allocation without creating a reservation.
 - [x] A previous 0.001 NEAR Alpha transfer reached NEAR FINAL and was reconciled as executed.
 - [ ] Verify the post-rejection database counters and both reservation ledgers with a successful direct query. The UI/audit showed rejection; the earlier attempted database query used incorrect column names and did not establish the post-rejection counters.
-- [ ] Verify final successful settlement decrements treasury and agent reserved balances and increments both spent balances exactly once.
-- [ ] Verify final failed settlement releases both reserved balances exactly once.
-- [ ] Verify safe expiry cancellation releases both reserved balances exactly once and refuses any request that was approved or submitted.
-- [ ] Verify provider HTTP success with request ID but no hash remains reserved and is recoverable.
-- [ ] Verify timeout/connection loss after approval remains held and never triggers an automatic retry.
-- [ ] Verify provider-status lookup can recover a transaction hash without settling the ledger.
-- [ ] Verify hash conflict, signer mismatch, wrong recipient, wrong amount, multiple actions and non-FINAL RPC outcomes all remain held.
-- [ ] Verify recipient revocation, emergency stop and policy changes racing with approval/submission.
+- [x] Disposable PostgreSQL lifecycle suite verifies successful finalisation moves both ledger reservations to spent exactly once; terminal replay cannot change the result. This is database-function test evidence, not a fresh live Supabase query.
+- [x] Disposable PostgreSQL lifecycle suite verifies failed finalisation releases both reserved balances without increasing spent, and conflicting terminal outcomes cannot settle twice.
+- [x] Disposable PostgreSQL lifecycle suite verifies expiry cancellation for an unapproved/unsubmitted reservation and records actor/evidence. Approved or submitted expiry refusal remains a separate edge case to verify.
+- [x] API mock suite verifies provider success with a request ID and no hash remains `needs_review`, is not resubmitted on replay, and can recover a hash through provider-status lookup without settlement. Live OutLayer behavior remains unverified.
+- [x] API mock suite verifies timeout/connection loss remains `needs_review` and replay does not create a second provider attempt. Live provider behavior remains unverified.
+- [x] API mock suite verifies provider-status lookup can recover a missing hash while preserving `needs_review`; it does not settle the ledger.
+- [x] Reconciliation mock suite verifies hash conflict, signer mismatch, wrong recipient, wrong amount, multiple actions, receipt-only results, non-FINAL outcomes, missing hashes and RPC errors remain held without ledger finalisation.
+- [x] API mock suite covers recipient revocation before submission and emergency-stop behavior; disposable PostgreSQL regression verifies a tightened per-transfer policy downgrades an already-reserved autonomous request to approval while preserving both ledger reservations. Live race behavior has not been separately exercised.
 - [ ] Verify failed approval attempts are recorded in the security/admin audit trail, including the current reason.
-- [ ] Verify reservation replay, idempotency conflict and exact-once settlement.
+- [x] API and disposable PostgreSQL suites cover identical replay, changed-payload idempotency conflict, exact-once settlement and conflicting terminal outcomes.
 - [ ] Complete one fresh low-value end-to-end Preview transfer only after the above checks, with explicit administrator approval and current state verification.
 
 ### C. Execution mode and dashboard
@@ -90,6 +90,12 @@ OutLayer V1 is complete only when:
 6. README, UI and demo language distinguish AgentGuard enforcement from OutLayer TEE custody/policy.
 
 This gate does not require mainnet deployment.
+
+
+
+## Evidence classification (2026-11-03)
+
+The checked accounting and reconciliation items above are automated tests against disposable PostgreSQL or mocked API/RPC responses. They establish application behavior under those fixtures; they do not establish live OutLayer rejection/approval semantics or current Test Supabase counters. The actual Preview wallet policy values are recorded above from the read-only policy response. Do not mark provider enforcement verified from that configuration read alone.
 
 ## Separate native NEAR workstream
 
