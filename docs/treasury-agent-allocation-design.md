@@ -113,3 +113,19 @@ The current `finish_agent_spend` accepts `needs_review` while retaining reservat
 ## Explicitly out of scope for this change
 
 Recipient registry/versioning, immutable policy versions, suspicious-transaction scoring/hold quotas, execution profiles, and autonomous execution are separate workstreams. Do not imply they are implemented by allocation support.
+
+
+## Implementation update (2026-11-03)
+
+The allocation model described above has since been implemented on `agentguard/build-v1`.
+
+- Migration: `supabase/20261103010000_enforce_agent_allocations.sql`.
+- Added `agent_allocations` with per-agent limit, spent and reserved counters.
+- Backfill reconciles historical reservation states against treasury counters and aborts on mismatch.
+- Reservation, approval, rejection, expiry cancellation, settlement and final-failure resolution maintain treasury and agent counters atomically.
+- Agent provisioning creates a zero-allocation row.
+- Admin allocation RPC, API and dashboard controls expose allocated, spent, reserved, available and unallocated authority.
+- The isolated AgentGuard Preview Supabase database has this migration applied. Preview state at last check: treasury ceiling 5 NEAR, spent 0.001 NEAR, reserved 0. Production was not modified.
+- CI passed the build, API lifecycle/security and PostgreSQL concurrency coverage for the allocation phase.
+
+The subsequent recipient-authorization phase is documented separately in `docs/recipient-authorization-design.md`; its migration is still awaiting the final upgrade-suite pass and has not been applied to Preview.
