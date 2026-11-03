@@ -421,6 +421,8 @@ jobs:
           echo "PASS: atomic provider metadata recording does not settle budget; normal finality RPC remains the settlement path."
           # Race two conflicting terminal outcomes against the same reservation.
           req_race="ag-concurrency-${suffix}-finish-race"
+          export PGPASSWORD=agentguard_test_only
+          primary_spent_before_race=$(psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT spent_yocto::text FROM public.agent_allocations WHERE agent_id='primary';")
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_race}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_race}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
@@ -434,12 +436,17 @@ jobs:
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<SQL
           DO \$\$
-          DECLARE reserved numeric; spent numeric; row_status text;
+          DECLARE reserved numeric; spent numeric; row_status text; agent_reserved numeric; agent_spent numeric; expected_agent_spent numeric;
           BEGIN
             SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
             SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${req_race}';
-            IF reserved <> 0 OR row_status NOT IN ('executed', 'failed') THEN
-              RAISE EXCEPTION 'concurrent_finish_status_invalid: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            SELECT reserved_yocto,spent_yocto INTO agent_reserved,agent_spent FROM public.agent_allocations WHERE agent_id='primary';
+            expected_agent_spent := ${primary_spent_before_race}::numeric
+              + CASE WHEN row_status='executed' THEN 1000000000000000000000000 ELSE 0 END;
+            IF reserved <> 0 OR row_status NOT IN ('executed', 'failed') OR agent_reserved<>0
+               OR agent_spent<>expected_agent_spent THEN
+              RAISE EXCEPTION 'concurrent_finish_dual_ledger_mismatch: treasury_reserved=%, treasury_spent=%, status=%, agent_reserved=%, agent_spent=%, expected_agent_spent=%',
+                reserved,spent,row_status,agent_reserved,agent_spent,expected_agent_spent;
             END IF;
             IF (row_status = 'executed' AND spent <> 4000000000000000000000000)
                OR (row_status = 'failed' AND spent <> 3000000000000000000000000) THEN
@@ -468,7 +475,19 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.cancel_expired_agent_transfer('${req_cancel}','admin','Approval expired; no provider submission was made.');" | jq -e '.status == "cancelled"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || cancelled_by FROM public.spend_reservations WHERE request_id='${req_cancel}';" | grep -qx 'cancelled:admin'
-          echo "PASS: expired unapproved reservation is cancelled with actor and evidence audit."
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \$\$
+          DECLARE treasury_reserved numeric; agent_reserved numeric;
+          BEGIN
+            SELECT reserved_yocto INTO treasury_reserved FROM public.agent_budgets WHERE id='default';
+            SELECT reserved_yocto INTO agent_reserved FROM public.agent_allocations WHERE agent_id='primary';
+            IF treasury_reserved<>0 OR agent_reserved<>0 THEN
+              RAISE EXCEPTION 'expired_cancel_dual_ledger_mismatch: treasury_reserved=%, agent_reserved=%',treasury_reserved,agent_reserved;
+            END IF;
+          END
+          \$\$
+          SQL
+          echo "PASS: expired unapproved reservation is cancelled with actor and evidence audit; both ledgers released."
 
           # A submitted transfer can be released only after the API verifies NEAR FINAL failure.
           req_resolve="ag-concurrency-${suffix}-failed-final-resolution"
@@ -492,6 +511,9 @@ jobs:
               WHERE target_id='${req_resolve}' AND action='transfer_resolved_failed_final';
             IF row_status<>'failed' OR actor<>'admin' OR reserved<>0 OR audit_count<>1 THEN
               RAISE EXCEPTION 'failed_final_resolution_mismatch: status=%, actor=%, reserved=%, audit=%',row_status,actor,reserved,audit_count;
+            END IF;
+            IF (SELECT reserved_yocto FROM public.agent_allocations WHERE agent_id='primary')<>0 THEN
+              RAISE EXCEPTION 'failed_final_resolution_agent_reservation_not_released';
             END IF;
           END
           \$\$
