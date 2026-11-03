@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import "./dashboard.css";
 
 type BalanceResult = {
   status?: string;
@@ -703,7 +704,7 @@ export default function Home() {
   const buttonStyle = { marginTop: 12, padding: "11px 18px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontSize: 15, cursor: "pointer" as const };
 
   return (
-    <main style={{ maxWidth: 1180, margin: "32px auto", padding: "24px clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
+    <main className="dashboard-shell" style={{ maxWidth: 1180, margin: "32px auto", padding: "24px clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
       <p style={{ color: "#64748b", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>NEAR · Agent Security</p>
       <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>AgentGuard</h1>
       <p style={{ color: "#475569", lineHeight: 1.6 }}>Control agent spending through a shared budget and policy gateway.</p>
@@ -727,9 +728,9 @@ export default function Home() {
         <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 12, fontSize: 13 }}>{JSON.stringify(result, null, 2)}</pre>
       </section>}
 
-      <section style={panel}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Shared budget dashboard</h2>
+      <section className="dashboard-workspace" style={panel}>
+        <div className="dashboard-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Workspace overview</h2>
             <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Shared budget, agent identities and recent payments. Pending payments can be checked and reconciled here.</p></div>
           <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}
             style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || dashboardLoading ? 0.55 : 1 }}>
@@ -754,7 +755,7 @@ export default function Home() {
         </section>}
         {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
-        {dashboard && <nav aria-label="Dashboard sections" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
+        {dashboard && <nav className="dashboard-nav" aria-label="Dashboard sections" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
           {[
             ["Overview", "#overview"], ["Treasury", "#treasury-settings"], ["Agents", "#agents"],
             ["Recipients", "#recipients"], ["Payments", "#payments"], ["Approvals", "#approvals"],
@@ -774,9 +775,9 @@ export default function Home() {
           <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
         </div>}
         {dashboard?.budget && <>
-          <div id="overview" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 12, marginTop: 20, scrollMarginTop: 76 }}>
+          <div id="overview" className="overview-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 12, marginTop: 20, scrollMarginTop: 76 }}>
             {[
-              ["Total budget", near(dashboard.budget.totalLimitYocto)],
+              ["Treasury limit", near(dashboard.budget.totalLimitYocto)],
               ["Allocated to agents", totalAgentAllocationsNear(dashboard.allocations)],
               ["Unallocated authority", unallocatedAuthorityNear(dashboard.budget, dashboard.allocations)],
               ["Spent", near(dashboard.budget.spentYocto)],
