@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
-import { getOutLayerConfig, transferNear } from "@/lib/outlayer";
+import { getExecutionProvider } from "@/lib/execution-provider";
 import { authenticateAgent } from "@/lib/agent-auth";
 import { recordSecurityEvent } from "@/lib/security-audit";
 import { consumeRateLimit } from "@/lib/rate-limit";
@@ -57,10 +57,12 @@ export async function POST(request: NextRequest) {
 
   // Reject malformed provider/network configuration before reserving funds.
   // Provider submission is automatic only after the database authorizes the reservation.
+  let executionProvider: ReturnType<typeof getExecutionProvider>;
   try {
-    getOutLayerConfig();
+    executionProvider = getExecutionProvider();
+    executionProvider.assertConfigured();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "outlayer_configuration_invalid";
+    const reason = error instanceof Error ? error.message : "execution_provider_configuration_invalid";
     await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_provider_configuration_blocked" });
     return NextResponse.json({ error: reason }, { status: 503 });
   }
@@ -114,26 +116,10 @@ export async function POST(request: NextRequest) {
     }, { status: 409 });
   }
 
-  let config: ReturnType<typeof getOutLayerConfig>;
   try {
-    config = getOutLayerConfig();
-    const addressResponse = await fetch(`${config.baseUrl}/wallet/v1/address?chain=near`, {
-      method: "GET",
-      headers: { authorization: `Bearer ${config.apiKey}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!addressResponse.ok) throw new Error("outlayer_signer_unavailable");
-    const addressBody = await addressResponse.json().catch(() => null) as Record<string, unknown> | null;
-    const actualAddress = addressBody && (
-      typeof addressBody.executor_account_id === "string" ? addressBody.executor_account_id :
-      typeof addressBody.address === "string" ? addressBody.address :
-      typeof addressBody.near_address === "string" ? addressBody.near_address :
-      typeof addressBody.account_id === "string" ? addressBody.account_id : null
-    );
-    if (!actualAddress || actualAddress !== config.nearAddress) throw new Error("outlayer_signer_mismatch");
+    await executionProvider.verifyExecutionAccount();
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "outlayer_signer_unavailable";
+    const reason = error instanceof Error ? error.message : "execution_signer_unavailable";
     await db.rpc("finish_agent_spend", {
       p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null, p_error: reason
     });
@@ -189,7 +175,7 @@ export async function POST(request: NextRequest) {
   let providerRequestId: string | null = null;
   let reason = "outlayer_response_unknown";
   try {
-    const result = await transferNear(to, amountYocto);
+    const result = await executionProvider.submitNativeTransfer({ recipient: to, amountYocto });
     txHash = typeof result.body.tx_hash === "string" ? result.body.tx_hash : null;
     providerRequestId = typeof result.body.request_id === "string"
       ? result.body.request_id
