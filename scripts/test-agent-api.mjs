@@ -911,6 +911,7 @@ try {
   assert(response.status === 202 && payload.reason === "provider_transaction_hash_conflict", "conflicting provider hash is not overwritten");
 
 
+  rateWindows.clear();
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
