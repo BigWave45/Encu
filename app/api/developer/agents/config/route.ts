@@ -57,15 +57,15 @@ export async function PATCH(request: NextRequest) {
   const actor = `developer:${user.userId}`;
   let result: { data: unknown; error: { message: string } | null };
   if (input.action === "policy") {
-    result = await db.rpc("set_agent_policy", { p_agent_id: input.id, p_max_transfer_yocto: input.maxTransferYocto, p_daily_limit_yocto: input.dailyLimitYocto, p_weekly_limit_yocto: input.weeklyLimitYocto, p_allowed_recipients: null, p_actor_agent_id: actor });
+    result = await db.rpc("developer_set_agent_policy", { p_owner_user_id: user.userId, p_agent_id: input.id, p_max_transfer_yocto: input.maxTransferYocto, p_daily_limit_yocto: input.dailyLimitYocto, p_weekly_limit_yocto: input.weeklyLimitYocto, p_allowed_recipients: null, p_actor_agent_id: actor });
   } else if (input.action === "allocation") {
-    result = await db.rpc("set_agent_allocation", { p_agent_id: input.id, p_allocation_limit_yocto: input.allocationLimitYocto, p_actor_agent_id: actor });
+    result = await db.rpc("developer_set_agent_allocation", { p_owner_user_id: user.userId, p_agent_id: input.id, p_allocation_limit_yocto: input.allocationLimitYocto, p_actor_agent_id: actor });
   } else if (input.action === "auto_spend") {
-    result = await db.rpc("set_agent_auto_spend_limit", { p_agent_id: input.id, p_auto_spend_limit_yocto: input.autoSpendLimitYocto, p_actor_agent_id: actor });
+    result = await db.rpc("developer_set_agent_auto_spend_limit", { p_owner_user_id: user.userId, p_agent_id: input.id, p_auto_spend_limit_yocto: input.autoSpendLimitYocto, p_actor_agent_id: actor });
   } else if (input.action === "authorize_recipient") {
-    result = await db.rpc("authorize_agent_recipient", { p_agent_id: input.id, p_account_id: input.accountId, p_label: input.label ?? null, p_expires_at: input.expiresAt ?? null, p_actor_agent_id: actor });
+    result = await db.rpc("developer_authorize_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_label: input.label ?? null, p_expires_at: input.expiresAt ?? null, p_actor_agent_id: actor });
   } else {
-    result = await db.rpc("revoke_agent_recipient", { p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason, p_actor_agent_id: actor });
+    result = await db.rpc("developer_revoke_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason, p_actor_agent_id: actor });
   }
   if (result.error) return NextResponse.json({ error: "agent_configuration_update_failed", reason: result.error.message }, { status: 400 });
   return NextResponse.json({ status: "updated", result: result.data }, { headers: { "Cache-Control": "no-store, private" } });
