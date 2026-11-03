@@ -698,12 +698,13 @@ try {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "demo-agent", allocationLimitYocto: "0" })
   });
-  assert(response.status === 200, "admin can release unused demo-agent allocation after rejection");
+  assert(response.status === 409 && (await response.json()).error === "allocation_below_spent_plus_reserved",
+    "allocation cannot be released while an autonomously submitted transfer remains unconfirmed");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", allocationLimitYocto: "6000000000000000000000000" })
+    body: JSON.stringify({ id: "primary", allocationLimitYocto: "5000000000000000000000000" })
   });
-  assert(response.status === 200, "admin can reallocate the full treasury ceiling to primary");
+  assert(response.status === 200, "primary can receive the remaining treasury allocation while demo funds remain reserved");
 
   const beforeUnauthReserve = counters.reserve;
   const beforeUnauthProvider = counters.provider;
