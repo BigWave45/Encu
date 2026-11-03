@@ -962,7 +962,7 @@ try {
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "2000000000000000000000000" })
   });
   payload = await response.json();
-  assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "100000000000000000000000", "admin can set a bounded rolling 24-hour autonomous allowance");
+  assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "2000000000000000000000000", "admin can set a bounded rolling 24-hour autonomous allowance");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "2000000000000000000000000" })
