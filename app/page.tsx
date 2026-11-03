@@ -865,7 +865,7 @@ export default function Home() {
           </form>
           </div>
           <div hidden={activeView !== "recipients"}>
-          <section id="recipients" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+          <section id="recipients" className="console-panel" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Authorized recipients</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Only exact NEAR account IDs authorized by an administrator can receive new transfers. Labels are display-only. Revocation blocks future requests and approvals; it does not recall claimed provider submissions or release pending reservations.</p>
             <form onSubmit={authorizeRecipient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
@@ -893,11 +893,11 @@ export default function Home() {
                 : (dashboard.recipients ?? []).filter(item => item.agentId === recipientAgent).map(item => {
                   const expired = item.expiresAt ? new Date(item.expiresAt).getTime() <= Date.now() : false;
                   const active = item.status === "active" && !expired;
-                  return <div key={item.agentId + ":" + item.accountId} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #e2e8f0" }}>
+                  return <div key={item.agentId + ":" + item.accountId} className="recipient-record">
                     <div style={{ minWidth: 180, flex: 1 }}>
-                      <strong style={{ fontSize: 13 }}>{item.label || item.accountId}</strong>
-                      <div style={{ fontSize: 12, color: "#64748b" }}>{item.accountId}</div>
-                      <div style={{ fontSize: 11, color: "#64748b" }}>{active ? "Authorized" : expired ? "Expired" : "Revoked"} · by {item.authorizedBy}{item.expiresAt ? ` · expires ${new Date(item.expiresAt).toLocaleString()}` : ""}</div>
+                      <strong className="record-title">{item.label || item.accountId}</strong>
+                      <code className="record-identifier">{item.accountId}</code>
+                      <div className="record-meta"><span className={`status-pill ${active ? "status-executed" : expired ? "status-cancelled" : "status-rejected"}`}>{active ? "Authorized" : expired ? "Expired" : "Revoked"}</span><span>Authorized by {item.authorizedBy}</span>{item.expiresAt && <span>Expires {new Date(item.expiresAt).toLocaleString()}</span>}</div>
                     </div>
                     {active && <button type="button" disabled={recipientBusy} onClick={() => revokeRecipient(item.agentId, item.accountId)} style={buttonStyle}>Revoke</button>}
                   </div>;
@@ -909,7 +909,7 @@ export default function Home() {
           <div hidden={activeView !== "agents"}>
           <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table className="console-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead><tr>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
               <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
@@ -923,7 +923,7 @@ export default function Home() {
           <h3 id="approvals" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
           {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
             <div style={{ display: "grid", gap: 10 }}>
-              {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #f59e0b", borderRadius: 8, fontSize: 13 }}>
+              {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} className="approval-record">
                 <strong>{item.agentId}</strong> requests {near(item.amountYocto)} NEAR
                 <p style={{ margin: "6px 0" }}>Recipient: <code>{item.recipient}</code></p>
                 <p style={{ margin: "6px 0", color: "#64748b" }}>Request ID: {item.requestId}</p>
@@ -995,7 +995,7 @@ export default function Home() {
           <div hidden={activeView !== "security"}>
           <h3 id="admin-audit" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
-            <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
+            <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} className="event-record audit-record">
               <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
               <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>{JSON.stringify(entry.details)}</div>
             </div>)}</div>}
@@ -1008,7 +1008,7 @@ export default function Home() {
           </div>
           <h3 id="security-events" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfer security events ({dashboard.activityPages?.security?.total ?? dashboard.securityEvents?.length ?? 0})</h3>
           {!dashboard.securityEvents?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No transfer security events recorded yet.</p> :
-            <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
+            <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} className="event-record security-record">
               <strong>{event.eventType}</strong>
               <div style={{ color: "#64748b", marginTop: 4 }}>Agent: {event.actorAgentId ?? "Unauthenticated"} · {new Date(event.createdAt).toLocaleString()}</div>
               {event.requestId && <div style={{ overflowWrap: "anywhere", marginTop: 4 }}>Request: {event.requestId}</div>}
