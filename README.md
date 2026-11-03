@@ -343,3 +343,127 @@ The script refuses to run without the explicit isolation flag and refuses a data
 - CI covers mocked API and finality lifecycle behavior plus isolated PostgreSQL concurrency; it does not prove a live OutLayer transfer or a real NEAR testnet settlement.
 
 A successful health check confirms service connectivity, not that a transfer lifecycle has been tested. A live transfer, concurrent budget test, replay test, and finality reconciliation test must be recorded separately before claiming end-to-end validation.
+
+
+---
+
+## Architecture decisions and engineering handoff (2026-11-03)
+
+**This section is the latest project handoff and supersedes older status snapshots above where they conflict.** Historical deployment and database notes are retained for traceability; always verify live state before performing mutations.
+
+### Product direction
+
+AgentGuard is being designed as an independently enforced financial authorization layer for autonomous agents. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass AgentGuard to spend from the protected wallet.
+
+The intended operating model is **policy-authorized autonomous execution**: an administrator authorizes a bounded spending policy once, and AgentGuard automatically executes transactions that satisfy it. Human approval is reserved for suspicious activity, policy exceptions and administrative changes. The current implementation still requires human approval for every transfer; automatic policy-authorized execution is a design decision and is **not implemented yet**.
+
+OutLayer remains the execution provider in the NEAR hackathon scope. AgentGuard independently owns identity, policy, authorization, budget reservation, execution gating, audit and finality-based accounting. Multi-provider support is a future extension, not part of the current hackathon implementation.
+
+### Agreed architecture decisions
+
+These are approved design decisions, not claims about existing implementation.
+
+1. **Treasury-wide limit is mandatory.** All agents belonging to a treasury must share one authoritative global spending and exposure ceiling.
+2. **Agents also receive individual allocations.** Each agent has its own allocated authority and policy. The sum of allocations and all commitments must remain within treasury limits. An agent's allocation is not extra money.
+3. **Treasury limits take precedence.** A request that passes its agent-level policy but breaches a treasury-level limit must be rejected.
+4. **New recipients require explicit administrator authorization.** Match exact NEAR account IDs, not display names. Agents cannot authorize their own recipients.
+5. **Suspicious transactions are held for human review.** Hard policy violations are rejected automatically. Risk-based holds must have quotas, deduplication and escalation controls so an attacker cannot flood the review queue.
+6. **Transaction-rate limits are configurable per agent through an explicit execution profile.** The system must also enforce a hard infrastructure/provider safety ceiling. A high-throughput profile does not grant a higher spending allowance.
+7. **Treasury exposure includes spent funds plus funds committed to unresolved transactions.** Pending reservations cannot be treated as available funds.
+8. **Emergency stop is treasury-wide.** It blocks new authorizations and any not-yet-submitted execution. It cannot recall a provider transaction already submitted or in flight.
+9. **Policy changes are administrator-controlled and versioned.** Before provider submission, the execution path must verify that the authorization remains valid under the current policy and emergency-stop state.
+10. **Provider credentials remain server-side.** Agent credentials never grant direct OutLayer access.
+
+### Required authorization hierarchy
+
+Apply restrictions from the highest level down. Lower levels must never override higher-level controls.
+
+- **Treasury policy:** global budget, global exposure ceiling, aggregate spending windows, emergency stop and infrastructure-level limits.
+- **Agent policy:** agent allocation, per-transfer cap, daily/weekly caps, active status and configured execution profile.
+- **Transaction authorization:** exact recipient, amount, idempotency, velocity and risk evaluation.
+- **Execution:** atomic reservation, provider submission, provider request tracking, NEAR finality verification and ledger settlement.
+
+Expected decision outcomes:
+
+- `ALLOW`: all deterministic policy checks pass; eligible for automatic execution once that mode is implemented.
+- `HOLD`: suspicious or requires human review; funds remain reserved while the outcome is unresolved.
+- `DENY`: hard policy violation; no provider submission.
+- `FREEZE`: emergency or systemic threat; stop new execution at treasury level.
+
+Provider timeout or uncertain submission is an execution/reconciliation state, not a policy approval or proof of failure. Do not release reserved funds or retry blindly while provider execution may have occurred.
+
+### Interface direction
+
+The existing dashboard should evolve in place; do not create a separate application. Organize the interface around the treasury and its agents.
+
+1. **Treasury overview:** total treasury limit, allocated authority, spent, reserved/committed, available headroom, emergency-stop state and recent activity.
+2. **Agent management:** agent identity/status, individual allocation, per-transfer and rolling limits, execution profile, recipient permissions and credential controls.
+3. **Recipient management:** exact NEAR account ID, label, active/revoked state, authorizing administrator and optional expiry. Show pending transactions affected by a revocation.
+4. **Transaction activity:** searchable transaction lifecycle with policy decision, reason, amount, recipient, agent, reservation, provider reference and finality state.
+5. **Review queue:** suspicious transactions only, with the triggering signals, policy version, reservation exposure and explicit approve/reject actions. Avoid turning every ordinary payment into an approval task.
+6. **Security and audit:** emergency stop, policy-change history, admin actions, risk events and reconciliation exceptions.
+
+The overview should make four things immediately visible: how much authority exists, how much is committed or spent, which agents can use it, and what requires intervention. Preserve the current dashboard's clear admin-only boundary.
+
+### Threat model and mandatory safeguards
+
+Prioritize these attack surfaces because failure would invalidate AgentGuard's core security promise:
+
+- **Provider bypass / credential compromise:** agents must not possess OutLayer credentials; only the trusted server can call the provider.
+- **Concurrent overspending:** treasury and agent reservations must be atomic against shared authoritative records. Application-side read-then-write checks are insufficient.
+- **Agent multiplication:** multiple agents must not multiply the treasury's total spending authority.
+- **Payment splitting and slow-drip attacks:** enforce aggregate spend windows and velocity controls, not just per-transfer caps.
+- **Recipient substitution:** bind recipient and amount to the reservation and provider submission; revalidate current recipient authorization before execution.
+- **Replay and duplicate submission:** use idempotency and durable submission claims; never blindly retry ambiguous provider outcomes.
+- **Policy-change races:** record policy version at authorization and revalidate pending authorizations before provider submission.
+- **Review-queue denial of service:** cap pending review count/exposure, deduplicate repeated requests and define escalation. Do not expire/release a reservation until it is established that no provider execution occurred.
+- **Admin compromise:** keep policy mutation admin-only, authenticate admin actions, and audit policy/recipient/limit changes.
+- **Reconciliation manipulation:** verify exact signer, recipient, amount and NEAR finality before settling the ledger.
+- **Availability attacks:** protect request paths, provider capacity and reconciliation workers with rate/queue controls.
+
+Behavioural anomaly detection and reputation scoring are possible later enhancements. They must supplement deterministic controls, never replace hard limits or authorization. A valid identity or approved recipient does not prove that an agent's intent or the recipient is trustworthy.
+
+### Current implementation status at handoff
+
+Latest known branch: `agentguard/build-v1`.
+
+Latest known commit: `f83233d8452925e69826e6603be066e1a835881f`.
+
+The latest CI run for that commit, GitHub Actions run `41562915525`, completed successfully for the build, API security/transfer lifecycle tests and NEAR finality reconciliation tests.
+
+Existing implementation includes agent authentication, admin-only management and approvals, per-agent policies, recipient allowlists, emergency stop, persistent rate limiting, shared-budget atomic reservation, idempotency, provider signer verification, audit events and NEAR finality reconciliation. Existing transfer requests still enter `awaiting_approval`; the admin approval endpoint is currently the only application path that calls `transferNear`.
+
+The signer-verification patch checks OutLayer's reported executor account against the configured `OUTLAYER_NEAR_ADDRESS` before consuming approval or submitting a transfer. The test suite verifies that a signer mismatch returns an error and does not submit. The actual OutLayer endpoint contract should still be checked against authoritative provider documentation; a passing mock test does not prove the live response schema.
+
+A controlled NEAR testnet transfer was completed and reconciled:
+
+- Agent: `test-agent-alpha`
+- Amount: `0.001 NEAR`
+- Recipient: `lensherr.testnet`
+- AgentGuard request ID: `ag-8ad9a18e-e917-436d-bf66-d6764ce43dca`
+- Transaction hash: `7oQL5u2Thnp895SVEqzEV574BJYZZXDY1YRxTfjK1aGM`
+- Final status: `executed`
+- Finality reconciliation recorded `transfer_finalized`; `last_error=null`.
+
+This proves one controlled testnet transfer through the current approval-based path. It does not prove high-throughput execution, autonomous policy-authorized execution, mainnet readiness, or production security.
+
+### Implementation gaps and next engineering sequence
+
+Do not treat the architecture decisions above as implemented. Before changing execution behavior:
+
+1. Verify the actual OutLayer address/signer endpoint and transfer API contract against authoritative provider documentation. Confirm what signer identity the provider reports and how transfer submission behaves under timeouts, duplicate requests and rate limits.
+2. Inspect the current schema and RPCs on the isolated Preview test database. Determine whether the existing shared budget is truly treasury-scoped and whether agent allocations exist. Do not assume the current single shared budget already implements treasury plus sub-allocations.
+3. Design treasury and agent allocation accounting. Define allocated, spent, reserved/committed and available values precisely. Enforce treasury and agent ceilings in one atomic reservation operation.
+4. Add administrator-managed recipient lifecycle and exact-account authorization, including revocation checks at execution time.
+5. Define risk-hold quotas, deduplication, reservation expiry/reconciliation and escalation.
+6. Add policy versioning and revalidation immediately before provider submission.
+7. Add an explicit execution profile per agent and a hard system-level provider/infrastructure ceiling.
+8. Implement policy-authorized autonomous execution through the existing trusted server path. Reuse signer verification, idempotency, atomic reservation, audit and finality reconciliation. Do not create a second provider execution path with weaker checks.
+9. Retain manual approval as a configurable stricter mode and use human review for risk holds.
+10. Add adversarial tests for concurrent cross-agent reservations, aggregate treasury limits, payment splitting, recipient revocation, stale policy versions, review-queue flooding, emergency-stop races, provider timeouts and duplicate submission.
+11. Update the dashboard to reflect treasury allocations, committed exposure, agent execution profiles, recipient management, review queue and audit history.
+12. Verify the Preview deployment and test environment end to end. Keep Production untouched unless explicitly authorized. Do not initiate another live transfer without explicit user approval.
+
+### Scope discipline
+
+Current target remains the NEAR hackathon AI Security & Defense track. Do not expand the implementation into multi-provider support, a marketplace, a generic agent framework, reputation scoring or broad commercial features before the core policy-enforced execution path is working and demonstrable. Future provider integrations may be documented as an extension point only.
