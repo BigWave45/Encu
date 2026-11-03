@@ -930,3 +930,95 @@ body {
   .metric-card > div:last-child { font-size: 22px !important; }
   .health-grid > div { min-height: 58px; }
 }
+
+/* ENCU V2: structural operations-console redesign */
+:root{--v2-ink:#17221d;--v2-muted:#65736b;--v2-line:#dce4dc;--v2-paper:#f3f5ef;--v2-white:#fff;--v2-green:#c9f36a;--v2-deep:#17251e}
+.dashboard-shell.encu-v2{max-width:1440px!important;color:var(--v2-ink)!important;background:var(--v2-paper);min-height:100vh}
+.encu-masthead{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:5px 0 22px;border-bottom:1px solid #d4ddd3}
+.encu-brand-lockup{display:flex;align-items:center;gap:12px}
+.encu-mark{width:43px;height:43px;display:grid;place-items:center;border-radius:12px;background:var(--v2-deep);color:#fff;font-size:25px;font-weight:900;letter-spacing:-.08em}
+.encu-mark span{color:var(--v2-green)}
+.encu-wordmark{font-size:20px;font-weight:900;letter-spacing:.12em;color:var(--v2-ink)}
+.encu-product-line,.encu-eyebrow,.encu-note-kicker,.encu-live-label{font-size:9px;font-weight:850;letter-spacing:.15em;color:#718076}
+.encu-header-meta{display:flex;align-items:center;gap:9px;font-size:9px;font-weight:850;letter-spacing:.12em;color:#617066}
+.encu-network-dot,.encu-state-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#86b94b}
+.encu-header-divider{height:15px;width:1px;background:#cbd5cb}
+.encu-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:40px 0 30px}
+.encu-intro h1{max-width:690px;margin:12px 0 10px!important;font-size:clamp(34px,5vw,58px)!important;line-height:1.02!important;letter-spacing:-.065em!important;color:var(--v2-ink)!important;font-weight:850!important}
+.encu-lede{margin:0!important;color:#65736b!important;font-size:15px!important}
+.encu-intro-note{max-width:260px;display:grid;gap:8px;padding:17px 19px;border:1px solid #d5dfd4;border-radius:12px;background:#e9eee5}
+.encu-intro-note strong{font-size:16px;color:#26372c}
+.encu-intro-note>span:last-child{font-size:11px;line-height:1.55;color:#65736b}
+.encu-access-panel{margin:0!important;padding:19px 21px!important;border:1px solid #d8e1d7!important;border-radius:14px!important;background:#fff!important;box-shadow:0 8px 26px #243a2510}
+.encu-access-heading{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:14px}
+.encu-access-heading>div{display:grid;gap:5px}
+.encu-access-heading strong{font-size:15px;color:#1d2b22}
+.encu-memory-label{font-size:10px;color:#758278}
+.encu-access-grid{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:12px}
+.encu-access-grid label{display:grid;gap:7px;font-size:11px!important;font-weight:800;color:#435247!important}
+.encu-access-grid label span{font-weight:500;color:#849087}
+.encu-access-grid input{width:100%;min-width:0;box-sizing:border-box;padding:12px 13px!important;border:1px solid #d4ded3!important;border-radius:8px!important;background:#f8faf6!important;color:#18251e!important;font-size:13px!important}
+.encu-access-actions{display:flex;gap:7px}
+.encu-access-actions button{min-height:42px!important;padding:0 15px!important;border:1px solid #1d3326!important;border-radius:8px!important;background:#1d3326!important;color:#fff!important;font-size:11px!important;font-weight:850!important;white-space:nowrap}
+.encu-access-actions .encu-secondary-action{background:#eef3e9!important;color:#304332!important;border-color:#d5dfd2!important}
+.encu-access-footnote{margin:12px 0 0!important;color:#7b887e!important;font-size:10px!important}
+.encu-v2 .dashboard-workspace{margin-top:24px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.encu-v2 .dashboard-heading{padding:18px 0!important;border-bottom:0!important}
+.encu-v2 .dashboard-heading h2{font-size:26px!important;letter-spacing:-.04em;color:#1b2b21!important}
+.encu-v2 .dashboard-heading p{color:#6c7a70!important}
+.encu-v2 .dashboard-heading button{border:1px solid #cbd7c9!important;background:#fff!important;color:#26382b!important}
+.encu-v2 .dashboard-nav{position:static!important;display:flex!important;flex-wrap:nowrap!important;gap:5px!important;margin:8px 0 20px!important;padding:7px!important;overflow-x:auto!important;border:1px solid #d8e1d7!important;border-radius:11px!important;background:#e8ede5!important}
+.encu-v2 .dashboard-nav-item{flex:0 0 auto!important;min-height:37px!important;padding:0 12px!important;border:1px solid transparent!important;border-radius:7px!important;background:transparent!important;color:#58675c!important;font-size:10px!important;font-weight:850!important;letter-spacing:.025em}
+.encu-v2 .dashboard-nav-item.is-active{background:#1d3326!important;border-color:#1d3326!important;color:#d8f69a!important}
+.encu-live-strip{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:1px;margin-top:20px;overflow:hidden;border:1px solid #d7e0d5;border-radius:12px;background:#d7e0d5}
+.encu-live-strip>div{display:grid;gap:8px;padding:15px 17px;background:#fff}
+.encu-live-strip strong{display:flex;align-items:center;gap:8px;color:#213126;font-size:15px;font-weight:850}
+.encu-live-strip small{font-size:10px;font-weight:600;color:#7b887e}
+.encu-state-dot.is-stopped{background:#d66c58}
+.encu-live-label{font-size:8px}
+.encu-v2 .metric-card{border:1px solid #dce4da!important;border-radius:12px!important;background:#fff!important;box-shadow:0 4px 15px #253c2510}
+.encu-v2 .metric-card>div:first-child{color:#728076!important}
+.encu-v2 .metric-card>div:last-child{color:#1d3024!important;font-size:29px!important}
+.encu-v2 .console-panel,.encu-v2 .emergency-panel,.encu-v2 .provider-policy-panel{border-radius:12px!important;box-shadow:0 4px 15px #253c250a}
+.encu-v2 .console-panel{background:#fff!important;border-color:#dce4da!important;color:#203027!important}
+.encu-v2 .console-panel p,.encu-v2 .dashboard-workspace p{color:#68776c!important}
+.encu-v2 .console-panel strong,.encu-v2 .dashboard-workspace h3{color:#1e3024!important}
+.encu-v2 .console-panel input,.encu-v2 .console-panel select{background:#f7f9f5!important;color:#1b2a20!important;border-color:#d2ddd1!important}
+.encu-v2 .dashboard-workspace table,.encu-v2 .history-table-wrap{background:#fff!important;border-color:#dce4da!important}
+.encu-v2 .history-table thead th,.encu-v2 .console-table th{background:#edf2ea!important;color:#526256!important;border-color:#dce4da!important}
+.encu-v2 .history-table td,.encu-v2 .console-table td{color:#26372b!important;border-color:#e5ebe3!important}
+.encu-v2 .history-primary-row:hover td,.encu-v2 .console-table tr:hover td{background:#f5f8f2!important}
+.encu-v2 .history-amount,.encu-v2 .history-detail-grid strong{color:#1e3024!important}
+.encu-v2 .history-subline{color:#718075!important}
+.encu-v2 .history-detail-row td{background:#f6f8f4!important}
+.encu-v2 .history-detail-grid,.encu-v2 .empty-state{background:#fff!important;border-color:#dce4da!important}
+.encu-v2 .history-detail-grid code,.encu-v2 .record-identifier{color:#526c35!important}
+.encu-v2 .event-record{background:#fff!important;border-color:#dce4da!important;color:#26372b!important}
+.encu-v2 .event-record>strong,.encu-v2 .event-record>div{color:#526256!important}
+.encu-v2 .event-payload,.encu-v2 .event-reference{background:#f4f7f1!important;border-color:#dce4da!important;color:#344537!important}
+.encu-v2 .event-reference code{color:#526c35!important}
+.encu-v2 .approval-record{background:#fff8e9!important;color:#49391d!important;border-color:#e5c77e!important}
+.encu-v2 .approval-record>strong{color:#49391d!important}
+.encu-v2 .approval-record code{color:#73551f!important}
+.encu-v2 .emergency-panel{background:#fff3ef!important;border-color:#e6b7ab!important}
+.encu-v2 .emergency-panel>div strong{color:#743b31!important}
+.encu-v2 .emergency-panel button{background:#8b4034!important;color:#fff!important}
+.encu-v2 .dashboard-workspace form button[type=submit]{background:#263d2c!important;border-color:#263d2c!important;color:#e5f7c6!important}
+.encu-v2 .developer-result,.encu-v2 #developer-tools,.encu-v2 #agent-access{background:#fff!important;border-color:#dce4da!important;color:#26372b!important}
+.encu-v2 .developer-result pre,.encu-v2 #developer-tools pre{background:#f1f5ee!important;color:#304234!important;border-color:#dce4da!important}
+@media(max-width:760px){
+ .encu-masthead{align-items:flex-start}.encu-header-meta{font-size:8px;flex-wrap:wrap;justify-content:flex-end}
+ .encu-intro{display:block;padding:30px 0 22px}.encu-intro-note{max-width:none;margin-top:18px}
+ .encu-access-grid{grid-template-columns:1fr}.encu-access-actions{display:grid;grid-template-columns:1fr 1fr}
+ .encu-live-strip{grid-template-columns:1fr 1fr}
+ .encu-v2 .dashboard-heading{align-items:flex-start!important}
+ .encu-v2 .dashboard-heading button{width:100%}
+ .encu-v2 .dashboard-nav{position:sticky!important;top:0!important;z-index:20}
+}
+@media(max-width:420px){
+ .encu-v2{padding-left:12px!important;padding-right:12px!important}
+ .encu-header-meta{max-width:120px;line-height:1.5;text-align:right}
+ .encu-access-heading{align-items:flex-start;flex-direction:column}
+ .encu-live-strip>div{padding:12px}.encu-live-strip strong{font-size:13px}
+ .encu-v2 .metric-card>div:last-child{font-size:23px!important}
+}
