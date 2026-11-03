@@ -126,7 +126,7 @@ jobs:
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',2000000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'admin');" | jq -e '.agent_id == "research-agent"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-per-transfer',3000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_per_transfer_limit"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-recipient',1000000000000000000000,'other.near','research-agent');" | jq -e '.reason == "recipient_not_allowed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-recipient',1000000000000000000000,'other.near','research-agent');" | jq -e '.reason == "recipient_not_authorized"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,3000000000000000000000000,NULL,ARRAY['agentguard-test.near']::text[],'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-daily-a',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-daily-b',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_daily_limit"' >/dev/null
