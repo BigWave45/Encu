@@ -39,6 +39,7 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
   const [autoSpend, setAutoSpend] = useState("");
   const [accountId, setAccountId] = useState("");
   const [label, setLabel] = useState("");
+  const [recipientExpires, setRecipientExpires] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -101,7 +102,7 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
             <div><span>Spent</span><strong>{displayNear(config.allocation?.spent_yocto)}</strong></div>
             <div><span>Reserved</span><strong>{displayNear(config.allocation?.reserved_yocto)}</strong></div>
           </div>
-          <form className="developer-form" onSubmit={e => { e.preventDefault(); const value = parseNear(allocation); if (value == null || value === undefined) { setError("Enter a valid allocation greater than zero."); return; } void save({ action: "allocation", allocationLimitYocto: value }); }}>
+          <form className="developer-form" onSubmit={e => { e.preventDefault(); const value = parseNear(allocation); if (value == null || value === undefined) { setError("Enter a valid allocation of zero or more NEAR."); return; } void save({ action: "allocation", allocationLimitYocto: value }); }}>
             <h4>Allocation</h4>
             <label>Maximum allocation (NEAR)<input inputMode="decimal" value={allocation} onChange={e => setAllocation(e.target.value)} required /></label>
             <button className="developer-button" disabled={busy}>Save allocation</button>
@@ -118,17 +119,18 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
             <label>Maximum autonomous spend (NEAR)<input inputMode="decimal" value={autoSpend} onChange={e => setAutoSpend(e.target.value)} placeholder="Clear to disable autonomous spend" /></label>
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
-          <form className="developer-form" onSubmit={e => { e.preventDefault(); void save({ action: "authorize_recipient", accountId: accountId.trim(), label: label.trim() || undefined }); setAccountId(""); setLabel(""); }}>
+          <form className="developer-form" onSubmit={e => { e.preventDefault(); void save({ action: "authorize_recipient", accountId: accountId.trim(), label: label.trim() || undefined, expiresAt: recipientExpires ? new Date(recipientExpires).toISOString() : null }); setAccountId(""); setLabel(""); setRecipientExpires(""); }}>
             <h4>Authorize recipient</h4>
             <label>NEAR account ID<input value={accountId} onChange={e => setAccountId(e.target.value)} required placeholder="recipient.near" /></label>
             <label>Label (optional)<input value={label} onChange={e => setLabel(e.target.value)} maxLength={80} /></label>
+            <label>Authorization expiry (optional)<input type="datetime-local" value={recipientExpires} onChange={e => setRecipientExpires(e.target.value)} /></label>
             <button className="developer-button" disabled={busy || !accountId.trim()}>Add recipient</button>
           </form>
           <div className="developer-recipient-list">
             <h4>Recipient allowlist</h4>
             {!config.recipients.length && <p>No recipients authorized. Transfers to all recipients remain blocked.</p>}
             {config.recipients.map(recipient => <div className="developer-recipient" key={recipient.account_id}>
-              <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{recipient.status}</span></div>
+              <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
               {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void save({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
             </div>)}
           </div>
