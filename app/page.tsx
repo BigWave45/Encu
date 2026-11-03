@@ -24,7 +24,8 @@ type Dashboard = {
   error?: string;
   generatedAt?: string;
   transfersEnabled?: boolean;
-  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null; allowedRecipients: string[] | null }>;
+  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null }>;
+  recipients?: Array<{ agentId: string; accountId: string; label: string | null; status: "active" | "revoked"; authorizedAt: string; authorizedBy: string; expiresAt: string | null; revokedAt: string | null; revokedBy: string | null }>;
   budget?: {
     totalLimitYocto: string;
     spentYocto: string;
@@ -182,8 +183,12 @@ export default function Home() {
   const [policyMax, setPolicyMax] = useState("");
   const [policyDaily, setPolicyDaily] = useState("");
   const [policyWeekly, setPolicyWeekly] = useState("");
-  const [policyRecipients, setPolicyRecipients] = useState("");
-  const [policyDenyAll, setPolicyDenyAll] = useState(false);
+  const [recipientAgent, setRecipientAgent] = useState("primary");
+  const [recipientAccount, setRecipientAccount] = useState("");
+  const [recipientLabel, setRecipientLabel] = useState("");
+  const [recipientExpires, setRecipientExpires] = useState("");
+  const [recipientBusy, setRecipientBusy] = useState(false);
+  const [recipientMessage, setRecipientMessage] = useState("");
   const [policyBusy, setPolicyBusy] = useState(false);
   const [policyMessage, setPolicyMessage] = useState("");
   const [requestAgentToken, setRequestAgentToken] = useState("");
@@ -242,8 +247,6 @@ export default function Home() {
         setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
         setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
         setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
-        setPolicyRecipients(selectedPolicy?.allowedRecipients?.join("\n") ?? "");
-        setPolicyDenyAll(Array.isArray(selectedPolicy?.allowedRecipients) && selectedPolicy.allowedRecipients.length === 0);
       }
     } catch {
       setDashboard(null);
@@ -287,9 +290,6 @@ export default function Home() {
       setPolicyMessage("Enter valid positive NEAR limits or leave a field blank for no additional limit.");
       return;
     }
-    const recipients = policyDenyAll ? [] : policyRecipients.trim()
-      ? policyRecipients.split("\n").map(value => value.trim()).filter(Boolean)
-      : null;
     setPolicyBusy(true);
     setPolicyMessage("");
     try {
@@ -301,7 +301,6 @@ export default function Home() {
           maxTransferYocto: max?.toString() ?? null,
           dailyLimitYocto: daily?.toString() ?? null,
           weeklyLimitYocto: weekly?.toString() ?? null,
-          allowedRecipients: recipients
         })
       });
       const body = await response.json().catch(() => ({}));
@@ -437,6 +436,72 @@ export default function Home() {
       setAllocationMessage("Could not confirm the allocation update. Refresh the dashboard before retrying.");
     } finally {
       setAllocationBusy(false);
+    }
+  }
+
+  async function authorizeRecipient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const accountId = recipientAccount.trim();
+    if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(accountId) || accountId.length < 2 || accountId.length > 64) {
+      setRecipientMessage("Enter an exact NEAR account ID (2–64 lowercase characters).");
+      return;
+    }
+    let expiresAt: string | null = null;
+    if (recipientExpires) {
+      const parsed = new Date(recipientExpires);
+      if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        setRecipientMessage("Expiry must be a valid future date and time.");
+        return;
+      }
+      expiresAt = parsed.toISOString();
+    }
+    setRecipientBusy(true);
+    setRecipientMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/recipients", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ agentId: recipientAgent, accountId, label: recipientLabel.trim() || null, expiresAt }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setRecipientMessage(body.error ?? "recipient_authorization_failed");
+      else {
+        setRecipientMessage(`Authorized ${accountId} for ${recipientAgent}.`);
+        setRecipientAccount("");
+        setRecipientLabel("");
+        setRecipientExpires("");
+        await loadDashboard();
+      }
+    } catch {
+      setRecipientMessage("Could not confirm recipient authorization. Refresh before retrying.");
+    } finally {
+      setRecipientBusy(false);
+    }
+  }
+
+  async function revokeRecipient(agentId: string, accountId: string) {
+    if (!window.confirm(`Revoke ${accountId} for ${agentId}? Pending requests will remain reserved until rejected or safely cancelled. Already claimed provider submissions cannot be recalled.`)) return;
+    setRecipientBusy(true);
+    setRecipientMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/recipients", {
+        method: "DELETE",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ agentId, accountId, reason: "Revoked by administrator." }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setRecipientMessage(body.error ?? "recipient_revocation_failed");
+      else {
+        const result = body.recipient ?? {};
+        setRecipientMessage(`Revoked ${accountId}. Pending approvals: ${result.pending_approvals ?? 0}; claimed/in-flight: ${result.claimed_inflight ?? 0}; provider submitted: ${result.provider_submitted ?? 0}. No reservations were automatically released.`);
+        await loadDashboard();
+      }
+    } catch {
+      setRecipientMessage("Could not confirm recipient revocation. Refresh before retrying.");
+    } finally {
+      setRecipientBusy(false);
     }
   }
 
@@ -679,8 +744,6 @@ export default function Home() {
                 setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
                 setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
                 setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
-                setPolicyRecipients(policy?.allowedRecipients?.join("\n") ?? "");
-                setPolicyDenyAll(Array.isArray(policy?.allowedRecipients) && policy.allowedRecipients.length === 0);
               }} style={{ ...inputStyle, marginTop: 5 }}>
                 {dashboard.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
               </select>
@@ -690,8 +753,6 @@ export default function Home() {
               <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginTop: 10 }}><input type="checkbox" checked={policyDenyAll} onChange={e => setPolicyDenyAll(e.target.checked)} /> Block all recipients (empty allowlist)</label>
-            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>Allowed NEAR recipients, one account ID per line<textarea value={policyRecipients} disabled={policyDenyAll} onChange={e => setPolicyRecipients(e.target.value)} rows={3} placeholder="Leave blank to allow any valid recipient" style={{ ...inputStyle, marginTop: 5, opacity: policyDenyAll ? 0.5 : 1 }} /></label>
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
           </form>
@@ -723,6 +784,46 @@ export default function Home() {
             </button>
             {allocationMessage && <p role="status" style={{ fontSize: 13 }}>{allocationMessage}</p>}
           </form>
+          <section style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            <strong>Authorized recipients</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Only exact NEAR account IDs authorized by an administrator can receive new transfers. Labels are display-only. Revocation blocks future requests and approvals; it does not recall claimed provider submissions or release pending reservations.</p>
+            <form onSubmit={authorizeRecipient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+              <label style={{ fontSize: 13 }}>Agent
+                <select value={recipientAgent} onChange={e => setRecipientAgent(e.target.value)} style={{ ...inputStyle, marginTop: 5 }}>
+                  {(dashboard.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+                </select>
+              </label>
+              <label style={{ fontSize: 13 }}>Exact NEAR account ID
+                <input value={recipientAccount} onChange={e => setRecipientAccount(e.target.value)} placeholder="recipient.near" required style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <label style={{ fontSize: 13 }}>Label (optional)
+                <input value={recipientLabel} onChange={e => setRecipientLabel(e.target.value)} maxLength={80} placeholder="Treasury wallet" style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <label style={{ fontSize: 13 }}>Expires at (optional)
+                <input type="datetime-local" value={recipientExpires} onChange={e => setRecipientExpires(e.target.value)} style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                <button type="submit" disabled={recipientBusy || !adminToken.trim()} style={buttonStyle}>{recipientBusy ? "Saving…" : "Authorize recipient"}</button>
+              </div>
+            </form>
+            <div style={{ marginTop: 14 }}>
+              {(dashboard.recipients ?? []).filter(item => item.agentId === recipientAgent).length === 0
+                ? <p style={{ color: "#92400e", fontSize: 13 }}>No recipients are authorized for this agent. New transfer requests will be denied until an administrator authorizes an account ID.</p>
+                : (dashboard.recipients ?? []).filter(item => item.agentId === recipientAgent).map(item => {
+                  const expired = item.expiresAt ? new Date(item.expiresAt).getTime() <= Date.now() : false;
+                  const active = item.status === "active" && !expired;
+                  return <div key={item.agentId + ":" + item.accountId} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #e2e8f0" }}>
+                    <div style={{ minWidth: 180, flex: 1 }}>
+                      <strong style={{ fontSize: 13 }}>{item.label || item.accountId}</strong>
+                      <div style={{ fontSize: 12, color: "#64748b" }}>{item.accountId}</div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>{active ? "Authorized" : expired ? "Expired" : "Revoked"} · by {item.authorizedBy}{item.expiresAt ? ` · expires ${new Date(item.expiresAt).toLocaleString()}` : ""}</div>
+                    </div>
+                    {active && <button type="button" disabled={recipientBusy} onClick={() => revokeRecipient(item.agentId, item.accountId)} style={buttonStyle}>Revoke</button>}
+                  </div>;
+                })}
+            </div>
+            {recipientMessage && <p role="status" style={{ fontSize: 13 }}>{recipientMessage}</p>}
+          </section>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
