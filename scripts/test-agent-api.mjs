@@ -680,11 +680,15 @@ try {
     body: JSON.stringify({ agentId: "demo-agent", accountId: "recipient.near" })
   });
   assert(response.status === 200, "new agent receives recipient authorization only after explicit admin action");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "demo-agent", autoSpendLimitYocto: "1000000000000000000000000" })
+  });
+  assert(response.status === 200, "new agent receives autonomous authority only after explicit allowance");
   response = await postTransfer({ token: payload.token, requestId: "test-new-demo-token-001" });
-  const replacementBody = await response.text();
-  assert(response.status === 202 && replacementBody.length > 0, `replacement credential reaches transfer lifecycle (HTTP ${response.status}; body: ${replacementBody || "<empty>"})`);
-  response = await approveTransfer("test-new-demo-token-001", "reject");
-  assert(response.status === 200, "test credential's pending transfer is rejected to release its reservation");
+  const replacementBody = await response.json();
+  assert(response.status === 202 && replacementBody.status === "needs_review" && replacementBody.providerRequestId,
+    `replacement credential submits autonomously without approval (HTTP ${response.status}; body: ${JSON.stringify(replacementBody)})`);
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "research-agent", allocationLimitYocto: "0" })
