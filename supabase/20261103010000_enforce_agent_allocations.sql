@@ -55,7 +55,7 @@ begin
 end;
 $allocation_reconcile$;
 
-(
+create or replace function public.set_agent_allocation(
  p_agent_id text,p_allocation_limit_yocto numeric,p_actor_agent_id text
 ) returns jsonb
 language plpgsql security definer set search_path = ''
