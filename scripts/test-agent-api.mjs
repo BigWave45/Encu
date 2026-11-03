@@ -82,7 +82,11 @@ const mock = createServer(async (req, res) => {
       return send(res, 200, rows);
     }
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_authorized_recipients") {
-      const rows = [...recipientAuthorizations.values()];
+      let rows = [...recipientAuthorizations.values()];
+      for (const field of ["agent_id", "account_id", "status"]) {
+        const value = url.searchParams.get(field)?.replace(/^eq\\./, "");
+        if (value) rows = rows.filter(row => String(row[field]) === value);
+      }
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
     }
@@ -200,9 +204,21 @@ const mock = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_policy") {
       const body = await readJson(req);
-      agentPolicies.set(body.p_agent_id, body);
+      agentPolicies.set(body.p_agent_id, { ...(agentPolicies.get(body.p_agent_id) ?? {}), ...body });
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_policy_updated", target_id: body.p_agent_id, details: {} });
       return send(res, 200, { agent_id: body.p_agent_id });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_auto_spend_limit") {
+      const body = await readJson(req);
+      const allocation = allocations.get(body.p_agent_id);
+      if (!allocation) return send(res, 400, { message: "agent_allocation_not_configured" });
+      const limit = body.p_auto_spend_limit_yocto == null ? null : BigInt(body.p_auto_spend_limit_yocto);
+      if (limit !== null && limit > BigInt(allocation.allocation_limit_yocto)) return send(res, 400, { message: "auto_limit_exceeds_agent_allocation" });
+      const policy = agentPolicies.get(body.p_agent_id) ?? {};
+      policy.auto_spend_limit_yocto = limit?.toString() ?? null;
+      agentPolicies.set(body.p_agent_id, policy);
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_auto_spend_limit_updated", target_id: body.p_agent_id, details: {} });
+      return send(res, 200, { agent_id: body.p_agent_id, auto_spend_limit_yocto: policy.auto_spend_limit_yocto });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/approve_agent_transfer") {
       const body = await readJson(req);
@@ -331,7 +347,7 @@ const mock = createServer(async (req, res) => {
           && existing.recipient === body.p_recipient
           && existing.agentId === body.p_agent_id;
         if (!same) return send(res, 400, { message: "idempotency_key_conflict" });
-        return send(res, 200, { created: false, status: existing.status, request_id: body.p_request_id });
+        return send(res, 200, { created: false, status: existing.status, request_id: body.p_request_id, auto_approved: existing.autoApproved === true });
       }
       if (!systemControls.transfers_enabled) return send(res, 200, { created: false, status: "blocked", reason: "emergency_stop" });
       const policy = agentPolicies.get(body.p_agent_id) ?? {};
@@ -345,13 +361,21 @@ const mock = createServer(async (req, res) => {
       if (committed + amount > BigInt(mockBudget.total_limit_yocto)) {
         return send(res, 200, { created: false, status: "blocked", request_id: body.p_request_id });
       }
+      const autoLimit = policy.auto_spend_limit_yocto == null ? null : BigInt(policy.auto_spend_limit_yocto);
+      const autoCommitted = [...reservations.values()]
+        .filter(row => row.agentId === body.p_agent_id && row.autoApproved === true && ["reserved", "needs_review", "executed"].includes(row.status))
+        .reduce((sum, row) => sum + BigInt(row.amount), 0n);
+      const autoApproved = autoLimit !== null && autoCommitted + amount <= autoLimit;
+      const status = autoApproved ? "reserved" : "awaiting_approval";
       reservations.set(body.p_request_id, {
         amount: body.p_amount_yocto, recipient: body.p_recipient,
-        agentId: body.p_agent_id, status: "awaiting_approval", txHash: null, providerRequestId: null, approvalExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        agentId: body.p_agent_id, status, autoApproved, claimed: autoApproved,
+        txHash: null, providerRequestId: null,
+        approvalExpiresAt: autoApproved ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
       allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) + amount).toString();
-      return send(res, 200, { created: true, status: "awaiting_approval", request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
+      return send(res, 200, { created: true, status, auto_approved: autoApproved, request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
@@ -886,6 +910,25 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.reason === "provider_transaction_hash_conflict", "conflicting provider hash is not overwritten");
 
+
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "100000000000000000000000", "admin can set a bounded autonomous lifetime allowance");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
+    method: "PATCH", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+  });
+  assert(response.status === 403, "agent credential cannot change its autonomous allowance");
+  const providerBeforeAuto = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId, "within-allowance transfer submits to provider without per-transfer admin approval");
+  assert(counters.provider === providerBeforeAuto + 1 && reservations.get("test-auto-spend-001")?.autoApproved === true, "autonomous reservation is submitted exactly once and marked auto-authorized");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
+  assert(response.status === 409 && counters.provider === providerBeforeAuto + 1, "autonomous request replay cannot submit a duplicate provider transfer");
 
   // A second app process runs with a mainnet provider URL. The route must
   // refuse before reservation or provider execution, even in CI test mode.
