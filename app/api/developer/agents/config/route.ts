@@ -66,6 +66,6 @@ export async function PATCH(request: NextRequest) {
   } else {
     result = await db.rpc("developer_revoke_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason });
   }
-  if (result.error) return NextResponse.json({ error: "agent_configuration_update_failed", reason: result.error.message }, { status: 400 });
+  if (result.error) return NextResponse.json({ error: "agent_configuration_update_failed" }, { status: 400 });
   return NextResponse.json({ status: "updated", result: result.data }, { headers: { "Cache-Control": "no-store, private" } });
 }
