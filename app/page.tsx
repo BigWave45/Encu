@@ -265,7 +265,7 @@ export default function Home() {
       }
     } catch {
       setDashboard(null);
-      setDashboardError("Could not reach AgentGuard. Check your connection and try again.");
+      setDashboardError("Could not reach ENCU. Check your connection and try again.");
     } finally {
       setDashboardLoading(false);
     }
@@ -283,7 +283,7 @@ export default function Home() {
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setOutLayerPolicy(body);
     } catch {
-      setOutLayerPolicy({ error: "Could not reach AgentGuard. OutLayer policy was not verified." });
+      setOutLayerPolicy({ error: "Could not reach ENCU. OutLayer policy was not verified." });
     } finally {
       setOutLayerPolicyLoading(false);
     }
@@ -447,7 +447,7 @@ export default function Home() {
         await loadDashboard();
       }
     } catch {
-      setBudgetMessage("Could not reach AgentGuard. Budget update was not confirmed.");
+      setBudgetMessage("Could not reach ENCU. Budget update was not confirmed.");
     } finally {
       setSavingBudget(false);
     }
@@ -567,7 +567,7 @@ export default function Home() {
         await loadDashboard();
       }
     } catch {
-      setDashboardError("Could not reach AgentGuard. Agent status was not confirmed.");
+      setDashboardError("Could not reach ENCU. Agent status was not confirmed.");
     } finally {
       setAgentStatusBusy(null);
     }
@@ -598,8 +598,8 @@ export default function Home() {
         const providerStatus = body.providerStatus;
         setReservationActionMessage(
           providerStatus === "pending_approval"
-            ? `${requestId}: OutLayer is waiting for its wallet approver. This is a separate approval gate from AgentGuard.`
-            : `${requestId}: OutLayer provider status is "${providerStatus}". AgentGuard will still require independent NEAR finality before settling the reservation.`
+            ? `${requestId}: OutLayer is waiting for its wallet approver. This is a separate approval gate from ENCU.`
+            : `${requestId}: OutLayer provider status is "${providerStatus}". ENCU will still require independent NEAR finality before settling the reservation.`
         );
       }
       await loadDashboard();
@@ -608,7 +608,7 @@ export default function Home() {
         setReservationActionError(requestId + ": " + body.reason + diagnostic);
       }
     } catch {
-      setReservationActionError(`${requestId}: Could not reach AgentGuard. The reservation state has not been verified.`);
+      setReservationActionError(`${requestId}: Could not reach ENCU. The reservation state has not been verified.`);
     } finally {
       setReservationAction(null);
     }
@@ -638,7 +638,7 @@ export default function Home() {
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setRotationResult({ httpStatus: response.status, ...body });
     } catch {
-      setRotationResult({ error: "Could not reach AgentGuard. Rotation outcome is unconfirmed. Refresh the dashboard and check before retrying." });
+      setRotationResult({ error: "Could not reach ENCU. Rotation outcome is unconfirmed. Refresh the dashboard and check before retrying." });
     } finally {
       setRotatingAgent(false);
     }
@@ -659,7 +659,7 @@ export default function Home() {
       setAgentResult(body);
       if (response.ok) await loadDashboard();
     } catch {
-      setAgentResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
+      setAgentResult({ error: "Could not reach ENCU. Check your connection and try again." });
     } finally {
       setCreatingAgent(false);
     }
@@ -692,7 +692,7 @@ export default function Home() {
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
       setRequestResult({ httpStatus: response.status, ...body });
     } catch {
-      setRequestResult({ error: "Could not reach AgentGuard. Request outcome is unconfirmed; check transaction history before retrying." });
+      setRequestResult({ error: "Could not reach ENCU. Request outcome is unconfirmed; check transaction history before retrying." });
     } finally {
       setRequestBusy(false);
       setRequestAgentToken("");
@@ -1016,7 +1016,7 @@ export default function Home() {
               <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.security?.page ?? 1) >= (dashboard.activityPages?.security?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage, securityPage + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
             </div>
           </div>
-          <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
+          <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the ENCU database.</p>
           </div>
         </>}
       </section>
@@ -1024,7 +1024,7 @@ export default function Home() {
       <section hidden={activeView !== "developer"} id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
         <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Live agent request test</h2>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
-          Sends a real authenticated request to AgentGuard&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
+          Sends a real authenticated request to ENCU&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
         </p>
         <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
@@ -1033,7 +1033,7 @@ export default function Home() {
               <option value="test-agent-alpha">Alpha · test-agent-alpha</option>
               <option value="test-agent-beta">Beta · test-agent-beta</option>
             </select>
-            <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 400, marginTop: 5 }}>AgentGuard verifies this selection against the identity in the token. A mismatch is rejected before reserving funds.</span>
+            <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 400, marginTop: 5 }}>ENCU verifies this selection against the identity in the token. A mismatch is rejected before reserving funds.</span>
           </label>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
             Agent credential
