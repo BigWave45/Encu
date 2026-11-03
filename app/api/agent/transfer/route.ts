@@ -103,15 +103,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...reservation, agentId: identity.agentId }, { status: 403 });
   }
 
-  if (reservation?.created === true && reservation.status === "awaiting_approval") {
-    return NextResponse.json({
-      status: "awaiting_approval",
-      agentId: identity.agentId,
-      requestId,
-      approvalExpiresAt: reservation.approval_expires_at ?? null
-    }, { status: 202 });
-  }
-
   // Only a newly-created, policy-authorized reservation can reach the provider.
   // Idempotent replays never submit a second provider request.
   if (reservation?.created !== true || reservation.status !== "reserved" || reservation.auto_approved !== true) {
@@ -171,7 +162,7 @@ export async function POST(request: NextRequest) {
       "agent_not_active", "agent_allocation_exceeded", "total_budget_exceeded",
       "emergency_stop", "policy_blocked"
     ]);
-    if (submissionClaim?.awaiting_approval === true || submissionBlockReasons.has(submissionClaim?.reason ?? "")) {
+    if (submissionBlockReasons.has(submissionClaim?.reason ?? "")) {
       const reason = submissionClaim?.reason ?? "current_policy_denied";
       const { error: releaseError } = await db.rpc("finish_agent_spend", {
         p_request_id: requestId, p_outcome: "failed", p_tx_hash: null,
