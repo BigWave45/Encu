@@ -88,6 +88,12 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103000000_treasury_agent_allocations.sql
+          # Simulate an old application instance reserving between the additive
+          # schema migration and the enforcement migration.
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('migration-phase-gap-0001',250000000000000000000000,'recipient.testnet','primary');" | jq -e '.created == true' >/dev/null
+          export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -f supabase/20261103010000_enforce_agent_allocations.sql
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $reserved_admin$
@@ -122,9 +128,9 @@ jobs:
             SELECT allocation_limit_yocto,spent_yocto,reserved_yocto
               INTO v_limit,v_spent,v_reserved
               FROM public.agent_allocations WHERE agent_id='primary';
-            IF v_limit<>1000000000000000000000000
+            IF v_limit<>1250000000000000000000000
                OR v_spent<>0
-               OR v_reserved<>1000000000000000000000000 THEN
+               OR v_reserved<>1250000000000000000000000 THEN
               RAISE EXCEPTION 'allocation_backfill_mismatch: limit=%, spent=%, reserved=%',
                 v_limit,v_spent,v_reserved;
             END IF;
@@ -148,7 +154,7 @@ jobs:
               FROM public.spend_reservations WHERE request_id='migration-legacy-0001';
             SELECT reserved_yocto INTO v_reserved FROM public.agent_budgets WHERE id='default';
             IF v_agent_id<>'primary' OR v_status<>'reserved'
-               OR v_reserved<>1000000000000000000000000 THEN
+               OR v_reserved<>1250000000000000000000000 THEN
               RAISE EXCEPTION 'legacy_data_not_preserved: agent=%, status=%, reserved=%',
                 v_agent_id,v_status,v_reserved;
             END IF;
@@ -203,6 +209,7 @@ jobs:
           $legacy_preservation$;
           SQL
           export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('migration-phase-gap-0001','admin','allocation migration gap cleanup');" | jq -e '.status == "rejected"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" | jq -e '.allocation_limit_yocto == "2000000000000000000000000"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.create_agent_with_audit('allocation-zero','Zero Allocation',repeat('a',64),'admin');" | jq -e '.allocation_limit_yocto == "0"' >/dev/null
