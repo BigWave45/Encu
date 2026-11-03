@@ -330,6 +330,7 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
+          <>
           <section id="workspace-overview" className="developer-overview" aria-label="Workspace authority overview">
               <div className="developer-overview-head">
                 <div>
@@ -465,6 +466,7 @@ export default function DeveloperPortal() {
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
             </aside>
           </div>
+          </>
         )}
         <ExecutionExplainer />
       </div>
