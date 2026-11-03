@@ -654,7 +654,7 @@ export default function Home() {
   const buttonStyle = { marginTop: 12, padding: "11px 18px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontSize: 15, cursor: "pointer" as const };
 
   return (
-    <main style={{ maxWidth: 820, margin: "48px auto", padding: 24, fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
+    <main style={{ maxWidth: 1180, margin: "32px auto", padding: "24px clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
       <p style={{ color: "#64748b", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>NEAR · Agent Security</p>
       <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>AgentGuard</h1>
       <p style={{ color: "#475569", lineHeight: 1.6 }}>Control agent spending through a shared budget and policy gateway.</p>
@@ -690,7 +690,14 @@ export default function Home() {
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
         {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+        {dashboard && <nav aria-label="Dashboard sections" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
+          {[
+            ["Overview", "#overview"], ["Treasury", "#treasury-settings"], ["Agents", "#agents"],
+            ["Recipients", "#recipients"], ["Payments", "#payments"], ["Approvals", "#approvals"],
+            ["Security & audit", "#security-events"], ["Health", "#system-health"], ["Developer tools", "#developer-tools"]
+          ].map(([label, href]) => <a key={href} href={href} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 999, color: "#334155", textDecoration: "none", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</a>)}
+        </nav>}
+        <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
           <strong>System health</strong>
           <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
         </div>
@@ -703,7 +710,7 @@ export default function Home() {
           <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
         </div>}
         {dashboard?.budget && <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginTop: 20 }}>
+          <div id="overview" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 12, marginTop: 20, scrollMarginTop: 76 }}>
             {[
               ["Total budget", near(dashboard.budget.totalLimitYocto)],
               ["Allocated to agents", totalAgentAllocationsNear(dashboard.allocations)],
@@ -716,7 +723,7 @@ export default function Home() {
               <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
             </div>)}
           </div>
-          <form onSubmit={updateBudget} style={{ marginTop: 22, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+          <form id="treasury-settings" onSubmit={updateBudget} style={{ marginTop: 22, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Shared budget limit</strong>
             <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
               <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
@@ -725,7 +732,7 @@ export default function Home() {
             <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
             {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
           </form>
-          <section style={{ marginTop: 22, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+          <section id="emergency-stop" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div><strong>Global transfer control</strong><p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 0" }}>{dashboard.transfersEnabled ? "Transfers are enabled. The stop blocks new reservations and unclaimed submissions." : "Emergency stop is active. New reservations and unclaimed submissions are blocked."} <span style={{ display: "block", marginTop: 4 }}>The stop cannot recall an OutLayer request already submitted or in flight.</span></p></div>
               <button type="button" onClick={() => setTransfersEnabled(!dashboard.transfersEnabled)} disabled={controlBusy || !adminToken.trim()} style={{ ...buttonStyle, background: dashboard.transfersEnabled ? "#b91c1c" : "#166534", marginTop: 0 }}>
@@ -734,7 +741,7 @@ export default function Home() {
             </div>
             {controlMessage && <p role="status" style={{ fontSize: 13 }}>{controlMessage}</p>}
           </section>
-          <form onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+          <form id="agent-policy" onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Per-agent spending policy</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. A null recipient list is unrestricted; an empty list blocks every recipient.</p>
             <label style={{ display: "block", fontSize: 13 }}>Agent
@@ -756,7 +763,7 @@ export default function Home() {
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
           </form>
-          <form onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+          <form id="agent-allocations" onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Agent treasury allocation</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>An allocation is a sub-limit inside the global treasury ceiling, not additional funds. Spent and reserved amounts count against it. New agents start at zero and cannot reserve funds until an administrator assigns an allocation.</p>
             <label style={{ display: "block", fontSize: 13 }}>Agent
@@ -784,7 +791,7 @@ export default function Home() {
             </button>
             {allocationMessage && <p role="status" style={{ fontSize: 13 }}>{allocationMessage}</p>}
           </form>
-          <section style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+          <section id="recipients" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Authorized recipients</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Only exact NEAR account IDs authorized by an administrator can receive new transfers. Labels are display-only. Revocation blocks future requests and approvals; it does not recall claimed provider submissions or release pending reservations.</p>
             <form onSubmit={authorizeRecipient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
@@ -824,7 +831,7 @@ export default function Home() {
             </div>
             {recipientMessage && <p role="status" style={{ fontSize: 13 }}>{recipientMessage}</p>}
           </section>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
+          <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead><tr>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
@@ -835,7 +842,7 @@ export default function Home() {
               </tr>)}</tbody>
             </table>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
+          <h3 id="approvals" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
           {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
             <div style={{ display: "grid", gap: 10 }}>
               {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} style={{ padding: 13, border: "1px solid #f59e0b", borderRadius: 8, fontSize: 13 }}>
@@ -850,7 +857,7 @@ export default function Home() {
                 </div>
               </div>)}
             </div>}
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
+          <h3 id="payments" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
@@ -909,7 +916,7 @@ export default function Home() {
               <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.audit?.page ?? 1) >= (dashboard.activityPages?.audit?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage + 1, securityPage)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
             </div>
           </div>
-          <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Transfer security events ({dashboard.activityPages?.security?.total ?? dashboard.securityEvents?.length ?? 0})</h3>
+          <h3 id="security-events" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfer security events ({dashboard.activityPages?.security?.total ?? dashboard.securityEvents?.length ?? 0})</h3>
           {!dashboard.securityEvents?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No transfer security events recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
               <strong>{event.eventType}</strong>
@@ -927,8 +934,8 @@ export default function Home() {
         </>}
       </section>
 
-      <section style={panel}>
-        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Live agent request test</h2>
+      <section id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Live agent request test</h2>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
           Sends a real authenticated request to AgentGuard&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
         </p>
@@ -963,8 +970,9 @@ export default function Home() {
         </div>}
       </section>
 
-      <section style={panel}>
-        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Provision another agent</h2>
+      <section id="agent-access" style={{ ...panel, scrollMarginTop: 76 }}>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Agent access management</h2>
+        <p style={{ color: "#64748b", fontSize: 13 }}>Provisioning and credential rotation are administrator-only operations.</p>
         <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.5 }}>Create a separate credential for an agent that shares the same NEAR spending budget. Only the primary admin token can do this.</p>
         <form onSubmit={createAgent}>
           <label htmlFor="agent-id" style={{ display: "block", fontWeight: 600, margin: "16px 0 8px" }}>Agent ID</label>
