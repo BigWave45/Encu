@@ -32,6 +32,7 @@ type Dashboard = {
     updatedAt: string;
   };
   agents?: Array<{ id: string; name: string; active: boolean; createdAt: string }>;
+  allocations?: Array<{ agentId: string; allocationLimitYocto: string; spentYocto: string; reservedYocto: string; updatedAt: string; updatedBy: string | null }>;
   reservations?: Array<{
     requestId: string;
     agentId: string;
@@ -106,6 +107,18 @@ function availableNear(budget: NonNullable<Dashboard["budget"]>) {
   }
 }
 
+function availableAgentNear(allocation: NonNullable<Dashboard["allocations"]>[number]) {
+  try {
+    return near(String(
+      BigInt(allocation.allocationLimitYocto) -
+      BigInt(allocation.spentYocto) -
+      BigInt(allocation.reservedYocto)
+    ));
+  } catch {
+    return "Unavailable";
+  }
+}
+
 function parseNearToYocto(value: string): bigint | null {
   const match = value.trim().match(/^(0|[1-9]\d*)(?:\.(\d{1,24}))?$/);
   if (!match) return null;
@@ -136,6 +149,10 @@ export default function Home() {
   const [budgetLimit, setBudgetLimit] = useState("");
   const [savingBudget, setSavingBudget] = useState(false);
   const [budgetMessage, setBudgetMessage] = useState("");
+  const [allocationAgent, setAllocationAgent] = useState("primary");
+  const [allocationLimit, setAllocationLimit] = useState("");
+  const [allocationBusy, setAllocationBusy] = useState(false);
+  const [allocationMessage, setAllocationMessage] = useState("");
   const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationFilter, setReservationFilter] = useState("all");
@@ -202,6 +219,8 @@ export default function Home() {
         setAuditPage(body.activityPages?.audit?.page ?? nextAuditPage);
         setSecurityPage(body.activityPages?.security?.page ?? nextSecurityPage);
         setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
+        const selectedAllocation = body.allocations?.find((item: NonNullable<Dashboard["allocations"]>[number]) => item.agentId === allocationAgent);
+        setAllocationLimit(selectedAllocation ? yoctoToInput(selectedAllocation.allocationLimitYocto) : "");
         const selectedPolicy = body.policies?.find((item: NonNullable<Dashboard["policies"]>[number]) => item.agentId === policyAgent);
         setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
         setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
@@ -372,6 +391,35 @@ export default function Home() {
       setBudgetMessage("Could not reach AgentGuard. Budget update was not confirmed.");
     } finally {
       setSavingBudget(false);
+    }
+  }
+
+  async function saveAgentAllocation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = parseNearToYocto(allocationLimit);
+    if (amount === null || amount < 0n) {
+      setAllocationMessage("Enter a valid allocation of zero or more NEAR, with up to 24 decimal places.");
+      return;
+    }
+    setAllocationBusy(true);
+    setAllocationMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/allocation", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ id: allocationAgent, allocationLimitYocto: amount.toString() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setAllocationMessage(body.error ?? "agent_allocation_update_failed");
+      else {
+        setAllocationMessage("Agent allocation updated.");
+        await loadDashboard();
+      }
+    } catch {
+      setAllocationMessage("Could not confirm the allocation update. Refresh the dashboard before retrying.");
+    } finally {
+      setAllocationBusy(false);
     }
   }
 
@@ -626,6 +674,34 @@ export default function Home() {
             <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>Allowed NEAR recipients, one account ID per line<textarea value={policyRecipients} disabled={policyDenyAll} onChange={e => setPolicyRecipients(e.target.value)} rows={3} placeholder="Leave blank to allow any valid recipient" style={{ ...inputStyle, marginTop: 5, opacity: policyDenyAll ? 0.5 : 1 }} /></label>
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
+          </form>
+          <form onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 14, border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            <strong>Agent treasury allocation</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>An allocation is a sub-limit inside the global treasury ceiling, not additional funds. Spent and reserved amounts count against it. New agents start at zero and cannot reserve funds until an administrator assigns an allocation.</p>
+            <label style={{ display: "block", fontSize: 13 }}>Agent
+              <select value={allocationAgent} onChange={event => {
+                const id = event.target.value;
+                setAllocationAgent(id);
+                const allocation = dashboard.allocations?.find(item => item.agentId === id);
+                setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
+                setAllocationMessage("");
+              }} style={{ ...inputStyle, marginTop: 5 }}>
+                {(dashboard.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+              </select>
+            </label>
+            {(() => {
+              const allocation = dashboard.allocations?.find(item => item.agentId === allocationAgent);
+              return allocation ? <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>
+                Spent: {near(allocation.spentYocto)} NEAR · Reserved: {near(allocation.reservedYocto)} NEAR · Available: {availableAgentNear(allocation)} NEAR
+              </p> : <p style={{ color: "#92400e", fontSize: 12 }}>No allocation ledger row exists for this agent. The allocation migration must be applied before editing.</p>;
+            })()}
+            <label style={{ display: "block", fontSize: 13, marginTop: 8 }}>Allocation limit (NEAR)
+              <input inputMode="decimal" value={allocationLimit} onChange={event => setAllocationLimit(event.target.value)} required style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <button type="submit" disabled={allocationBusy || !adminToken.trim() || !dashboard.allocations?.some(item => item.agentId === allocationAgent)} style={buttonStyle}>
+              {allocationBusy ? "Saving…" : "Save agent allocation"}
+            </button>
+            {allocationMessage && <p role="status" style={{ fontSize: 13 }}>{allocationMessage}</p>}
           </form>
           <h3 style={{ margin: "24px 0 10px", fontSize: 17 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
