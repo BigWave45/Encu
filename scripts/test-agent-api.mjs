@@ -792,7 +792,7 @@ try {
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "2000000000000000000000000" })
   });
   assert(response.status === 200, "primary agent receives explicit autonomous allowance before transfer tests");
 
@@ -815,14 +815,14 @@ try {
   assert(response.status === 409, "second agent cannot reuse another agent's request ID");
 
   const providerBeforeTimeout = counters.provider;
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test", amount: "3000000000000000000000000" });
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-timeout-001", to: "timeout.test", amount: "100000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "ambiguous provider connection failure remains needs_review");
   assert(payload.reason === "outlayer_timeout_or_connection_error", "ambiguous provider failure is classified explicitly");
   assert(counters.provider === providerBeforeTimeout + 1, "timeout path invokes provider only once");
   assert(reservations.get("test-timeout-001")?.status === "needs_review", "timeout reservation remains held in the ledger");
 
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test", amount: "1000000000000000000000000" });
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-error-001", to: "provider-error.test", amount: "100000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is retained for reconciliation");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
@@ -959,13 +959,13 @@ try {
   rateWindows.clear();
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "2000000000000000000000000" })
   });
   payload = await response.json();
   assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "100000000000000000000000", "admin can set a bounded rolling 24-hour autonomous allowance");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
+    body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "2000000000000000000000000" })
   });
   assert(response.status === 403, "agent credential cannot change its autonomous allowance");
   // Simulate recipient revocation after reservation and signer lookup but before
@@ -1003,7 +1003,7 @@ try {
   assert(response.status === 409 && counters.provider === providerBeforeAuto + 1, "autonomous request replay cannot submit a duplicate provider transfer");
 
   const providerBeforeAutoOverflow = counters.provider;
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-overflow-001", to: "recipient.near", amount: "60000000000000000000000" });
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-overflow-001", to: "recipient.near", amount: "800000000000000000000000" });
   payload = await response.json();
   assert(response.status === 403 && payload.status === "blocked" && payload.reason === "autonomous_allowance_exceeded", "request beyond autonomous allowance is rejected at reservation");
   assert(counters.provider === providerBeforeAutoOverflow && !reservations.has("test-auto-overflow-001"), "autonomous allowance overflow creates no reservation and never reaches OutLayer");
