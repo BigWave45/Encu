@@ -381,7 +381,6 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_auto_spend_limit('primary',1,'admin');" | jq -e '.auto_spend_limit_yocto == "1"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-auto-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == false and .status == "awaiting_approval"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-does-not-consume-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 <<'SQL'
           UPDATE public.spend_reservations
@@ -389,7 +388,8 @@ jobs:
           WHERE request_id='rolling-auto-001';
           SQL
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-aged-out-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-does-not-consume-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-aged-out-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == false and .status == "awaiting_approval"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role <<'SQL'
           DO $rolling_allowance$
           BEGIN
