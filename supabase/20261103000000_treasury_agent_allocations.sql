@@ -1,2 +1,1 @@
--- Diagnostic only: do not apply.
--- create table public.agent_allocations (agent_id text primary key);
+-- PLACEHOLDER ONLY: do not apply. Allocation migration is not ready.
