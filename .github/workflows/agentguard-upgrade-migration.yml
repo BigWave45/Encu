@@ -344,12 +344,15 @@ jobs:
             SELECT allocation_limit_yocto,spent_yocto,reserved_yocto
               INTO v_agent_limit,v_agent_spent,v_agent_reserved
               FROM public.agent_allocations WHERE agent_id='primary';
+            RAISE NOTICE 'allocation verification: treasury_reserved=%, treasury_spent=%, audit=%, agent_limit=%, agent_spent=%, agent_reserved=%',
+              v_reserved,v_spent,v_audit_count,v_agent_limit,v_agent_spent,v_agent_reserved;
             IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3
                OR v_agent_limit<>3000000000000000000000000
                OR v_agent_spent<>2000000000000000000000000 OR v_agent_reserved<>0
                OR NOT EXISTS (SELECT 1 FROM public.agent_allocations WHERE agent_id='allocation-zero' AND allocation_limit_yocto=0) THEN
-              RAISE EXCEPTION 'post_upgrade_ledger_or_audit_mismatch: reserved=%, spent=%, audit=%',
-                v_reserved,v_spent,v_audit_count;
+              RAISE EXCEPTION 'post_upgrade_ledger_or_audit_mismatch: reserved=%, spent=%, audit=%, agent_limit=%, agent_spent=%, agent_reserved=%, zero_allocation_exists=%',
+                v_reserved,v_spent,v_audit_count,v_agent_limit,v_agent_spent,v_agent_reserved,
+                EXISTS (SELECT 1 FROM public.agent_allocations WHERE agent_id='allocation-zero' AND allocation_limit_yocto=0);
             END IF;
           END
           $$;
