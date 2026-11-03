@@ -243,6 +243,24 @@ export default function DeveloperPortal() {
     }
   }
 
+  const authorityTotals = agents.reduce((totals, agent) => {
+    try {
+      totals.allocated += BigInt(agent.allocation?.allocation_limit_yocto ?? "0");
+      totals.spent += BigInt(agent.allocation?.spent_yocto ?? "0");
+      totals.reserved += BigInt(agent.allocation?.reserved_yocto ?? "0");
+    } catch {
+      totals.valid = false;
+    }
+    return totals;
+  }, { allocated: 0n, spent: 0n, reserved: 0n, valid: true });
+  const committedAuthority = authorityTotals.spent + authorityTotals.reserved;
+  const authorityConsistent = authorityTotals.valid && committedAuthority <= authorityTotals.allocated;
+  const availableAuthority = authorityConsistent ? authorityTotals.allocated - committedAuthority : 0n;
+  const authorityShare = (value: bigint) => authorityTotals.allocated > 0n
+    ? Number((value * 10000n) / authorityTotals.allocated) / 100
+    : 0;
+  const activeAgentCount = agents.filter(agent => agent.active).length;
+
   async function copyToken() {
     if (!issuedToken) return;
     try {
@@ -261,10 +279,10 @@ export default function DeveloperPortal() {
           <span>Developer control plane</span>
         </header>
 
-        <div className="developer-eyebrow">Developer workspace</div>
-        <h1 className="developer-title">Connect your agents<br />to controlled execution.</h1>
+        <div className="developer-eyebrow">{session ? "Workspace overview" : "Developer workspace"}</div>
+        <h1 className="developer-title">{session ? "Your agents. Your authority. One workspace." : <>Connect your agents<br />to controlled execution.</>}</h1>
         <p className="developer-lede">
-          Provision independent agent identities, assign spending authority and manage execution permissions from one workspace.
+          {session ? "Monitor agent capacity, manage permissions and inspect every execution request from one place." : "Provision independent agent identities, assign spending authority and manage execution permissions from one workspace."}
         </p>
 
         {!session ? (
@@ -294,14 +312,67 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
-          <div className="developer-grid">
+          <section className="developer-overview" aria-label="Workspace authority overview">
+              <div className="developer-overview-head">
+                <div>
+                  <span className="developer-section-kicker">WORKSPACE SNAPSHOT</span>
+                  <h2>Operational overview</h2>
+                  <p>Figures are aggregated from the agents in this developer workspace. They do not represent the platform treasury ceiling.</p>
+                </div>
+                <button className="developer-button secondary" type="button" onClick={() => { if (session) { void loadAgents(session.access_token); void loadTransactions(session.access_token); } }} disabled={agentsBusy || transactionsBusy}>
+                  {agentsBusy || transactionsBusy ? "Updating…" : "Refresh data"}
+                </button>
+              </div>
+              <div className="developer-metric-grid">
+                <article className="developer-metric">
+                  <span>Active agents</span>
+                  <strong>{activeAgentCount}<small> / {agents.length}</small></strong>
+                  <p>{agentsBusy ? "Updating agent records" : agents.length === 0 ? "No agents provisioned" : "Provisioned identities"}</p>
+                </article>
+                <article className="developer-metric">
+                  <span>Assigned authority</span>
+                  <strong>{near(authorityTotals.allocated.toString())}</strong>
+                  <p>Across your agents</p>
+                </article>
+                <article className="developer-metric">
+                  <span>Available authority</span>
+                  <strong>{authorityConsistent ? near(availableAuthority.toString()) : "Check ledger"}</strong>
+                  <p>{authorityConsistent ? "After spent and reserved amounts" : "Committed amount exceeds allocation"}</p>
+                </article>
+                <article className="developer-metric">
+                  <span>Reserved authority</span>
+                  <strong>{near(authorityTotals.reserved.toString())}</strong>
+                  <p>Pending execution commitments</p>
+                </article>
+              </div>
+              <div className="developer-authority-panel">
+                <div className="developer-authority-heading">
+                  <div><strong>Allocation distribution</strong><span>Spent, reserved and currently available</span></div>
+                  <span>{authorityConsistent && authorityTotals.allocated > 0n ? "AGENT ALLOCATIONS" : "NO ALLOCATION DATA"}</span>
+                </div>
+                {authorityConsistent && authorityTotals.allocated > 0n ? <>
+                  <div className="developer-authority-bar" role="img" aria-label={`Spent ${authorityShare(authorityTotals.spent)} percent, reserved ${authorityShare(authorityTotals.reserved)} percent, available ${authorityShare(availableAuthority)} percent of assigned authority`}>
+                    <span className="authority-spent" style={{width:`${authorityShare(authorityTotals.spent)}%`}} />
+                    <span className="authority-reserved" style={{width:`${authorityShare(authorityTotals.reserved)}%`}} />
+                    <span className="authority-available" style={{width:`${authorityShare(availableAuthority)}%`}} />
+                  </div>
+                  <div className="developer-authority-legend">
+                    <div><span className="legend-dot spent" /><span>Spent</span><strong>{near(authorityTotals.spent.toString())}</strong></div>
+                    <div><span className="legend-dot reserved" /><span>Reserved</span><strong>{near(authorityTotals.reserved.toString())}</strong></div>
+                    <div><span className="legend-dot available" /><span>Available</span><strong>{near(availableAuthority.toString())}</strong></div>
+                  </div>
+                </> : <p className="developer-authority-empty">{authorityConsistent ? "Create an agent and assign an allocation to see its authority distribution." : "The combined spent and reserved amount exceeds assigned authority. Review the underlying agent records before relying on this total."}</p>}
+              </div>
+              {agentError && <p className="developer-overview-error" role="alert">{agentError}</p>}
+            </section>
+            <div className="developer-grid">
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <div><h2>Your agents</h2><p>Signed in as {session.user.email}</p></div>
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
-              <form className="developer-form" onSubmit={createAgent}>
+              <form id="agent-provision" className="developer-form" onSubmit={createAgent}>
                 <label>Agent ID<input required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" value={agentId} onChange={event => setAgentId(event.target.value)} placeholder="e.g. research-agent" /></label>
                 <label>Agent name<input required minLength={2} maxLength={80} value={agentName} onChange={event => setAgentName(event.target.value)} placeholder="e.g. Research Agent" /></label>
                 <button className="developer-button" type="submit" disabled={createBusy}>{createBusy ? "Creating…" : "Create agent"}</button>
