@@ -89,3 +89,14 @@ This gate does not require mainnet deployment.
 ## Separate native NEAR workstream
 
 Native contract work remains separate and does not close or replace any OutLayer checklist item. The native contract must independently enforce authorization for funds held in its own treasury account. Keep one treasury assigned to one execution backend until cross-provider exposure and replay protection are designed and tested.
+
+
+## NEAR Intents and OutLayer policy caveats
+
+The current AgentGuard adapter only calls `POST /wallet/v1/transfer`; it does not call OutLayer's Intents endpoints. OutLayer's public Agent Custody documentation separately describes Intents deposits, withdrawals, swaps and transfers. Therefore those capabilities are available in OutLayer's documented product surface but are **not integrated into AgentGuard V1**.
+
+Two provider-policy caveats matter for AgentGuard:
+- OutLayer documents its cumulative hourly/daily/monthly usage counters as best-effort under concurrent requests because concurrent operations can read the same pre-spend counter. Keep AgentGuard's own atomic shared-budget and per-agent reservation checks. Do not delegate the hard aggregate cap to the OutLayer velocity counter.
+- OutLayer documents that for certain Trusted Intents operations, the TEE's multisig approval pins the recipient and verifies approver signatures, while some token/amount/route artifacts are supplied by the gateway at execution. Before supporting those operations, AgentGuard must bind the exact approved asset, amount, destination and quote/route artifact and verify that the submitted operation matches. If the API cannot provide a verifiable binding, do not describe the operation as exact-term approval.
+
+The public documentation is not evidence of the actual wallet's configured policy. The deployed Preview wallet policy remains uninspected because reading `GET /wallet/v1/policy` requires the wallet's authenticated API key. No API key was retrieved or exposed during this review.
