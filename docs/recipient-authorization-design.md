@@ -32,8 +32,8 @@ This intentionally tightens existing agents that relied on NULL/unrestricted beh
 
 ## Transaction enforcement
 
-1. `reserve_agent_spend` locks treasury, agent allocation, recipient authorization, then reservation. It denies a new reservation unless an active, unexpired record exists for the exact agent/account pair.
-2. `approve_agent_transfer` repeats the recipient check while holding the relevant authorization row lock. Revocation therefore blocks any approval that has not already claimed submission.
+1. Spend paths lock treasury first, then agent allocation, then reservation. `reserve_agent_spend` locks/checks the exact recipient authorization after the idempotency reservation lookup and before creating a new reservation.
+2. `approve_agent_transfer` locks treasury, allocation, and reservation, then rechecks the exact recipient authorization while holding its row lock. Recipient-admin mutations lock treasury, allocation, then recipient. The treasury row serializes all these mutation paths, preventing cross-path deadlocks and authorization races.
 3. A reservation that already has `submission_claimed_at` represents a submission claim. Revoking the recipient cannot recall a request whose provider submission has already been claimed or sent. The revoke response must disclose counts of awaiting approvals and claimed/in-flight submissions.
 4. Reject/cancel/finality settlement continues to update treasury and agent allocation ledgers exactly as in the allocation phase.
 5. Revocation does not silently cancel pending reservations or release funds. Pending requests remain reserved until an administrator rejects them or a safe expiry cancellation succeeds. This avoids treating an ambiguous provider state as a failed transfer.
