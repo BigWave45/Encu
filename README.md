@@ -476,3 +476,8 @@ A read-only control-to-backend audit is maintained in [`docs/dashboard-control-i
 The audit confirms that the current schema has one shared `default` budget row and no per-agent allocation ledger. Existing per-agent policies are caps and recipient allowlists, not allocations. The current UI is a single client component in `app/page.tsx`. Do not represent proposed allocations, recipient lifecycle, policy versioning, execution profiles or autonomous execution as implemented until their database and API enforcement is complete.
 
 The inventory commit is `f2c97b3bc4dbb30a25d977b973115d4114b21d3d`. This documentation-only commit does not change application behaviour.
+
+
+### Treasury and agent allocation design
+
+The allocation model and migration requirements are documented in [`docs/treasury-agent-allocation-design.md`](docs/treasury-agent-allocation-design.md). This is a reviewed design only; no allocation migration has been applied and no application enforcement has changed. The document records the current Preview ledger/RPC behaviour, atomic dual-ledger invariants, migration/backfill requirements and required tests. Commit: `02b859ee12ccaef16e15a5dcf2ed7a888fe2f5a3`.
