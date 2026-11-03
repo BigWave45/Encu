@@ -235,19 +235,8 @@ jobs:
           shared_winner=$(cat /tmp/agentguard-shared-a.json /tmp/agentguard-shared-b.json | jq -r 'select(.created == true) | .request_id')
           echo "PASS: both agents had sufficient individual allocation; treasury alone blocked the second 3 NEAR reservation."
           export PGPASSWORD=agentguard_test_only
-          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
-          DO \\$\\$
-          DECLARE reserved numeric; spent numeric; rows_found integer;
-          BEGIN
-            SELECT reserved_yocto,spent_yocto INTO reserved,spent FROM public.agent_budgets WHERE id='default';
-            SELECT count(*) INTO rows_found FROM public.spend_reservations
-              WHERE request_id IN ('${shared_req_a}','${shared_req_b}');
-            IF reserved<>${shared_amount} OR spent<>0 OR rows_found<>1 THEN
-              RAISE EXCEPTION 'shared_treasury_race_mismatch: reserved=%, spent=%, rows=%',reserved,spent,rows_found;
-            END IF;
-          END
-          \\$\\$
-          SQL
+          shared_ledger_ok=$(psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT (reserved_yocto=3000000000000000000000000 AND spent_yocto=0 AND (SELECT count(*) FROM public.spend_reservations WHERE request_id IN ('${shared_req_a}','${shared_req_b}'))=1) FROM public.agent_budgets WHERE id='default';")
+          test "$shared_ledger_ok" = "t"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('${shared_winner}','admin','shared treasury concurrency test cleanup');" | jq -e '.status == "rejected"' >/dev/null
           export PGPASSWORD=agentguard_test_only
