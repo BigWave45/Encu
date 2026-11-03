@@ -771,7 +771,7 @@ export default function Home() {
         </form>
 
         <form onSubmit={rotateAgent} style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
-          <strong>Replace an agent's access token</strong>
+          <strong>Replace an agent&apos;s access token</strong>
           <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
             Select an existing agent below. This replaces only that agent's credential. The old token becomes invalid immediately; the agent identity, policy, budget and transaction history remain in place. The new token is displayed once.
           </p>
