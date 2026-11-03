@@ -1022,3 +1022,77 @@ body {
  .encu-live-strip>div{padding:12px}.encu-live-strip strong{font-size:13px}
  .encu-v2 .metric-card>div:last-child{font-size:23px!important}
 }
+
+
+/* ENCU readability refinement: neutralize large green surfaces; retain green as an accent. */
+.encu-intro-note {
+  background: #f7f8f5 !important;
+  border-color: #e0e5dd !important;
+}
+.encu-v2 .dashboard-nav {
+  background: #f5f6f3 !important;
+  border-color: #e0e5dd !important;
+}
+.encu-v2 .dashboard-nav-item {
+  gap: 9px;
+  color: #46534a !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+.encu-v2 .dashboard-nav-item .nav-index {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border: 1px solid #dce3d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #69766c;
+  font-size: 9px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.encu-v2 .dashboard-nav-item.is-active {
+  background: #e7eee3 !important;
+  border-color: #d4dfcf !important;
+  color: #203629 !important;
+}
+.encu-v2 .dashboard-nav-item.is-active .nav-index {
+  background: #263d2c;
+  border-color: #263d2c;
+  color: #fff;
+}
+.encu-live-strip {
+  border-color: #e0e5dd !important;
+  background: #e0e5dd !important;
+}
+.encu-live-strip > div {
+  background: #fff !important;
+}
+.encu-v2 .console-panel {
+  background: #fff !important;
+  border-color: #e0e5dd !important;
+  color: #26372b !important;
+}
+.encu-v2 .console-panel p {
+  color: #59665d !important;
+}
+.encu-v2 .console-panel strong {
+  color: #203027 !important;
+}
+.encu-v2 .metric-card {
+  background: #fff !important;
+  border-color: #e0e5dd !important;
+}
+.encu-v2 .history-detail-grid,
+.encu-v2 .event-payload,
+.encu-v2 .event-reference {
+  background: #f7f8f5 !important;
+  border-color: #e0e5dd !important;
+}
+.encu-v2 .dashboard-workspace form button[type=submit] {
+  background: #263d2c !important;
+  border-color: #263d2c !important;
+  color: #fff !important;
+}
