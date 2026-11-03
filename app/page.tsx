@@ -185,6 +185,10 @@ export default function Home() {
   const [allocationBusy, setAllocationBusy] = useState(false);
   const [allocationMessage, setAllocationMessage] = useState("");
   const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [selectedTransferIds, setSelectedTransferIds] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationFilter, setReservationFilter] = useState("all");
   const [reservationPage, setReservationPage] = useState(1);
@@ -573,6 +577,84 @@ export default function Home() {
     }
   }
 
+
+  async function bulkSetAgentStatus(active: boolean) {
+    const ids = selectedAgentIds.filter(id => id !== "primary");
+    if (!ids.length || !adminToken.trim() || bulkBusy) return;
+    const action = active ? "activate" : "deactivate";
+    if (!window.confirm(action + " " + ids.length + " selected agents? Each agent will be updated and audited separately.")) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    try {
+      for (const id of ids) {
+        try {
+          const response = await fetch("/api/admin/agents/status", {
+            method: "PATCH",
+            headers: { "content-type": "application/json", authorization: "Bearer " + adminToken.trim() },
+            body: JSON.stringify({ id, active }),
+            cache: "no-store"
+          });
+          const body = await response.json().catch(() => ({}));
+          results.push({ id, ok: response.ok, error: response.ok ? undefined : body.error ?? "update_failed" });
+        } catch {
+          results.push({ id, ok: false, error: "network_error" });
+        }
+      }
+      const succeeded = results.filter(item => item.ok).length;
+      const failed = results.filter(item => !item.ok);
+      setSelectedAgentIds(failed.map(item => item.id));
+      setBulkMessage("Agent batch finished: " + succeeded + " updated, " + failed.length + " failed." + (failed.length ? " Failed: " + failed.map(item => item.id + " (" + item.error + ")").join(", ") : ""));
+      await loadDashboard();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkDecideTransfers(action: "approve" | "reject") {
+    const ids = selectedTransferIds;
+    if (!ids.length || !adminToken.trim() || bulkBusy) return;
+    const pending = (dashboard?.reservations ?? []).filter(item => ids.includes(item.requestId) && item.status === "awaiting_approval");
+    if (pending.length !== ids.length) {
+      setSelectedTransferIds(pending.map(item => item.requestId));
+      setBulkMessage("Selection changed because one or more requests are no longer awaiting approval. Review the refreshed selection.");
+      return;
+    }
+    const totalYocto = pending.reduce((sum, item) => sum + BigInt(item.amountYocto), 0n);
+    const totalNear = near(totalYocto.toString());
+    const warning = action === "approve"
+      ? "This will submit " + pending.length + " transfers totalling " + totalNear + " NEAR, one at a time, through the normal policy checks. Confirm only if you intend to authorize these transfers."
+      : "This will reject " + pending.length + " pending transfer requests totalling " + totalNear + " NEAR.";
+    if (!window.confirm((action === "approve" ? "APPROVE AND SUBMIT " : "REJECT ") + pending.length + " selected requests?\n\n" + warning)) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    try {
+      for (const item of pending) {
+        try {
+          const response = await fetch("/api/admin/approvals", {
+            method: "POST",
+            headers: { authorization: "Bearer " + adminToken.trim(), "content-type": "application/json" },
+            body: JSON.stringify(action === "approve"
+              ? { action, requestId: item.requestId }
+              : { action, requestId: item.requestId, reason: "Rejected in administrator bulk action." })
+          });
+          const body = await response.json().catch(() => ({}));
+          results.push({ id: item.requestId, ok: response.ok, error: response.ok ? undefined : body.reason ?? body.error ?? "action_failed" });
+        } catch {
+          results.push({ id: item.requestId, ok: false, error: "network_error_or_unknown_outcome" });
+        }
+      }
+      const succeeded = results.filter(item => item.ok).length;
+      const failed = results.filter(item => !item.ok);
+      setSelectedTransferIds(failed.map(item => item.id));
+      setBulkMessage("Transfer batch finished: " + succeeded + " accepted by the API, " + failed.length + " failed. Accepted does not mean NEAR finality; check each resulting transaction state." + (failed.length ? " Failed: " + failed.map(item => item.id + " (" + item.error + ")").join(", ") : ""));
+      await loadDashboard();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function inspectReservation(requestId: string, action: "provider-status" | "reconcile") {
     if (!adminToken.trim()) {
       setReservationActionError("Enter the administrator token before checking or reconciling a reservation.");
@@ -919,33 +1001,48 @@ export default function Home() {
           </div>
           <div hidden={activeView !== "agents"}>
           <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
+          <div className="bulk-toolbar">
+            <span>{selectedAgentIds.length} agents selected</span>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(true)}>Activate selected</button>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(false)}>Deny / deactivate selected</button>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length} onClick={() => setSelectedAgentIds([])}>Clear</button>
+          </div>
           <div style={{ overflowX: "auto" }}>
             <table className="console-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-              <thead><tr>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
+              <thead><tr><th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>Select</th>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
               <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}><input type="checkbox" aria-label={"Select agent " + agent.id} disabled={agent.id === "primary" || bulkBusy} checked={selectedAgentIds.includes(agent.id)} onChange={event => setSelectedAgentIds(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /></td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.id}</td>
-                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id || !adminToken.trim()} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id || bulkBusy || !adminToken.trim()} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
               </tr>)}</tbody>
             </table>
           </div>
+          {bulkMessage && <p role="status" className="bulk-message">{bulkMessage}</p>}
           </div>
           <div hidden={activeView !== "payments"}>
           <h3 id="approvals" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
+          <div className="bulk-toolbar">
+            <span>{selectedTransferIds.length} transfers selected · current dashboard page only</span>
+            <button type="button" disabled={bulkBusy || !selectedTransferIds.length || !adminToken.trim()} onClick={() => bulkDecideTransfers("approve")}>Approve and submit selected</button>
+            <button type="button" disabled={bulkBusy || !selectedTransferIds.length || !adminToken.trim()} onClick={() => bulkDecideTransfers("reject")}>Reject selected</button>
+            <button type="button" disabled={bulkBusy || !selectedTransferIds.length} onClick={() => setSelectedTransferIds([])}>Clear</button>
+          </div>
           {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
             <div style={{ display: "grid", gap: 10 }}>
               {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} className="approval-record">
-                <strong>{item.agentId}</strong> requests {near(item.amountYocto)} NEAR
+                <label className="bulk-select-row"><input type="checkbox" aria-label={"Select transfer " + item.requestId} disabled={bulkBusy} checked={selectedTransferIds.includes(item.requestId)} onChange={event => setSelectedTransferIds(current => event.target.checked ? [...current, item.requestId] : current.filter(id => id !== item.requestId))} /><span><strong>{item.agentId}</strong> requests {near(item.amountYocto)} NEAR</span></label>
                 <p style={{ margin: "6px 0" }}>Recipient: <code>{item.recipient}</code></p>
                 <p style={{ margin: "6px 0", color: "#64748b" }}>Request ID: {item.requestId}</p>
                 <p style={{ margin: "6px 0", color: "#64748b" }}>Expires: {item.approvalExpiresAt ? new Date(item.approvalExpiresAt).toLocaleString() : "Not available"}</p>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
-                  <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
-                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
+                  <button type="button" disabled={reservationAction === item.requestId || bulkBusy || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
+                  <button type="button" disabled={reservationAction === item.requestId || bulkBusy || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
+                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || bulkBusy || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
                 </div>
               </div>)}
             </div>}
+          {bulkMessage && <p role="status" className="bulk-message">{bulkMessage}</p>}
           <h3 id="payments" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
