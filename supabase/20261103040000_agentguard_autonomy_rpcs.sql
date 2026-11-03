@@ -78,6 +78,7 @@ declare
   v_allocation public.agent_allocations%rowtype;
   v_existing public.spend_reservations%rowtype;
   v_policy public.agent_policies%rowtype;
+  v_recipient_auth public.agent_authorized_recipients%rowtype;
   v_active boolean;
   v_enabled boolean;
   v_daily numeric;
@@ -134,6 +135,15 @@ begin
   end if;
   if v_policy.allowed_recipients is not null and not (p_recipient = any(v_policy.allowed_recipients)) then
     return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'recipient_not_allowed');
+  end if;
+
+  select * into v_recipient_auth
+  from public.agent_authorized_recipients
+  where agent_id = p_agent_id and account_id = p_recipient
+    and status = 'active' and (expires_at is null or expires_at > pg_catalog.now())
+  for update;
+  if not found then
+    return pg_catalog.jsonb_build_object('created', false, 'status', 'blocked', 'reason', 'recipient_not_authorized');
   end if;
 
   if v_policy.daily_limit_yocto is not null then
