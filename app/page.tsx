@@ -710,7 +710,7 @@ export default function Home() {
       <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>ENCU</h1>
       <p style={{ color: "#475569", lineHeight: 1.6 }}>A policy control plane for agent-initiated NEAR transfers.</p>
 
-      <form onSubmit={checkBalance} style={{ ...panel, marginTop: 28 }}>
+      <form className="console-panel credential-panel" onSubmit={checkBalance} style={{ ...panel, marginTop: 28 }}>
         <label htmlFor="agent-token" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Agent or admin token</label>
         <input id="agent-token" type="password" autoComplete="off" value={token}
           onChange={(event) => setToken(event.target.value)} placeholder="Enter your AGENTGUARD_AGENT_TOKEN"
@@ -724,7 +724,7 @@ export default function Home() {
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>The administrator token is separate from agent credentials. Use it only for the dashboard, budget controls and agent management. It cannot submit transfers.</p>
       </form>
 
-      {result && <section aria-live="polite" style={panel}>
+      {result && <section aria-live="polite" className="developer-result balance-result" style={panel}>
         <strong>{result.status === "ok" ? "Balance response" : "Request response"}</strong>
         <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 12, fontSize: 13 }}>{JSON.stringify(result, null, 2)}</pre>
       </section>}
@@ -743,7 +743,7 @@ export default function Home() {
           </button>
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
-        {outLayerPolicy && <section aria-label="OutLayer wallet policy" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
+        {outLayerPolicy && <section aria-label="OutLayer wallet policy" className="console-panel provider-policy-panel" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <strong>OutLayer wallet policy</strong>
             <span style={{ fontSize: 12, color: "#64748b" }}>{outLayerPolicy.network ?? "Network unavailable"}</span>
@@ -767,7 +767,7 @@ export default function Home() {
           <strong>System health</strong>
           <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
         </div>
-        {health && <div role="status" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
+        {health && <div role="status" className="health-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
           <div><strong>Overall</strong><div>{String(health.status ?? "unknown")}</div></div>
           <div><strong>Network</strong><div>{String(health.network ?? "unknown")}</div></div>
           <div><strong>Supabase</strong><div>{String(health.supabase ?? health.status ?? "unknown")}</div></div>
@@ -786,14 +786,14 @@ export default function Home() {
               ["Spent", near(dashboard.budget.spentYocto)],
               ["Reserved", near(dashboard.budget.reservedYocto)],
               ["Available", availableNear(dashboard.budget)]
-            ].map(([label, value]) => <div key={label} style={{ padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9 }}>
+            ].map(([label, value]) => <div key={label} className="metric-card" style={{ padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9 }}>
               <div style={{ color: "#64748b", fontSize: 12 }}>{label}</div>
               <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
             </div>)}
           </div>
           </div>
           <div hidden={activeView !== "treasury"}>
-          <form id="treasury-settings" onSubmit={updateBudget} style={{ marginTop: 22, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+          <form id="treasury-settings" className="console-panel" onSubmit={updateBudget} style={{ marginTop: 22, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Shared budget limit</strong>
             <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
               <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
@@ -802,7 +802,7 @@ export default function Home() {
             <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
             {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
           </form>
-          <section id="emergency-stop" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+          <section id="emergency-stop" className="emergency-panel" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div><strong>Global transfer control</strong><p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 0" }}>{dashboard.transfersEnabled ? "Transfers are enabled. The stop blocks new reservations and unclaimed submissions." : "Emergency stop is active. New reservations and unclaimed submissions are blocked."} <span style={{ display: "block", marginTop: 4 }}>The stop cannot recall an OutLayer request already submitted or in flight.</span></p></div>
               <button type="button" onClick={() => setTransfersEnabled(!dashboard.transfersEnabled)} disabled={controlBusy || !adminToken.trim()} style={{ ...buttonStyle, background: dashboard.transfersEnabled ? "#b91c1c" : "#166534", marginTop: 0 }}>
@@ -811,7 +811,7 @@ export default function Home() {
             </div>
             {controlMessage && <p role="status" style={{ fontSize: 13 }}>{controlMessage}</p>}
           </section>
-          <form id="agent-policy" onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+          <form id="agent-policy" className="console-panel" onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Per-agent spending policy</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. A null recipient list is unrestricted; an empty list blocks every recipient.</p>
             <label style={{ display: "block", fontSize: 13 }}>Agent
@@ -835,7 +835,7 @@ export default function Home() {
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
           </form>
-          <form id="agent-allocations" onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+          <form id="agent-allocations" className="console-panel" onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Agent treasury allocation</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>An allocation is a sub-limit inside the global treasury ceiling, not additional funds. Spent and reserved amounts count against it. New agents start at zero and cannot reserve funds until an administrator assigns an allocation.</p>
             <label style={{ display: "block", fontSize: 13 }}>Agent
