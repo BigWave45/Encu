@@ -387,19 +387,22 @@ const mock = createServer(async (req, res) => {
       }
       const autoLimit = policy.auto_spend_limit_yocto == null ? null : BigInt(policy.auto_spend_limit_yocto);
       const autoCommitted = [...reservations.values()]
-        .filter(row => row.agentId === body.p_agent_id && row.autoApproved === true && new Date(row.createdAt ?? Date.now()).getTime() >= Date.now() - 24 * 60 * 60 * 1000 && ["reserved", "needs_review", "executed"].includes(row.status))
+        .filter(row => row.agentId === body.p_agent_id && row.autoApproved === true && ["reserved", "needs_review", "executed"].includes(row.status))
         .reduce((sum, row) => sum + BigInt(row.amount), 0n);
       const autoApproved = autoLimit !== null && autoCommitted + amount <= autoLimit;
-      const status = autoApproved ? "reserved" : "awaiting_approval";
+      if (!autoApproved) return send(res, 200, {
+        created: false, status: "blocked", reason: "autonomous_allowance_exceeded",
+        auto_spend_limit_yocto: autoLimit?.toString() ?? null
+      });
       reservations.set(body.p_request_id, {
         amount: body.p_amount_yocto, recipient: body.p_recipient,
-        agentId: body.p_agent_id, status, autoApproved, claimed: false, createdAt: Date.now(),
-        txHash: null, providerRequestId: null,
-        approvalExpiresAt: autoApproved ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        agentId: body.p_agent_id, status: "reserved", autoApproved: true,
+        claimed: false, createdAt: Date.now(), txHash: null, providerRequestId: null,
+        approvalExpiresAt: null
       });
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
       allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) + amount).toString();
-      return send(res, 200, { created: true, status, auto_approved: autoApproved, request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
+      return send(res, 200, { created: true, status: "reserved", auto_approved: true, request_id: body.p_request_id, approval_expires_at: null });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/claim_agent_auto_submission") {
       const body = await readJson(req);
@@ -415,24 +418,15 @@ const mock = createServer(async (req, res) => {
       if (!systemControls.transfers_enabled || !tokens["agent-one-token"].active) return send(res, 200, { claimed: false, reason: "policy_blocked" });
       const policy = agentPolicies.get(body.p_agent_id) ?? {};
       const autoLimit = policy.auto_spend_limit_yocto == null ? null : BigInt(policy.auto_spend_limit_yocto);
-      const autoCommitted = [...reservations.values()]
-        .filter(item => item.agentId === body.p_agent_id && item.autoApproved === true &&
-          new Date(item.createdAt ?? Date.now()).getTime() >= Date.now() - 24 * 60 * 60 * 1000 &&
-          ["reserved", "needs_review", "executed"].includes(item.status))
-        .reduce((sum, item) => sum + BigInt(item.amount), 0n);
-      if (autoLimit !== null && autoCommitted > autoLimit) {
-        row.status = "awaiting_approval";
-        row.autoApproved = false;
-        row.claimed = false;
-        row.approvalExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        return send(res, 200, { claimed: false, reason: "agent_autonomous_24h_allowance", awaiting_approval: true });
+      const autoCommitted = [...reservations.entries()]
+        .filter(([requestId, item]) => requestId !== body.p_request_id && item.agentId === body.p_agent_id &&
+          item.autoApproved === true && ["reserved", "needs_review", "executed"].includes(item.status))
+        .reduce((sum, [, item]) => sum + BigInt(item.amount), 0n);
+      if (autoLimit === null || autoCommitted + BigInt(row.amount) > autoLimit) {
+        return send(res, 200, { claimed: false, reason: "autonomous_allowance_exceeded" });
       }
       if (policy.p_max_transfer_yocto && BigInt(row.amount) > BigInt(policy.p_max_transfer_yocto)) {
-        row.status = "awaiting_approval";
-        row.autoApproved = false;
-        row.claimed = false;
-        row.approvalExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        return send(res, 200, { claimed: false, reason: "agent_per_transfer_limit", awaiting_approval: true, approval_expires_at: row.approvalExpiresAt });
+        return send(res, 200, { claimed: false, reason: "agent_per_transfer_limit" });
       }
       row.claimed = true;
       return send(res, 200, { claimed: true, request_id: body.p_request_id });
@@ -1035,24 +1029,16 @@ try {
   assert(reservations.get("test-auto-revoke-race-001")?.claimed === false, "revoked request never receives a submission claim");
 
   // A policy tightened after reservation but before the atomic submission
-  // claim must downgrade the request to manual approval without provider use.
+  // claim must block and release the reservation, never create an approval task.
   tightenPolicyAtSignerCheck = { agentId: "primary", maxTransferYocto: "1000000000000000000000" };
   const providerBeforePolicyDowngrade = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-policy-downgrade-001", to: "recipient.near", amount: "10000000000000000000000" });
   payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval" && payload.reason === "agent_per_transfer_limit", "tightened policy downgrades an auto-authorized request to manual approval");
-  assert(counters.provider === providerBeforePolicyDowngrade && reservations.get("test-auto-policy-downgrade-001")?.status === "awaiting_approval", "policy downgrade prevents provider submission and preserves reservation");
-  response = await approveTransfer("test-auto-policy-downgrade-001", "reject");
-  assert(response.status === 200 && reservations.get("test-auto-policy-downgrade-001")?.status === "rejected", "administrator can safely reject downgraded request");
+  assert(response.status === 403 && payload.status === "blocked" && payload.reason === "agent_per_transfer_limit", "tightened policy blocks an already-reserved transfer at submission");
+  assert(counters.provider === providerBeforePolicyDowngrade && reservations.get("test-auto-policy-downgrade-001")?.status === "failed", "policy downgrade releases the reservation and never reaches OutLayer");
   const restoredPolicy = agentPolicies.get("primary") ?? {};
   restoredPolicy.p_max_transfer_yocto = null;
   agentPolicies.set("primary", restoredPolicy);
-
-  // A historical autonomous payment must not consume the current rolling window.
-  reservations.set("test-auto-aged-out-001", {
-    amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
-    status: "executed", autoApproved: true, createdAt: Date.now() - 25 * 60 * 60 * 1000
-  });
 
   const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
@@ -1065,10 +1051,8 @@ try {
   const providerBeforeAutoOverflow = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-overflow-001", to: "recipient.near", amount: "60000000000000000000000" });
   payload = await response.json();
-  assert(response.status === 202 && payload.status === "awaiting_approval", "request beyond remaining autonomous allowance falls back to admin approval");
-  assert(counters.provider === providerBeforeAutoOverflow, "autonomous allowance overflow does not reach OutLayer");
-  response = await approveTransfer("test-auto-overflow-001", "reject");
-  assert(response.status === 200, "admin can reject a request routed to approval after autonomous allowance is exhausted");
+  assert(response.status === 403 && payload.status === "blocked" && payload.reason === "autonomous_allowance_exceeded", "request beyond autonomous allowance is rejected at reservation");
+  assert(counters.provider === providerBeforeAutoOverflow && !reservations.has("test-auto-overflow-001"), "autonomous allowance overflow creates no reservation and never reaches OutLayer");
 
   const providerBeforeAutoTimeout = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-timeout-001", to: "timeout.test", amount: "10000000000000000000000" });
