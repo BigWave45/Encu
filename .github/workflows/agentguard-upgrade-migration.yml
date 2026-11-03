@@ -227,7 +227,9 @@ jobs:
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('migration-phase-gap-0001','admin','allocation migration gap cleanup');" | jq -e '.status == "rejected"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" | jq -e '.allocation_limit_yocto == "2000000000000000000000000"' >/dev/null
+          allocation_result=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');")
+          echo "ALLOCATION_SET_RESULT=$allocation_result"
+          echo "$allocation_result" | jq -e '.allocation_limit_yocto == "2000000000000000000000000"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.create_agent_with_audit('allocation-zero','Zero Allocation',repeat('a',64),'admin');" | jq -e '.allocation_limit_yocto == "0"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT count(*) FROM public.agent_authorized_recipients WHERE agent_id='allocation-zero';" | grep -qx '0'
