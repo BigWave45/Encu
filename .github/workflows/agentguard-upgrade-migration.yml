@@ -20,7 +20,6 @@ on:
       - "supabase/20261102090000_reserve_admin_agent_id.sql"
       - "supabase/20261102100000_revoke_public_core_table_access.sql"
       - "supabase/20261102110000_grant_service_role_core_reads.sql"
-      - "supabase/20261103000000_treasury_agent_allocations.sql"
       - "supabase/20261103010000_enforce_agent_allocations.sql"
       - "supabase/20261103020000_agent_recipient_registry.sql"
   workflow_dispatch:
@@ -88,7 +87,6 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261102090000_reserve_admin_agent_id.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
-          psql -v ON_ERROR_STOP=1 -f supabase/20261103000000_treasury_agent_allocations.sql
           # Simulate an old application instance reserving between the additive
           # schema migration and the enforcement migration.
           export PGPASSWORD=service_role_test_only
