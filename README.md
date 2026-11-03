@@ -501,3 +501,16 @@ The first UI pass has widened the single-page layout and added sticky in-page na
 8. Run the full security suite and a controlled, low-value NEAR testnet transfer through the new contract only after explicit approval.
 
 Production Supabase and Production Vercel remain out of scope unless the user explicitly authorizes changes. Do not merge the pull request or initiate another live transfer without authorization.
+
+
+## Planned execution backends
+
+The developer-facing AgentGuard payment API is intended to remain provider-neutral. An administrator configures the execution backend for each treasury; an agent requests a payment against an authorized treasury and cannot choose a different backend in the request.
+
+Planned backend types are distinct:
+- **OutLayer wallet:** current V1, using OutLayer custody and its native NEAR transfer endpoint.
+- **Native NEAR contract:** planned dedicated contract treasury for on-chain enforcement of native NEAR spending.
+- **NEAR Intents via OutLayer:** future extension using OutLayer's Intents endpoints and custody.
+- **Direct NEAR Intents:** separate future signer/solver-relay integration. Deploying the native treasury contract does not automatically provide this capability.
+
+The first native contract release is scoped to native NEAR transfers. NEP-141 tokens and NEAR Intents swaps/cross-chain transfers require separate adapters and lifecycle tests. See [native NEAR treasury design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
