@@ -320,3 +320,5 @@ commit;
 -- Upgrade suite assertion refinement: distinguish missing from duplicate finality audit events.
 
 -- CI trigger for revised finality-audit assertion.
+
+-- CI trigger after narrowing the migration-suite finality audit assertion.
