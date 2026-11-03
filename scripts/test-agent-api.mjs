@@ -84,7 +84,7 @@ const mock = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_authorized_recipients") {
       let rows = [...recipientAuthorizations.values()];
       for (const field of ["agent_id", "account_id", "status"]) {
-        const value = url.searchParams.get(field)?.replace(/^eq\\./, "");
+        const value = url.searchParams.get(field)?.replace(/^eq\./, "");
         if (value) rows = rows.filter(row => String(row[field]) === value);
       }
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
