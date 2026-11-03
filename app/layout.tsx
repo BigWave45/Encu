@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "AgentGuard",
-  description: "Policy gateway for controlled AI-agent transactions on NEAR testnet.",
+  title: "ENCU | Agent Treasury Control",
+  description: "Policy control plane for agent-initiated NEAR transfers.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
