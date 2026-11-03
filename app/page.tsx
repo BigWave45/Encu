@@ -24,7 +24,7 @@ type Dashboard = {
   error?: string;
   generatedAt?: string;
   transfersEnabled?: boolean;
-  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null }>;
+  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null; autoSpendLimitYocto: string | null }>;
   recipients?: Array<{ agentId: string; accountId: string; label: string | null; status: "active" | "revoked"; authorizedAt: string; authorizedBy: string; expiresAt: string | null; revokedAt: string | null; revokedBy: string | null }>;
   budget?: {
     totalLimitYocto: string;
@@ -183,6 +183,7 @@ export default function Home() {
   const [policyMax, setPolicyMax] = useState("");
   const [policyDaily, setPolicyDaily] = useState("");
   const [policyWeekly, setPolicyWeekly] = useState("");
+  const [policyAuto, setPolicyAuto] = useState("");
   const [recipientAgent, setRecipientAgent] = useState("primary");
   const [recipientAccount, setRecipientAccount] = useState("");
   const [recipientLabel, setRecipientLabel] = useState("");
@@ -247,6 +248,7 @@ export default function Home() {
         setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
         setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
         setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
+        setPolicyAuto(selectedPolicy?.autoSpendLimitYocto != null ? yoctoToInput(selectedPolicy.autoSpendLimitYocto) : "");
       }
     } catch {
       setDashboard(null);
@@ -286,8 +288,9 @@ export default function Home() {
     const max = policyMax.trim() ? parseNearToYocto(policyMax) : null;
     const daily = policyDaily.trim() ? parseNearToYocto(policyDaily) : null;
     const weekly = policyWeekly.trim() ? parseNearToYocto(policyWeekly) : null;
-    if ((policyMax.trim() && (!max || max <= 0n)) || (policyDaily.trim() && (!daily || daily <= 0n)) || (policyWeekly.trim() && (!weekly || weekly <= 0n))) {
-      setPolicyMessage("Enter valid positive NEAR limits or leave a field blank for no additional limit.");
+    const auto = policyAuto.trim() ? parseNearToYocto(policyAuto) : null;
+    if ((policyMax.trim() && (!max || max <= 0n)) || (policyDaily.trim() && (!daily || daily <= 0n)) || (policyWeekly.trim() && (!weekly || weekly <= 0n)) || (policyAuto.trim() && auto === null)) {
+      setPolicyMessage("Enter valid NEAR limits. Leave autonomous allowance blank to disable automatic spending.");
       return;
     }
     setPolicyBusy(true);
@@ -306,8 +309,17 @@ export default function Home() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) setPolicyMessage(body.reason ?? body.error ?? "agent_policy_update_failed");
       else {
-        setPolicyMessage("Agent policy saved.");
-        await loadDashboard();
+        const autoResponse = await fetch("/api/admin/agents/auto-spend", {
+          method: "PATCH",
+          headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ id: policyAgent, autoSpendLimitYocto: auto?.toString() ?? null })
+        });
+        const autoBody = await autoResponse.json().catch(() => ({}));
+        if (!autoResponse.ok) setPolicyMessage(autoBody.reason ?? autoBody.error ?? "agent_auto_spend_update_failed");
+        else {
+          setPolicyMessage("Agent policy and autonomous allowance saved.");
+          await loadDashboard();
+        }
       }
     } catch {
       setPolicyMessage("Could not confirm policy update.");
@@ -751,6 +763,7 @@ export default function Home() {
                 setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
                 setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
                 setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
+                setPolicyAuto(policy?.autoSpendLimitYocto != null ? yoctoToInput(policy.autoSpendLimitYocto) : "");
               }} style={{ ...inputStyle, marginTop: 5 }}>
                 {dashboard.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
               </select>
@@ -759,6 +772,7 @@ export default function Home() {
               <label style={{ fontSize: 13 }}>Max per transfer (NEAR)<input value={policyMax} onChange={e => setPolicyMax(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
               <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Autonomous lifetime allowance (NEAR)<input inputMode="decimal" value={policyAuto} onChange={e => setPolicyAuto(e.target.value)} placeholder="Disabled" style={{ ...inputStyle, marginTop: 5 }} /></label>
             </div>
             <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
             {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
