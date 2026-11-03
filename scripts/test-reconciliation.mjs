@@ -224,11 +224,23 @@ try {
   payload = await response.json();
   assert(response.status === 200 && payload.status === "executed" && payload.finality === "FINAL", "matching FINAL success settles reservation as executed");
   assert(reservations.get("success-001").status === "executed", "successful finality is persisted in reservation ledger");
+  const successRpcCalls = counters.rpc;
+  const successFinishCalls = counters.finish;
+  response = await postReconcile("agent-one-token", "success-001");
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "executed", "repeated reconciliation returns the existing executed state");
+  assert(counters.rpc === successRpcCalls && counters.finish === successFinishCalls, "repeated executed reconciliation does not query NEAR or settle twice");
 
   response = await postReconcile("agent-one-token", "failure-001");
   payload = await response.json();
   assert(response.status === 200 && payload.status === "failed", "matching FINAL failure settles reservation as failed");
   assert(reservations.get("failure-001").status === "failed", "failed final execution is persisted in reservation ledger");
+  const failureRpcCalls = counters.rpc;
+  const failureFinishCalls = counters.finish;
+  response = await postReconcile("agent-one-token", "failure-001");
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "failed", "repeated reconciliation returns the existing failed state");
+  assert(counters.rpc === failureRpcCalls && counters.finish === failureFinishCalls, "repeated failed reconciliation does not query NEAR or settle twice");
 
   failFinalization = true;
   response = await postReconcile("agent-one-token", "finalize-error-001");
