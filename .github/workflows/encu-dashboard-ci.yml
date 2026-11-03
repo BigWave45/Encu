@@ -1,0 +1,39 @@
+name: ENCU dashboard validation
+
+on:
+  push:
+    branches:
+      - "encu/editorial-light-diagrams"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-only
+      OUTLAYER_BASE_URL: https://testnet-api.outlayer.ai
+      OUTLAYER_API_KEY: ci-placeholder-only
+      OUTLAYER_NEAR_ADDRESS: agentguard.testnet
+      AGENTGUARD_AGENT_TOKEN: ci-placeholder-only
+      AGENTGUARD_MAX_TRANSFER_YOCTO: "1000000000000000000000000"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Production build
+        run: npm run build
+      - name: Agent API security and lifecycle tests
+        run: npm run test:agent-api
+      - name: NEAR finality reconciliation tests
+        run: npm run test:reconciliation
