@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabase();
   const { data: reservation, error } = await db
     .from("spend_reservations")
-    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto,agent_id")
+    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto::text,agent_id")
     .eq("request_id", parsed.data.requestId)
     .maybeSingle();
 
