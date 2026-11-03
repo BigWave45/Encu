@@ -127,6 +127,7 @@ export default function Home() {
   const [creatingAgent, setCreatingAgent] = useState(false);
   const [rotationResult, setRotationResult] = useState<AgentResult | null>(null);
   const [rotatingAgent, setRotatingAgent] = useState(false);
+  const [rotationAgentId, setRotationAgentId] = useState("");
   const [reservationAction, setReservationAction] = useState<string | null>(null);
   const [reservationActionError, setReservationActionError] = useState("");
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
@@ -192,6 +193,10 @@ export default function Home() {
         setDashboardError(body.error ?? "dashboard_request_failed");
       } else {
         setDashboard(body);
+        const rotatableAgents = (body.agents ?? []).filter((agent: NonNullable<Dashboard["agents"]>[number]) => agent.id !== "primary");
+        if (rotatableAgents.length && !rotatableAgents.some((agent: NonNullable<Dashboard["agents"]>[number]) => agent.id === rotationAgentId)) {
+          setRotationAgentId(rotatableAgents[0].id);
+        }
         setReservationPage(body.reservationPage?.page ?? page);
         setAuditPage(body.activityPages?.audit?.page ?? nextAuditPage);
         setSecurityPage(body.activityPages?.security?.page ?? nextSecurityPage);
@@ -427,19 +432,29 @@ export default function Home() {
 
   async function rotateAgent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const selectedAgent = dashboard?.agents?.find(agent => agent.id === rotationAgentId);
+    if (!selectedAgent || selectedAgent.id === "primary") {
+      setRotationResult({ error: "Select an existing non-primary agent from the loaded dashboard." });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Rotate credentials for "${selectedAgent.name}" (${selectedAgent.id})? The current token will stop working immediately. A replacement token will be shown once. This does not delete the agent.`
+    );
+    if (!confirmed) return;
+
     setRotatingAgent(true);
     setRotationResult(null);
     try {
       const response = await fetch("/api/agent/agents/rotate", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
-        body: JSON.stringify({ id: agentId.trim() }),
+        body: JSON.stringify({ id: selectedAgent.id }),
         cache: "no-store"
       });
       const body = await response.json().catch(() => ({ error: "Invalid server response" }));
-      setRotationResult(body);
+      setRotationResult({ httpStatus: response.status, ...body });
     } catch {
-      setRotationResult({ error: "Could not reach AgentGuard. Check your connection and try again." });
+      setRotationResult({ error: "Could not reach AgentGuard. Rotation outcome is unconfirmed. Refresh the dashboard and check before retrying." });
     } finally {
       setRotatingAgent(false);
     }
@@ -756,9 +771,24 @@ export default function Home() {
         </form>
 
         <form onSubmit={rotateAgent} style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
-          <strong>Rotate an agent credential</strong>
-          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Revoke the existing credential for the Agent ID above and issue a replacement.</p>
-          <button type="submit" disabled={rotatingAgent || !adminToken.trim() || !agentId.trim()} style={{ ...buttonStyle, background: "#7f1d1d" }}>{rotatingAgent ? "Rotating…" : "Rotate agent credential"}</button>
+          <strong>Replace an agent's access token</strong>
+          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
+            Select an existing agent below. This replaces only that agent's credential. The old token becomes invalid immediately; the agent identity, policy, budget and transaction history remain in place. The new token is displayed once.
+          </p>
+          <label htmlFor="rotation-agent" style={{ display: "block", fontWeight: 600, margin: "12px 0 8px" }}>Agent whose token will be replaced</label>
+          <select id="rotation-agent" value={rotationAgentId} onChange={event => { setRotationAgentId(event.target.value); setRotationResult(null); }}
+            disabled={!dashboard?.agents?.some(agent => agent.id !== "primary") || rotatingAgent}
+            style={inputStyle}>
+            {(dashboard?.agents ?? []).filter(agent => agent.id !== "primary").map(agent =>
+              <option key={agent.id} value={agent.id}>{agent.name} · {agent.id} · {agent.active ? "Active" : "Inactive"}</option>
+            )}
+          </select>
+          {!dashboard && <p style={{ color: "#92400e", fontSize: 12 }}>Load the dashboard first so the target is selected from the actual agent list.</p>}
+          {dashboard && !dashboard.agents?.some(agent => agent.id !== "primary") && <p style={{ color: "#92400e", fontSize: 12 }}>There are no rotatable agents. The primary admin identity cannot be rotated here.</p>}
+          <button type="submit" disabled={rotatingAgent || !adminToken.trim() || !rotationAgentId || !dashboard?.agents?.some(agent => agent.id === rotationAgentId && agent.id !== "primary")}
+            style={{ ...buttonStyle, background: "#7f1d1d" }}>
+            {rotatingAgent ? "Replacing token…" : rotationAgentId ? `Replace token for ${dashboard?.agents?.find(agent => agent.id === rotationAgentId)?.name ?? rotationAgentId}` : "Select an agent"}
+          </button>
         </form>
         {rotationResult && <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
           {rotationResult.token ? <>
