@@ -606,6 +606,21 @@ try {
   assert(response.status === 202 && replacementBody.length > 0, `replacement credential reaches transfer lifecycle (HTTP ${response.status}; body: ${replacementBody || "<empty>"})`);
   response = await approveTransfer("test-new-demo-token-001", "reject");
   assert(response.status === 200, "test credential's pending transfer is rejected to release its reservation");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "research-agent", allocationLimitYocto: "0" })
+  });
+  assert(response.status === 200, "admin can release unused research-agent allocation");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "demo-agent", allocationLimitYocto: "0" })
+  });
+  assert(response.status === 200, "admin can release unused demo-agent allocation after rejection");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "primary", allocationLimitYocto: "6000000000000000000000000" })
+  });
+  assert(response.status === 200, "admin can reallocate the full treasury ceiling to primary");
 
   const beforeUnauthReserve = counters.reserve;
   const beforeUnauthProvider = counters.provider;
@@ -782,6 +797,7 @@ try {
     status: "awaiting_approval", approvalExpiresAt: new Date(Date.now() - 60_000).toISOString()
   });
   mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + BigInt(expiredAmount)).toString();
+  allocations.get("primary").reserved_yocto = (BigInt(allocations.get("primary").reserved_yocto) + BigInt(expiredAmount)).toString();
   response = await fetch("http://127.0.0.1:3000/api/admin/reservations/resolve", {
     method: "POST",
     headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
@@ -798,6 +814,7 @@ try {
     status: "needs_review", txHash: "mock-failed-final-hash", providerRequestId: "mock-failed-final-provider"
   });
   mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + BigInt(failedFinalAmount)).toString();
+  allocations.get("primary").reserved_yocto = (BigInt(allocations.get("primary").reserved_yocto) + BigInt(failedFinalAmount)).toString();
   response = await fetch("http://127.0.0.1:3000/api/admin/reservations/resolve", {
     method: "POST",
     headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
