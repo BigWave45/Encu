@@ -54,7 +54,6 @@ export async function PATCH(request: NextRequest) {
   if (!rate) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
   if (!rate.allowed) return NextResponse.json({ error: "rate_limit_exceeded", retryAfterSeconds: rate.retryAfterSeconds }, { status: 429 });
   const db = getSupabase();
-  const actor = `developer:${user.userId}`;
   let result: { data: unknown; error: { message: string } | null };
   if (input.action === "policy") {
     result = await db.rpc("developer_set_agent_policy", { p_owner_user_id: user.userId, p_agent_id: input.id, p_max_transfer_yocto: input.maxTransferYocto, p_daily_limit_yocto: input.dailyLimitYocto, p_weekly_limit_yocto: input.weeklyLimitYocto });
@@ -63,7 +62,7 @@ export async function PATCH(request: NextRequest) {
   } else if (input.action === "auto_spend") {
     result = await db.rpc("developer_set_agent_auto_spend_limit", { p_owner_user_id: user.userId, p_agent_id: input.id, p_auto_spend_limit_yocto: input.autoSpendLimitYocto });
   } else if (input.action === "authorize_recipient") {
-    result = await db.rpc("developer_authorize_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_label: input.label ?? null, p_expires_at: input.expiresAt ?? null, p_actor_agent_id: actor });
+    result = await db.rpc("developer_authorize_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_label: input.label ?? null, p_expires_at: input.expiresAt ?? null });
   } else {
     result = await db.rpc("developer_revoke_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason, p_actor_agent_id: actor });
   }
