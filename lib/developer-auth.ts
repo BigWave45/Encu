@@ -6,7 +6,7 @@ export type DeveloperIdentity = {
 };
 
 export async function authenticateDeveloper(authorization: string | null): Promise<DeveloperIdentity | null> {
-  const token = authorization?.match(/^Bearer\\s+(.+)$/i)?.[1]?.trim();
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (!token || token.length > 8192) return null;
 
   const { data, error } = await getSupabase().auth.getUser(token);
