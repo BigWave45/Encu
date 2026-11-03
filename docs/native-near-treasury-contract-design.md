@@ -190,3 +190,74 @@ Testnet gate:
 8. Deploy and test on NEAR testnet with explicit authorization.
 
 No mainnet deployment, unrestricted server-side treasury key, dual-provider spending from one treasury, or automatic withdrawal path is in scope for this first native backend.
+
+
+## 12. Developer integration and backend selection
+
+### Stable developer-facing interface
+
+The developer should integrate with AgentGuard's payment API/SDK, not directly choose or call an execution provider for each request. A conceptual request is:
+
+```json
+{
+  "request_id": "invoice-2026-0042",
+  "treasury_id": "operations-treasury",
+  "asset": { "network": "near", "standard": "native", "symbol": "NEAR" },
+  "amount": "0.25",
+  "destination": { "type": "near_account", "account_id": "vendor.near" },
+  "purpose": "Invoice 0042"
+}
+```
+
+The API authenticates the agent, resolves its treasury membership, evaluates policy and reserves exposure before selecting the configured adapter. The caller must not be able to submit `backend: "native"` or `backend: "outlayer"` to bypass treasury configuration. The administrator chooses the backend when creating/configuring the treasury. A developer may choose which treasury/payment profile their application uses, but cannot silently change that treasury's custody or execution backend.
+
+The stable response should expose a provider-neutral lifecycle such as `accepted`, `awaiting_approval`, `submitted`, `processing`, `succeeded`, `failed`, `blocked` and `needs_review`, plus provider-specific references in a separate metadata object. Do not collapse provider acceptance into payment success.
+
+### Backend types are not interchangeable
+
+Use explicit treasury backend types:
+
+- `outlayer_wallet`: current V1. OutLayer holds/signs from its custody wallet; AgentGuard calls its API and independently reconciles NEAR finality.
+- `near_contract`: planned native treasury. A dedicated AgentGuard contract account holds native NEAR and enforces agent keys, recipients, allocations, pause and reservation accounting on-chain.
+- `near_intents_outlayer`: future Intents route using OutLayer's custody wallet and its Intents API. This remains OutLayer custody/execution even though NEAR Intents performs the swap/settlement.
+- `near_intents_direct`: separate future integration in which AgentGuard or a designated signer controls an account/key registered for NEAR Intents and signs the required intent payloads before submitting them to the solver relay.
+
+Do not present `near_contract` and `near_intents_direct` as the same backend. A contract can custody NEAR and make supported on-chain calls. NEAR Intents uses signed intents, a solver/message-bus flow and Verifier settlement. A contract's ordinary `request_transfer` method does not automatically create or authorize a solver-routed cross-chain intent. Direct Intents support needs its own signer/key lifecycle, intent construction, quote/solver integration, approval binding and asynchronous settlement adapter.
+
+### Initial native scope and extension path
+
+The first native contract release should support native NEAR transfers only. NEP-141 tokens require a separate token adapter and token-contract storage/transfer handling. NEAR Intents swaps, cross-chain withdrawals, limit orders and confidential flows are separate capabilities and must not be implied by a native NEAR transfer implementation.
+
+A later Intents adapter can support cross-chain payments and swaps without changing the developer-facing AgentGuard request interface, provided the asset and destination schema can represent the route and the selected treasury backend supports it. The adapter must bind the exact token, amount, destination, quote/route artifact and expiry to the AgentGuard request before approval. It must not approve a vague instruction such as "swap to USDC" and then accept a materially different route at execution.
+
+### Backend selection and treasury isolation
+
+Backend selection is an administrator-level treasury setting, not a per-agent override. One logical treasury must have one active spending backend in the first release. Do not let the same treasury balance be spendable through OutLayer and the native contract simultaneously: they are separate custody pools and cannot share a hard atomic exposure counter without an explicit cross-system reservation/settlement design.
+
+A migration from OutLayer to a native contract requires pausing new requests, resolving all pending/ambiguous reservations, reconciling finality, funding the new treasury, verifying policy/key configuration, and then switching the treasury's backend. Do not automatically sweep funds or silently fail over between providers.
+
+## 13. NEAR Intents integration considerations
+
+NEAR Intents is a protocol route, not simply another native transfer method. Its documented flow has users sign intents, publish them to a solver relay/message bus, receive competing quotes from solvers, and settle selected intents through the Verifier contract. Account keys are registered with the Verifier for named accounts; supported external wallets can also derive implicit accounts.
+
+There are two practical AgentGuard routes:
+
+1. **Fastest extension from current V1:** add an OutLayer Intents adapter. OutLayer documents endpoints for Intents deposits, withdrawals, swaps and transfers. AgentGuard would still authenticate agents, reserve its own budget and bind the approved operation, while OutLayer owns the custody/signing step. This is not a native-contract backend.
+2. **Independent direct integration:** implement a dedicated NEAR Intents adapter with its own account/key registration, intent signing, quote and solver-relay interaction, status polling and settlement verification. This does not automatically follow from deploying the AgentGuard treasury contract. A contract account cannot sign arbitrary off-chain intent payloads merely because it holds funds.
+
+The direct integration must specify who controls the Intents signing key, how that key is restricted, and how an approved quote is cryptographically or operationally bound to the exact asset, amount and destination. A generic "approval required" flag is insufficient if the solver artifact can change after approval.
+
+Provider documentation also describes limits of its own policy model. OutLayer's cumulative hourly/daily/monthly usage counters are documented as best-effort under concurrent requests, and its documented multisig path for certain Trusted Intents operations relies on gateway-supplied quote/deposit artifacts for some terms. AgentGuard must retain its own atomic reservations and must not claim that its approval proves the final solver route unless the adapter verifies that binding.
+
+## 14. Capability matrix (planned)
+
+| Capability | OutLayer current adapter | Native contract V1 | Future Intents adapter |
+|---|---|---|---|
+| Native NEAR transfer | Implemented | Planned | Can be a route/withdrawal |
+| Agent identity and allocation | AgentGuard off-chain | Contract-enforced | AgentGuard plus adapter key mapping |
+| Shared treasury reservation | AgentGuard atomic DB ledger | Contract-enforced on-chain | AgentGuard reservation plus protocol-specific settlement |
+| Recipient allowlist | AgentGuard; OutLayer wallet policy is separate | Contract-enforced | Exact destination/route checks required |
+| NEP-141 token transfer | Not in current adapter | Not in V1 | Depends on supported Intents route |
+| NEAR Intents swap/cross-chain | Not in current AgentGuard adapter | Not in native V1 | Separate adapter required |
+| TEE custody/attestation | OutLayer provides TEE; current AgentGuard adapter does not surface/verify transfer attestation | Not provided by contract | Depends on selected signer/provider |
+| Independent on-chain policy enforcement | No AgentGuard treasury contract yet | Core purpose of native backend | Depends on account/contract/key architecture |
