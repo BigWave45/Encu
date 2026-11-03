@@ -382,6 +382,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-auto-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == true and .status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('rolling-manual-001',1,'rolling.testnet','primary');" | jq -e '.created == true and .auto_approved == false and .status == "awaiting_approval"' >/dev/null
           export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT jsonb_build_object('request_id',request_id,'auto_approved',auto_approved,'status',status,'created_at',created_at) FROM public.spend_reservations WHERE request_id='rolling-manual-001';"
+          export PGPASSWORD=service_role_test_only
+          export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 <<'SQL'
           UPDATE public.spend_reservations
           SET created_at=now()-interval '25 hours'
