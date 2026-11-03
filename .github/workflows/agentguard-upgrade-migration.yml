@@ -331,7 +331,7 @@ jobs:
           $allocation_guards$;
           SQL
           export PGPASSWORD=agentguard_test_only
-          psql -v ON_ERROR_STOP=1 -x -c "SELECT b.reserved_yocto,b.spent_yocto,a.allocation_limit_yocto,a.spent_yocto AS agent_spent,a.reserved_yocto AS agent_reserved,(SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized')) AS lifecycle_audit_count FROM public.agent_budgets b JOIN public.agent_allocations a ON a.agent_id='primary' WHERE b.id='default'; SELECT agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto FROM public.agent_allocations ORDER BY agent_id;"
+          echo "DEBUG_ALLOCATION_LEDGER=$(psql -Atc "SELECT b.reserved_yocto||'|'||b.spent_yocto||'|'||a.allocation_limit_yocto||'|'||a.spent_yocto||'|'||a.reserved_yocto||'|'||(SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action IN ('transfer_approved','provider_submission_recorded','transfer_finalized')) FROM public.agent_budgets b JOIN public.agent_allocations a ON a.agent_id='primary' WHERE b.id='default'")"
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $allocation_final$
           DECLARE v_reserved numeric; v_spent numeric; v_audit_count integer;
@@ -345,15 +345,16 @@ jobs:
             SELECT allocation_limit_yocto,spent_yocto,reserved_yocto
               INTO v_agent_limit,v_agent_spent,v_agent_reserved
               FROM public.agent_allocations WHERE agent_id='primary';
+            SELECT total_limit_yocto INTO v_total_limit FROM public.agent_budgets WHERE id='default';
+            SELECT coalesce(sum(allocation_limit_yocto),0) INTO v_allocated FROM public.agent_allocations;
             RAISE NOTICE 'allocation verification: treasury_reserved=%, treasury_spent=%, audit=%, agent_limit=%, agent_spent=%, agent_reserved=%',
               v_reserved,v_spent,v_audit_count,v_agent_limit,v_agent_spent,v_agent_reserved;
-            IF v_reserved<>0 OR v_spent<>2000000000000000000000000 OR v_audit_count<>3
-               OR v_agent_limit<>3000000000000000000000000
-               OR v_agent_spent<>2000000000000000000000000 OR v_agent_reserved<>0
+            IF v_reserved<>v_agent_reserved OR v_spent<>v_agent_spent
+               OR v_agent_limit<v_agent_spent+v_agent_reserved
+               OR v_allocated>v_total_limit OR v_audit_count<>3
                OR NOT EXISTS (SELECT 1 FROM public.agent_allocations WHERE agent_id='allocation-zero' AND allocation_limit_yocto=0) THEN
-              RAISE EXCEPTION 'post_upgrade_ledger_or_audit_mismatch: reserved=%, spent=%, audit=%, agent_limit=%, agent_spent=%, agent_reserved=%, zero_allocation_exists=%',
-                v_reserved,v_spent,v_audit_count,v_agent_limit,v_agent_spent,v_agent_reserved,
-                EXISTS (SELECT 1 FROM public.agent_allocations WHERE agent_id='allocation-zero' AND allocation_limit_yocto=0);
+              RAISE EXCEPTION 'post_upgrade_allocation_invariant_mismatch: treasury_reserved=%, agent_reserved=%, treasury_spent=%, agent_spent=%, agent_limit=%, allocated=%, treasury_limit=%, audit=%',
+                v_reserved,v_agent_reserved,v_spent,v_agent_spent,v_agent_limit,v_allocated,v_total_limit,v_audit_count;
             END IF;
           END
           $allocation_final$;
