@@ -14,6 +14,12 @@ on:
       - "supabase/20261101140000_security_event_log.sql"
       - "supabase/20261101190000_agentguard_v1_security_controls.sql"
       - "supabase/20261101230000_submission_audit_and_append_only.sql"
+      - "supabase/20261102080000_admin_actor_self_approval_guard.sql"
+      - "supabase/20261102090000_reserve_admin_agent_id.sql"
+      - "supabase/20261102100000_revoke_public_core_table_access.sql"
+      - "supabase/20261102110000_grant_service_role_core_reads.sql"
+      - "supabase/20261103000000_treasury_agent_allocations.sql"
+      - "supabase/20261103010000_enforce_agent_allocations.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -65,22 +71,33 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261101140000_security_event_log.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101190000_agentguard_v1_security_controls.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261101230000_submission_audit_and_append_only.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102080000_admin_actor_self_approval_guard.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102090000_reserve_admin_agent_id.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102100000_revoke_public_core_table_access.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261102110000_grant_service_role_core_reads.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103000000_treasury_agent_allocations.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103010000_enforce_agent_allocations.sql
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'primary');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'admin');" | jq -e '.transfers_enabled == true' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO public.agents (id, name, active)
           VALUES ('research-agent', 'Research Agent', true);
           INSERT INTO public.agent_policies (agent_id)
           VALUES ('research-agent');
+          INSERT INTO public.agent_allocations(agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto,updated_by)
+          VALUES ('research-agent',0,0,0,'admin');
           SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',3000000000000000000000000,'admin');" >/dev/null
           # Emergency stop must block both new reservations and pending approvals,
           # and both denials must create durable security events.
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-emergency-stop-pending',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(false,'primary');" | jq -e '.transfers_enabled == false' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(false,'admin');" | jq -e '.transfers_enabled == false' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-emergency-stop-blocked',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.status == "blocked" and .reason == "emergency_stop"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','primary');" | jq -e '.approved == false and .reason == "emergency_stop"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','admin');" | jq -e '.approved == false and .reason == "emergency_stop"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
           DO $$
@@ -97,26 +114,26 @@ jobs:
           $$
           SQL
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'primary');" | jq -e '.transfers_enabled == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true,'admin');" | jq -e '.transfers_enabled == true' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-emergency-stop-pending','admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('ag-emergency-stop-pending','failed',NULL,'test_cleanup');" | jq -e '.status == "failed"' >/dev/null
           echo "PASS: emergency stop blocks reservations and approval submissions and audits both denials."
           # Exercise policy enforcement inside the reservation transaction.
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',2000000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'primary');" | jq -e '.agent_id == "research-agent"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',2000000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'admin');" | jq -e '.agent_id == "research-agent"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-per-transfer',3000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_per_transfer_limit"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-recipient',1000000000000000000000,'other.near','research-agent');" | jq -e '.reason == "recipient_not_allowed"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,3000000000000000000000000,NULL,ARRAY['agentguard-test.near']::text[],'primary');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,3000000000000000000000000,NULL,ARRAY['agentguard-test.near']::text[],'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-daily-a',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-daily-b',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_daily_limit"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-policy-daily-a','primary','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,3000000000000000000000000,ARRAY['agentguard-test.near']::text[],'primary');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-policy-daily-a','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,3000000000000000000000000,ARRAY['agentguard-test.near']::text[],'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-weekly-a',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-weekly-b',2000000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "agent_weekly_limit"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-policy-weekly-a','primary','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('ag-policy-weekly-a','admin','test cleanup');" | jq -e '.status == "rejected"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,ARRAY[]::text[],'primary');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-empty-allowlist',1000000000000000000000,'agentguard-test.near','research-agent');" | jq -e '.reason == "recipient_not_allowed"' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,NULL,'primary');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',NULL,NULL,NULL,NULL,'admin');" >/dev/null
           echo "PASS: per-transfer, daily, weekly, and empty-recipient policies are enforced atomically."
 
           # Persistent rate limits must serialize requests from independent clients.
@@ -162,7 +179,7 @@ jobs:
           SQL
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-audit-failure-finalise',1000000000000000000000,'agentguard-test.near','primary');" | jq -e '.created == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-audit-failure-finalise','primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('ag-audit-failure-finalise','admin');" | jq -e '.status == "reserved"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
           DO $agentguard_test$
@@ -188,6 +205,11 @@ jobs:
       - name: Run two simultaneous reservations
         run: |
           set -euo pipefail
+          # Rebalance without changing total treasury authority. The primary
+          # receives 4 NEAR and the research agent 1 NEAR for this race.
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',4000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',1000000000000000000000000,'admin');" >/dev/null
           suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           req_a="ag-concurrency-${suffix}-primary"
           req_b="ag-concurrency-${suffix}-research"
@@ -226,7 +248,7 @@ jobs:
           SQL
           winner=$(cat /tmp/agentguard-a.json /tmp/agentguard-b.json | jq -r 'select(.created == true) | .request_id')
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${winner}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${winner}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
           export PGPASSWORD=service_role_test_only
           replay=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${winner}', ${amount}, 'agentguard-test.near', CASE WHEN '${winner}' = '${req_a}' THEN 'primary' ELSE 'research-agent' END);")
           echo "$replay" | jq -e '.created == false' >/dev/null
@@ -260,7 +282,7 @@ jobs:
           req_failed="ag-concurrency-${suffix}-failed"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_failed}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_failed}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_failed}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'failed', 'mock-failed-tx-hash', 'final_execution_failed');" | jq -e '.status == "failed"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_failed}', 'executed', 'mock-failed-tx-hash', NULL);" | jq -e '.status == "failed"' >/dev/null
           export PGPASSWORD=agentguard_test_only
@@ -283,7 +305,7 @@ jobs:
           req_meta="ag-concurrency-${suffix}-provider-meta"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_meta}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_meta}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_meta}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.record_outlayer_submission('${req_meta}', 'mock-provider-tx', 'mock-provider-request', 'awaiting_finality');" | jq -e '.status == "needs_review"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || outlayer_tx_hash || ':' || outlayer_request_id FROM public.spend_reservations WHERE request_id = '${req_meta}';" | grep -qx 'needs_review:mock-provider-tx:mock-provider-request'
@@ -295,7 +317,7 @@ jobs:
           req_race="ag-concurrency-${suffix}-finish-race"
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_race}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_race}', 'primary');" | jq -e '.status == "reserved"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_race}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'executed', 'mock-race-tx', NULL);" > /tmp/finish-executed.json &
           finish_a=$!
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.finish_agent_spend('${req_race}', 'failed', 'mock-race-tx', 'simulated_failure');" > /tmp/finish-failed.json &
@@ -329,11 +351,12 @@ jobs:
           INSERT INTO public.spend_reservations(request_id,amount_yocto,recipient,status,agent_id,approval_expires_at)
           VALUES ('${req_cancel}',${cancel_amount},'agentguard-test.near','awaiting_approval','primary',now()-interval '1 minute');
           UPDATE public.agent_budgets SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE id='default';
+          UPDATE public.agent_allocations SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE agent_id='primary';
           SQL
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.cancel_expired_agent_transfer('${req_cancel}','primary','Approval expired; no provider submission was made.');" | jq -e '.status == "cancelled"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.cancel_expired_agent_transfer('${req_cancel}','admin','Approval expired; no provider submission was made.');" | jq -e '.status == "cancelled"' >/dev/null
           export PGPASSWORD=agentguard_test_only
-          psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || cancelled_by FROM public.spend_reservations WHERE request_id='${req_cancel}';" | grep -qx 'cancelled:primary'
+          psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT status || ':' || cancelled_by FROM public.spend_reservations WHERE request_id='${req_cancel}';" | grep -qx 'cancelled:admin'
           echo "PASS: expired unapproved reservation is cancelled with actor and evidence audit."
 
           # A submitted transfer can be released only after the API verifies NEAR FINAL failure.
@@ -343,9 +366,10 @@ jobs:
           INSERT INTO public.spend_reservations(request_id,amount_yocto,recipient,status,agent_id,outlayer_tx_hash)
           VALUES ('${req_resolve}',${cancel_amount},'agentguard-test.near','needs_review','primary','mock-final-failure-hash');
           UPDATE public.agent_budgets SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE id='default';
+          UPDATE public.agent_allocations SET reserved_yocto=reserved_yocto+${cancel_amount} WHERE agent_id='primary';
           SQL
           export PGPASSWORD=service_role_test_only
-          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.resolve_agent_transfer_failed_final('${req_resolve}','primary','NEAR reported final failure','https://nearblocks.io/txns/mock-final-failure-hash');" | jq -e '.status == "failed"' >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.resolve_agent_transfer_failed_final('${req_resolve}','admin','NEAR reported final failure','https://nearblocks.io/txns/mock-final-failure-hash');" | jq -e '.status == "failed"' >/dev/null
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<SQL
           DO \$\$
@@ -355,7 +379,7 @@ jobs:
             SELECT reserved_yocto INTO reserved FROM public.agent_budgets WHERE id='default';
             SELECT count(*) INTO audit_count FROM public.agentguard_admin_audit
               WHERE target_id='${req_resolve}' AND action='transfer_resolved_failed_final';
-            IF row_status<>'failed' OR actor<>'primary' OR reserved<>0 OR audit_count<>1 THEN
+            IF row_status<>'failed' OR actor<>'admin' OR reserved<>0 OR audit_count<>1 THEN
               RAISE EXCEPTION 'failed_final_resolution_mismatch: status=%, actor=%, reserved=%, audit=%',row_status,actor,reserved,audit_count;
             END IF;
           END
