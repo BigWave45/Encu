@@ -356,6 +356,8 @@ jobs:
           echo "CHECK: lifecycle provider submission audit exists exactly once"
           psql -Atc "SELECT CASE WHEN count(*)=1 THEN 'PASS' ELSE 'FAIL' END FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='provider_submission_recorded'" | grep -qx 'PASS'
           echo "CHECK: lifecycle finality audit exists exactly once"
-          psql -Atc "SELECT CASE WHEN count(*)=1 THEN 'PASS' ELSE 'FAIL' END FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='transfer_finalized'" | grep -qx 'PASS'
+          psql -Atc "SELECT count(*) FROM public.agentguard_admin_audit WHERE target_id='migration-v1-lifecycle-0001' AND action='transfer_finalized'" > /tmp/agentguard-finality-audit-count.txt
+          cat /tmp/agentguard-finality-audit-count.txt
+          grep -qx '1' /tmp/agentguard-finality-audit-count.txt
           echo "PASS: documented upgrade sequence preserves legacy ledger data, applies V1 schema and permissions, and completes a mocked approval/submission/finality lifecycle."
           echo "PASS: disposable PostgreSQL only. No Supabase project, OutLayer API, or NEAR network was contacted."
