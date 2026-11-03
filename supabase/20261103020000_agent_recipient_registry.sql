@@ -119,10 +119,11 @@ begin
  select count(*) into v_claimed from public.spend_reservations
  where agent_id=p_agent_id and recipient=p_account_id
    and status in ('reserved','needs_review') and submission_claimed_at is not null
-   and outlayer_tx_hash is null;
+   and outlayer_tx_hash is null and outlayer_request_id is null;
  select count(*) into v_submitted from public.spend_reservations
  where agent_id=p_agent_id and recipient=p_account_id
-   and status in ('reserved','needs_review') and outlayer_tx_hash is not null;
+   and status in ('reserved','needs_review')
+   and (outlayer_tx_hash is not null or outlayer_request_id is not null);
 
  update public.agent_authorized_recipients
  set status='revoked',revoked_at=pg_catalog.now(),revoked_by=p_actor_agent_id,updated_at=pg_catalog.now()
