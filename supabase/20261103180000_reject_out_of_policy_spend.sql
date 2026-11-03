@@ -153,6 +153,7 @@ begin
 end;
 $function$
 
+;
 
 revoke all on function public.reserve_agent_spend(text,numeric,text,text) from public, anon, authenticated;
 grant execute on function public.reserve_agent_spend(text,numeric,text,text) to service_role;
