@@ -136,7 +136,7 @@ jobs:
           echo "PASS: emergency stop blocks reservations and approval submissions and audits both denials."
           # Exercise policy enforcement inside the reservation transaction.
           export PGPASSWORD=service_role_test_only
-          policy_update_result=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',2000000000000000000000000,NULL,NULL,ARRAY['agentguard-test.near']::text[],'admin');")
+          policy_update_result=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_policy('research-agent',2000000000000000000000000,NULL,NULL,NULL,'admin');")
           echo "Policy update fixture result: $policy_update_result"
           echo "$policy_update_result" | jq -e '.agent_id == "research-agent"' >/dev/null
           per_transfer_result=$(psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('ag-policy-per-transfer',3000000000000000000000000,'agentguard-test.near','research-agent');")
