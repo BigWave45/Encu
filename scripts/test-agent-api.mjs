@@ -476,6 +476,7 @@ const mock = createServer(async (req, res) => {
       const body = await readJson(req);
       if (body.to === "timeout.test") return req.socket.destroy();
       if (body.to === "provider-error.test") return send(res, 502, { error: "provider_unavailable" });
+      if (body.to === "nohash.test") return send(res, 200, { request_id: "mock-provider-recover" });
       return send(res, 200, { tx_hash: `mock-tx-${counters.provider}`, request_id: `mock-provider-${counters.provider}` });
     }
     return send(res, 404, { error: "mock_route_not_found", path: url.pathname });
@@ -899,6 +900,23 @@ try {
   payload = await response.json();
   assert(response.status === 200 && payload.status === "failed", "admin can resolve a matching NEAR FINAL failure");
   assert(reservations.get(failedFinalResolutionId)?.status === "failed" && adminAudit.some(entry => entry.action === "transfer_resolved_failed_final"), "final-failure resolution releases reserved budget and records evidence audit");
+
+  // Provider HTTP success with a request ID but no transaction hash remains
+  // reserved and can recover the hash through provider status without settlement.
+  const providerBeforeNoHash = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId === "mock-provider-recover" && payload.txHash === null, "provider success with request ID but no hash remains in review");
+  assert(counters.provider === providerBeforeNoHash + 1 && reservations.get("test-provider-nohash-001")?.status === "needs_review", "provider no-hash response records one submission without settling");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
+  assert(response.status === 409 && counters.provider === providerBeforeNoHash + 1, "provider no-hash request cannot be resubmitted on replay");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/agent/provider-status`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ requestId: "test-provider-nohash-001" })
+  });
+  payload = await response.json();
+  assert(response.status === 200 && payload.txHash === "recovered-hash" && payload.reconciliationRequired, "provider status recovers hash for the actual no-hash submission");
+  assert(reservations.get("test-provider-nohash-001")?.txHash === "recovered-hash" && reservations.get("test-provider-nohash-001")?.status === "needs_review", "recovered hash does not settle the reservation");
 
   const recoveryRow = {
     amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",
