@@ -490,3 +490,12 @@ Phase 1 is committed in `supabase/20261103000000_treasury_agent_allocations.sql`
 This is schema-only. It does not enforce allocations in reservation, approval, cancellation, settlement, failure resolution, or provisioning RPCs. It is not safe to apply independently to Preview or Production until the follow-up enforcement migration and API integration are ready. No database was changed.
 
 The upgrade migration workflow was updated to apply this phase against disposable PostgreSQL and verify a legacy reserved reservation is backfilled as one agent allocation with matching reserved exposure. Commit `51a5ec25ed1f18bbce909e9531873e3348d97cbc`. The disposable PostgreSQL upgrade workflow passed on rerun (`41568054607`): legacy reservation backfill, table grants, and the existing approval/submission/finality lifecycle checks all passed. Vercel deployment check is separately blocked by the Hobby team's build-rate limit. Current Preview treasury remains 5 NEAR limit, 0.001 NEAR spent, zero reserved; Production untouched.
+
+
+### Allocation enforcement checkpoint (2026-11-03)
+
+Phase 2 is committed in `supabase/20261103010000_enforce_agent_allocations.sql` (commit `b67c0a43188cb97903d9d395c83522d0a5cffb9e`). It adds the administrator allocation RPC, checks allocation headroom before reservation, updates per-agent and treasury counters atomically on reserve/reject/cancel/final success/failure, preserves exposure through provider submission and `needs_review`, locks allocation rows in lifecycle paths, seeds new agents at zero allocation, and prevents treasury limits from being lowered below total allocations.
+
+The disposable PostgreSQL upgrade workflow passed on commit `bf758fe11e3af31ccdac48890ea606621bd9e824` (run `41568275042`). It applies both allocation migrations to a pre-V1 database and verifies legacy backfill, zero-allocation provisioning, per-agent denial, allocation/treasury ceiling checks, rejection, expired cancellation, failed settlement, NEAR-FINAL failed resolution, and exactly-once executed settlement. This is CI evidence on disposable PostgreSQL, not yet a Preview Supabase deployment.
+
+The migration pair has not been applied to the connected Preview or Production Supabase projects. API/dashboard integration and Preview verification remain pending. Vercel deployment remains blocked by the Hobby build-rate limit.
