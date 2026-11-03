@@ -769,9 +769,9 @@ export default function Home() {
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
         {dashboard && <nav className="dashboard-nav" aria-label="Dashboard views" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
           {[
-            ["overview", "01 / Overview"], ["treasury", "02 / Treasury"], ["agents", "03 / Agents"], ["recipients", "04 / Recipients"],
-            ["payments", "05 / Transfers"], ["security", "06 / Audit trail"], ["system", "07 / System"], ["developer", "08 / API test"], ["access", "09 / Credentials"]
-          ].map(([view, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}>{label}</button>)}
+            ["overview", "01", "Overview"], ["treasury", "02", "Treasury"], ["agents", "03", "Agents"], ["recipients", "04", "Recipients"],
+            ["payments", "05", "Transfers"], ["security", "06", "Audit trail"], ["system", "07", "System"], ["developer", "08", "API test"], ["access", "09", "Credentials"]
+          ].map(([view, number, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}><span className="nav-index">{number}</span><span>{label}</span></button>)}
         </nav>}
         <div hidden={activeView !== "system"}>
         <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
