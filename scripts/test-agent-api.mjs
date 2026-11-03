@@ -222,6 +222,8 @@ const mock = createServer(async (req, res) => {
       if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
       row.status = "rejected";
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      const allocation = allocations.get(row.agentId);
+      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_rejected", target_id: body.p_request_id, details: {} });
       return send(res, 200, { request_id: body.p_request_id, status: "rejected" });
     }
@@ -281,6 +283,8 @@ const mock = createServer(async (req, res) => {
       }
       row.status = "cancelled";
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      const allocation = allocations.get(row.agentId);
+      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "expired_transfer_cancelled", target_id: body.p_request_id, details: { reason: body.p_reason } });
       return send(res, 200, { request_id: body.p_request_id, status: "cancelled" });
     }
@@ -293,6 +297,8 @@ const mock = createServer(async (req, res) => {
       row.status = "failed";
       row.lastError = body.p_reason;
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+      const allocation = allocations.get(row.agentId);
+      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_resolved_failed_final", target_id: body.p_request_id, details: { reason: body.p_reason, evidence_reference: body.p_evidence_reference } });
       return send(res, 200, { request_id: body.p_request_id, status: "failed" });
     }
@@ -333,6 +339,8 @@ const mock = createServer(async (req, res) => {
       if (policy.p_max_transfer_yocto && amount > BigInt(policy.p_max_transfer_yocto)) return send(res, 200, { created: false, status: "blocked", reason: "agent_per_transfer_limit" });
       const recipientAuth = recipientAuthorizations.get(`${body.p_agent_id}|${body.p_recipient}`);
       if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 200, { created: false, status: "blocked", reason: "recipient_not_authorized" });
+      const allocation = allocations.get(body.p_agent_id);
+      if (!allocation || BigInt(allocation.spent_yocto) + BigInt(allocation.reserved_yocto) + amount > BigInt(allocation.allocation_limit_yocto)) return send(res, 200, { created: false, status: "blocked", reason: "agent_allocation_exceeded" });
       const committed = BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto);
       if (committed + amount > BigInt(mockBudget.total_limit_yocto)) {
         return send(res, 200, { created: false, status: "blocked", request_id: body.p_request_id });
@@ -342,6 +350,7 @@ const mock = createServer(async (req, res) => {
         agentId: body.p_agent_id, status: "awaiting_approval", txHash: null, providerRequestId: null, approvalExpiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
+      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) + amount).toString();
       return send(res, 200, { created: true, status: "awaiting_approval", request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
@@ -362,6 +371,17 @@ const mock = createServer(async (req, res) => {
       const body = await readJson(req);
       const row = reservations.get(body.p_request_id);
       if (!row) return send(res, 400, { message: "reservation_not_found" });
+      if (["reserved", "needs_review"].includes(row.status) && body.p_outcome === "executed") {
+        mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+        mockBudget.spent_yocto = (BigInt(mockBudget.spent_yocto) + BigInt(row.amount)).toString();
+        const allocation = allocations.get(row.agentId);
+        allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
+        allocation.spent_yocto = (BigInt(allocation.spent_yocto) + BigInt(row.amount)).toString();
+      } else if (["reserved", "needs_review"].includes(row.status) && body.p_outcome === "failed") {
+        mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
+        const allocation = allocations.get(row.agentId);
+        allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
+      }
       row.status = body.p_outcome;
       row.txHash = body.p_tx_hash ?? null;
       row.lastError = body.p_error ?? null;
@@ -566,6 +586,21 @@ try {
   assert(response.status === 200 && payload.token && payload.token !== oldDemoToken && adminAudit.some(entry => entry.action === "agent_credential_rotated"), "credential rotation invalidates old key and writes audit entry");
   response = await postTransfer({ token: oldDemoToken, requestId: "test-old-demo-token-001" });
   assert(response.status === 401, "rotated credential is no longer accepted");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "research-agent", allocationLimitYocto: "2500000000000000000000000" })
+  });
+  assert(response.status === 200, "admin can rebalance an agent allocation to make room for a newly provisioned agent");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/allocation`, {
+    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ id: "demo-agent", allocationLimitYocto: "1000000000000000000000000" })
+  });
+  assert(response.status === 200, "new agent receives spending authority only after explicit allocation");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "demo-agent", accountId: "recipient.near" })
+  });
+  assert(response.status === 200, "new agent receives recipient authorization only after explicit admin action");
   response = await postTransfer({ token: payload.token, requestId: "test-new-demo-token-001" });
   const replacementBody = await response.text();
   assert(response.status === 202 && replacementBody.length > 0, `replacement credential reaches transfer lifecycle (HTTP ${response.status}; body: ${replacementBody || "<empty>"})`);
