@@ -103,8 +103,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...reservation, agentId: identity.agentId }, { status: 403 });
   }
 
-  // V1 never calls OutLayer from an agent request. Every transfer waits for
-  // administrator approval; only the admin approval endpoint can submit it.
   if (reservation?.created === true && reservation.status === "awaiting_approval") {
     return NextResponse.json({
       status: "awaiting_approval",
@@ -114,10 +112,109 @@ export async function POST(request: NextRequest) {
     }, { status: 202 });
   }
 
-  await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
+  // Only a newly-created, policy-authorized reservation can reach the provider.
+  // Idempotent replays never submit a second provider request.
+  if (reservation?.created !== true || reservation.status !== "reserved" || reservation.auto_approved !== true) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
+    return NextResponse.json({
+      status: reservation?.status ?? "already_processed",
+      agentId: identity.agentId,
+      requestId
+    }, { status: 409 });
+  }
+
+  const { data: recipientGrant, error: recipientError } = await db
+    .from("agent_authorized_recipients")
+    .select("status,expires_at")
+    .eq("agent_id", identity.agentId)
+    .eq("account_id", to)
+    .maybeSingle();
+  if (recipientError || !recipientGrant || recipientGrant.status !== "active" ||
+      (recipientGrant.expires_at && Date.parse(recipientGrant.expires_at) <= Date.now())) {
+    await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "failed", p_tx_hash: null, p_error: "recipient_authorization_changed_before_submission"
+    });
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId, eventType: "transfer_auto_submission_blocked",
+      requestId, details: { reason: "recipient_not_authorized_at_submission" }
+    });
+    return NextResponse.json({ status: "blocked", reason: "recipient_not_authorized" }, { status: 403 });
+  }
+
+  let config: ReturnType<typeof getOutLayerConfig>;
+  try {
+    config = getOutLayerConfig();
+    const addressResponse = await fetch(`${config.baseUrl}/wallet/v1/address?chain=near`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${config.apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!addressResponse.ok) throw new Error("outlayer_signer_unavailable");
+    const addressBody = await addressResponse.json().catch(() => null) as Record<string, unknown> | null;
+    const actualAddress = addressBody && (
+      typeof addressBody.executor_account_id === "string" ? addressBody.executor_account_id :
+      typeof addressBody.address === "string" ? addressBody.address :
+      typeof addressBody.near_address === "string" ? addressBody.near_address :
+      typeof addressBody.account_id === "string" ? addressBody.account_id : null
+    );
+    if (!actualAddress || actualAddress !== config.nearAddress) throw new Error("outlayer_signer_mismatch");
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "outlayer_signer_unavailable";
+    await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null, p_error: reason
+    });
+    return NextResponse.json({ status: "needs_review", requestId, reason }, { status: 202 });
+  }
+
+  let txHash: string | null = null;
+  let providerRequestId: string | null = null;
+  let reason = "outlayer_response_unknown";
+  try {
+    const result = await transferNear(to, amountYocto);
+    txHash = typeof result.body.tx_hash === "string" ? result.body.tx_hash : null;
+    providerRequestId = typeof result.body.request_id === "string"
+      ? result.body.request_id
+      : typeof result.body.requestId === "string" ? result.body.requestId : null;
+    if (result.httpStatus >= 200 && result.httpStatus < 300 && txHash) {
+      reason = "awaiting_onchain_confirmation";
+    } else if (result.httpStatus === 422 && result.body.error === "onchain_tx_failed" && txHash) {
+      reason = "awaiting_onchain_confirmation_after_provider_revert";
+    } else if (result.httpStatus >= 200 && result.httpStatus < 300 && providerRequestId) {
+      reason = "unverified_native_transfer_response";
+    } else {
+      reason = `unclassified_outlayer_response_${result.httpStatus}`;
+    }
+  } catch {
+    reason = "outlayer_timeout_or_connection_error";
+  }
+
+  let ledgerError: { message: string } | null = null;
+  if (txHash || providerRequestId) {
+    const { error: writeError } = await db.rpc("record_outlayer_submission", {
+      p_request_id: requestId, p_tx_hash: txHash,
+      p_provider_request_id: providerRequestId, p_error: reason
+    });
+    ledgerError = writeError;
+  } else {
+    const { error: writeError } = await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review",
+      p_tx_hash: null, p_error: reason
+    });
+    ledgerError = writeError;
+  }
+
+  await recordSecurityEvent({
+    actorAgentId: identity.agentId, eventType: "transfer_auto_submitted",
+    requestId, details: { providerRequestId, txHash, reason }
+  });
+
   return NextResponse.json({
-    status: reservation?.status ?? "already_processed",
+    status: "needs_review",
     agentId: identity.agentId,
-    requestId
-  }, { status: 409 });
+    requestId,
+    txHash,
+    providerRequestId,
+    reason: ledgerError ? "ledger_finalisation_failed" : reason
+  }, { status: 202 });
 }
