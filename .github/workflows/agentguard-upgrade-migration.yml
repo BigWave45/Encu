@@ -409,9 +409,14 @@ jobs:
               RAISE EXCEPTION 'manual_exception_consumed_autonomous_allowance';
             END IF;
             IF (SELECT count(*) FROM public.spend_reservations
-                WHERE request_id IN ('rolling-auto-001','rolling-manual-does-not-consume-001','rolling-aged-out-001')
-                  AND auto_approved = true) <> 3 THEN
+                WHERE request_id IN ('rolling-auto-001','rolling-manual-does-not-consume-001')
+                  AND auto_approved = true) <> 2 THEN
               RAISE EXCEPTION 'rolling_autonomous_reservations_not_recorded';
+            END IF;
+            IF (SELECT count(*) FROM public.spend_reservations
+                WHERE request_id = 'rolling-aged-out-001'
+                  AND auto_approved = false) <> 1 THEN
+              RAISE EXCEPTION 'aged_out_allowance_not_reapplied';
             END IF;
           END
           $rolling_allowance$;
