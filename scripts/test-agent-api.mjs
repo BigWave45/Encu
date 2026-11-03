@@ -903,6 +903,11 @@ try {
 
   // Provider HTTP success with a request ID but no transaction hash remains
   // reserved and can recover the hash through provider status without settlement.
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "nohash.test", label: "Provider no-hash test recipient" })
+  });
+  assert(response.status === 200, "admin authorizes the no-hash provider test recipient");
   const providerBeforeNoHash = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-provider-nohash-001", to: "nohash.test", amount: "10000000000000000000000" });
   payload = await response.json();
