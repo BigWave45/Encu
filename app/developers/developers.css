@@ -86,14 +86,19 @@
 .developer-error { border-color:#744a48; background:#2b191a; color:var(--dev-danger); }
 .developer-panel > p:first-of-type { margin-top:7px; }
 .developer-grid > aside {
-  position:sticky; top:22px; padding:25px; background:#111d24d9;
+  position:sticky; top:22px; padding:25px;
+  background:#f7f8f5; border-color:#dce4da; color:#203027;
+  box-shadow:0 18px 48px #0003;
 }
-.developer-grid > aside h2 { font-size:16px; }
-.developer-grid > aside p { padding:13px 0; margin:0; border-top:1px solid #263641; }
+.developer-grid > aside h2 { color:#17251d; font-size:16px; font-weight:760; }
+.developer-grid > aside p {
+  padding:13px 0; margin:0; border-top:1px solid #dce4da;
+  color:#435348; font-size:13px; line-height:1.7;
+}
 .developer-grid > aside p:first-of-type { margin-top:12px; }
 .developer-grid > aside .developer-footnote {
-  margin-top:12px; padding:14px; border:1px solid #30443f; border-radius:8px;
-  background:#14231f; color:#b4d6ca; font-size:11px;
+  margin-top:12px; padding:14px; border:1px solid #d7e0d5; border-radius:8px;
+  background:#eaf0e7; color:#34483a; font-size:11px; line-height:1.65;
 }
 .developer-list { display:grid; gap:13px; margin-top:22px; }
 .developer-agent {
