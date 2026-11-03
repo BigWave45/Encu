@@ -1002,16 +1002,16 @@ export default function Home() {
           <div hidden={activeView !== "agents"}>
           <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div className="bulk-toolbar">
-            <span>{selectedAgentIds.length} agents selected</span>
+            <span>{selectedAgentIds.length} agents selected · up to 20 per batch</span>
             <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(true)}>Activate selected</button>
-            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(false)}>Deny / deactivate selected</button>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(false)}>Deactivate selected</button>
             <button type="button" disabled={bulkBusy || !selectedAgentIds.length} onClick={() => setSelectedAgentIds([])}>Clear</button>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="console-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead><tr><th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>Select</th>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
               <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
-                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}><input type="checkbox" aria-label={"Select agent " + agent.id} disabled={agent.id === "primary" || bulkBusy} checked={selectedAgentIds.includes(agent.id)} onChange={event => setSelectedAgentIds(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /></td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}><input type="checkbox" aria-label={"Select agent " + agent.id} disabled={agent.id === "primary" || bulkBusy || (!selectedAgentIds.includes(agent.id) && selectedAgentIds.length >= 20)} checked={selectedAgentIds.includes(agent.id)} onChange={event => setSelectedAgentIds(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /></td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.id}</td>
                 <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id || bulkBusy || !adminToken.trim()} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
