@@ -16,6 +16,10 @@ type DeveloperAgent = {
 };
 
 type AgentResponse = { status?: string; agent?: { id: string; name: string }; token?: string; warning?: string; error?: string };
+type DeveloperTransaction = {
+  requestId: string; agentId: string; recipient: string; amountYocto: string; status: string;
+  txHash: string | null; providerRequestId: string | null; lastError: string | null; createdAt: string;
+};
 
 function near(value: string | null | undefined) {
   if (!value) return "Not configured";
@@ -37,6 +41,9 @@ export default function DeveloperPortal() {
   const [authMessage, setAuthMessage] = useState("");
   const [authError, setAuthError] = useState("");
   const [agents, setAgents] = useState<DeveloperAgent[]>([]);
+  const [transactions, setTransactions] = useState<DeveloperTransaction[]>([]);
+  const [transactionsBusy, setTransactionsBusy] = useState(false);
+  const [transactionsError, setTransactionsError] = useState("");
   const [agentsBusy, setAgentsBusy] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -69,6 +76,25 @@ export default function DeveloperPortal() {
     }
   }, []);
 
+  const loadTransactions = useCallback(async (accessToken: string) => {
+    setTransactionsBusy(true);
+    setTransactionsError("");
+    try {
+      const response = await fetch("/api/developer/transactions", {
+        headers: { authorization: `Bearer ${accessToken}` },
+        cache: "no-store"
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not load transaction activity.");
+      setTransactions(body.transactions ?? []);
+    } catch (error) {
+      setTransactionsError(error instanceof Error ? error.message : "Could not load transaction activity.");
+      setTransactions([]);
+    } finally {
+      setTransactionsBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -84,19 +110,27 @@ export default function DeveloperPortal() {
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
       setSession(data.session);
-      if (data.session) void loadAgents(data.session.access_token);
+      if (data.session) {
+        void loadAgents(data.session.access_token);
+        void loadTransactions(data.session.access_token);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!alive) return;
       setSession(nextSession);
-      if (nextSession) void loadAgents(nextSession.access_token);
-      else setAgents([]);
+      if (nextSession) {
+        void loadAgents(nextSession.access_token);
+        void loadTransactions(nextSession.access_token);
+      } else {
+        setAgents([]);
+        setTransactions([]);
+      }
     });
     return () => {
       alive = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadAgents]);
+  }, [loadAgents, loadTransactions]);
 
   async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -115,6 +149,7 @@ export default function DeveloperPortal() {
         if (data.session) {
           setSession(data.session);
           await loadAgents(data.session.access_token);
+          await loadTransactions(data.session.access_token);
           setAuthMessage("Account created. Your developer workspace is ready.");
         } else {
           setAuthMessage("Account created. Check your email and confirm your address before signing in.");
@@ -124,6 +159,7 @@ export default function DeveloperPortal() {
         if (error) throw error;
         setSession(data.session);
         await loadAgents(data.session.access_token);
+        await loadTransactions(data.session.access_token);
         setAuthMessage("Signed in.");
       }
     } catch (error) {
@@ -138,6 +174,7 @@ export default function DeveloperPortal() {
     await client.auth.signOut();
     setSession(null);
     setAgents([]);
+    setTransactions([]);
     setIssuedToken("");
     setAuthMessage("Signed out.");
   }
@@ -300,6 +337,27 @@ export default function DeveloperPortal() {
                   );
                 })}
               </div>
+              <section className="developer-activity" aria-label="Recent transaction activity">
+                <div className="developer-activity-head">
+                  <div><span className="developer-section-kicker">ACTIVITY</span><h2>Recent transactions</h2></div>
+                  <button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => session && void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh"}</button>
+                </div>
+                {transactionsError && <p className="developer-error" role="alert">{transactionsError}</p>}
+                {transactionsBusy && transactions.length === 0 && <p>Loading transaction activity…</p>}
+                {!transactionsBusy && !transactionsError && transactions.length === 0 && <div className="developer-empty"><strong>No transactions yet</strong><span>Requests made by your agents will appear here.</span></div>}
+                {transactions.length > 0 && <div className="developer-activity-list">
+                  {transactions.map(item => <article className="developer-transaction" key={item.requestId}>
+                    <div className="developer-transaction-main">
+                      <div><strong>{near(item.amountYocto)}</strong><span>NEAR · {item.agentId}</span></div>
+                      <span className={`developer-status status-${item.status.replace(/[^a-z0-9_-]/g, "-")}`}>{item.status.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="developer-transaction-meta"><span>To {item.recipient}</span><time>{new Date(item.createdAt).toLocaleString()}</time></div>
+                    {item.txHash && <code className="developer-tx-reference">TX {item.txHash}</code>}
+                    {item.lastError && <p className="developer-transaction-error">{item.lastError}</p>}
+                  </article>)}
+                </div>}
+                <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
+              </section>
             </section>
             <aside className="developer-panel">
               <h2>Configure bounded execution</h2>
