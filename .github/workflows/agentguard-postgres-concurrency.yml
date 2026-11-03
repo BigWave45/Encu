@@ -210,12 +210,58 @@ jobs:
       - name: Run two simultaneous reservations
         run: |
           set -euo pipefail
+          # First isolate the shared-treasury guard from per-agent allocation.
+          # This disposable fixture intentionally gives each agent 3 NEAR allocation
+          # against a 5 NEAR treasury. Both requests are individually eligible;
+          # only the shared treasury can reject the second reservation.
+          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres -c "UPDATE public.agent_allocations SET allocation_limit_yocto=3000000000000000000000000 WHERE agent_id IN ('primary','research-agent');"
+          shared_req_a="ag-shared-budget-${suffix}-primary"
+          shared_req_b="ag-shared-budget-${suffix}-research"
+          shared_amount="3000000000000000000000000"
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${shared_req_a}', ${shared_amount}, 'agentguard-test.near', 'primary');" > /tmp/agentguard-shared-a.json &
+          shared_pid_a=$!
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${shared_req_b}', ${shared_amount}, 'agentguard-test.near', 'research-agent');" > /tmp/agentguard-shared-b.json &
+          shared_pid_b=$!
+          wait "$shared_pid_a"
+          wait "$shared_pid_b"
+          cat /tmp/agentguard-shared-a.json /tmp/agentguard-shared-b.json
+          shared_created=$(cat /tmp/agentguard-shared-a.json /tmp/agentguard-shared-b.json | jq -s '[.[] | select(.created == true)] | length')
+          shared_budget_blocked=$(cat /tmp/agentguard-shared-a.json /tmp/agentguard-shared-b.json | jq -s '[.[] | select(.reason == "total_budget_exceeded" and .status == "blocked")] | length')
+          test "$shared_created" = "1"
+          test "$shared_budget_blocked" = "1"
+          shared_winner=$(cat /tmp/agentguard-shared-a.json /tmp/agentguard-shared-b.json | jq -r 'select(.created == true) | .request_id')
+          echo "PASS: both agents had sufficient individual allocation; treasury alone blocked the second 3 NEAR reservation."
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres <<SQL
+          DO \\$\\$
+          DECLARE reserved numeric; spent numeric; rows_found integer;
+          BEGIN
+            SELECT reserved_yocto,spent_yocto INTO reserved,spent FROM public.agent_budgets WHERE id='default';
+            SELECT count(*) INTO rows_found FROM public.spend_reservations
+              WHERE request_id IN ('${shared_req_a}','${shared_req_b}');
+            IF reserved<>${shared_amount} OR spent<>0 OR rows_found<>1 THEN
+              RAISE EXCEPTION 'shared_treasury_race_mismatch: reserved=%, spent=%, rows=%',reserved,spent,rows_found;
+            END IF;
+          END
+          \\$\\$
+          SQL
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reject_agent_transfer('${shared_winner}','admin','shared treasury concurrency test cleanup');" | jq -e '.status == "rejected"' >/dev/null
+          export PGPASSWORD=agentguard_test_only
+          psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT reserved_yocto::text || ':' || spent_yocto::text FROM public.agent_budgets WHERE id='default';" | grep -qx '0:0'
+          echo "PASS: isolated shared-treasury race cleanup released the winning reservation."
+          export PGPASSWORD=service_role_test_only
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',2000000000000000000000000,'admin');" >/dev/null
+          psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',3000000000000000000000000,'admin');" >/dev/null
+
           # Rebalance without changing total treasury authority. The primary
           # receives 4 NEAR and the research agent 1 NEAR for this race.
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('research-agent',1000000000000000000000000,'admin');" >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agent_allocation('primary',4000000000000000000000000,'admin');" >/dev/null
-          suffix="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           req_a="ag-concurrency-${suffix}-primary"
           req_b="ag-concurrency-${suffix}-research"
           amount="3000000000000000000000000"
