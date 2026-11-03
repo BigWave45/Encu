@@ -3,7 +3,7 @@ import { agentRateLimitResponse } from "@/lib/agent-rate-limit";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { getOutLayerConfig } from "@/lib/outlayer";
-import { authenticateAgent } from "@/lib/agent-auth";
+import { authenticateAdmin, authenticateAgent } from "@/lib/agent-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +20,8 @@ type ProviderRequest = {
 export async function POST(request: NextRequest) {
   let identity: Awaited<ReturnType<typeof authenticateAgent>>;
   try {
-    identity = await authenticateAgent(request.headers.get("authorization"));
+    const authorization = request.headers.get("authorization");
+    identity = authenticateAdmin(authorization) ?? await authenticateAgent(authorization);
   } catch {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
