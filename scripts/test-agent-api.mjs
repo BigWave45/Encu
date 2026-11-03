@@ -18,6 +18,7 @@ const allocations = new Map([
   ["primary", { agent_id: "primary", allocation_limit_yocto: (2n * 10n ** 24n).toString(), spent_yocto: "0", reserved_yocto: "0", updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" }],
   ["research-agent", { agent_id: "research-agent", allocation_limit_yocto: (3n * 10n ** 24n).toString(), spent_yocto: "0", reserved_yocto: "0", updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" }]
 ]);
+const recipientAuthorizations = new Map();
 const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" };
 let mockSignerAddress = "agentguard.testnet";
 let mockBudgetReadError = false;
@@ -77,6 +78,11 @@ const mock = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/rest/v1/agent_allocations") {
       const rows = [...allocations.values()];
+      res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
+      return send(res, 200, rows);
+    }
+    if (req.method === "GET" && url.pathname === "/rest/v1/agent_authorized_recipients") {
+      const rows = [...recipientAuthorizations.values()];
       res.setHeader("content-range", `0-${Math.max(0, rows.length - 1)}/${rows.length}`);
       return send(res, 200, rows);
     }
@@ -170,6 +176,28 @@ const mock = createServer(async (req, res) => {
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfers_enabled_changed", target_id: "default", details: { enabled: body.p_enabled } });
       return send(res, 200, { transfers_enabled: body.p_enabled });
     }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/authorize_agent_recipient") {
+      const body = await readJson(req);
+      if (body.p_expires_at && new Date(body.p_expires_at).getTime() <= Date.now()) return send(res, 400, { message: "invalid_recipient_authorization" });
+      const key = `${body.p_agent_id}|${body.p_account_id}`;
+      const existing = recipientAuthorizations.get(key);
+      const row = { agent_id: body.p_agent_id, account_id: body.p_account_id, label: body.p_label, status: "active", authorized_at: new Date().toISOString(), authorized_by: body.p_actor_agent_id, expires_at: body.p_expires_at, revoked_at: null, revoked_by: null };
+      recipientAuthorizations.set(key, row);
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "recipient_authorized", target_id: body.p_agent_id, details: { account_id: body.p_account_id } });
+      return send(res, 200, { agent_id: body.p_agent_id, account_id: body.p_account_id, label: body.p_label, status: "active", expires_at: body.p_expires_at, created: !existing });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/revoke_agent_recipient") {
+      const body = await readJson(req);
+      const row = recipientAuthorizations.get(`${body.p_agent_id}|${body.p_account_id}`);
+      if (!row) return send(res, 400, { message: "recipient_authorization_not_found" });
+      const related = [...reservations.values()].filter(item => item.agentId === body.p_agent_id && item.recipient === body.p_account_id);
+      const pending = related.filter(item => item.status === "awaiting_approval" && !item.claimed).length;
+      const claimed = related.filter(item => ["reserved", "needs_review"].includes(item.status) && item.claimed && !item.txHash && !item.providerRequestId).length;
+      const submitted = related.filter(item => ["reserved", "needs_review"].includes(item.status) && (item.txHash || item.providerRequestId)).length;
+      row.status = "revoked"; row.revoked_at = new Date().toISOString(); row.revoked_by = body.p_actor_agent_id;
+      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "recipient_revoked", target_id: body.p_agent_id, details: { account_id: body.p_account_id } });
+      return send(res, 200, { agent_id: body.p_agent_id, account_id: body.p_account_id, status: "revoked", pending_approvals: pending, claimed_inflight: claimed, provider_submitted: submitted });
+    }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_policy") {
       const body = await readJson(req);
       agentPolicies.set(body.p_agent_id, body);
@@ -181,6 +209,8 @@ const mock = createServer(async (req, res) => {
       const row = reservations.get(body.p_request_id);
       if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
       if (!systemControls.transfers_enabled) return send(res, 400, { message: "emergency_stop" });
+      const recipientAuth = recipientAuthorizations.get(`${row.agentId}|${row.recipient}`);
+      if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 400, { message: "recipient_not_authorized" });
       row.status = "reserved";
       row.claimed = true;
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_approved", target_id: body.p_request_id, details: {} });
@@ -301,7 +331,8 @@ const mock = createServer(async (req, res) => {
       const policy = agentPolicies.get(body.p_agent_id) ?? {};
       const amount = BigInt(body.p_amount_yocto);
       if (policy.p_max_transfer_yocto && amount > BigInt(policy.p_max_transfer_yocto)) return send(res, 200, { created: false, status: "blocked", reason: "agent_per_transfer_limit" });
-      if (policy.p_allowed_recipients !== null && policy.p_allowed_recipients !== undefined && !policy.p_allowed_recipients.includes(body.p_recipient)) return send(res, 200, { created: false, status: "blocked", reason: "recipient_not_allowed" });
+      const recipientAuth = recipientAuthorizations.get(`${body.p_agent_id}|${body.p_recipient}`);
+      if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 200, { created: false, status: "blocked", reason: "recipient_not_authorized" });
       const committed = BigInt(mockBudget.spent_yocto) + BigInt(mockBudget.reserved_yocto);
       if (committed + amount > BigInt(mockBudget.total_limit_yocto)) {
         return send(res, 200, { created: false, status: "blocked", request_id: body.p_request_id });
@@ -433,11 +464,28 @@ try {
     headers: { authorization: "Bearer admin-token" }
   });
   payload = await response.json();
-  assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2 && payload.allocations?.length === 2, `admin dashboard loads budget, agents and allocation ledger (HTTP ${response.status}: ${JSON.stringify(payload)})`);
+  assert(response.status === 200 && payload.status === "ok" && payload.agents?.length === 2 && payload.allocations?.length === 2 && Array.isArray(payload.recipients), `admin dashboard loads budget, agents, allocations and recipient registry (HTTP ${response.status}: ${JSON.stringify(payload)})`);
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
     headers: { authorization: "Bearer primary-agent-token" }
   });
   assert(response.status === 403, "primary agent credential cannot access admin dashboard");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "recipient.near" })
+  });
+  assert(response.status === 403, "agent credential cannot authorize recipients");
+  for (const accountId of ["recipient.near", "timeout.test", "provider-error.test"]) {
+    response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+      method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+      body: JSON.stringify({ agentId: "primary", accountId, label: accountId === "recipient.near" ? "Primary recipient" : null })
+    });
+    assert(response.status === 200, `admin can authorize exact recipient ${accountId}`);
+  }
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "expired.test", expiresAt: new Date(Date.now() - 60000).toISOString() })
+  });
+  assert(response.status === 400, "expired recipient authorization is rejected");
   response = await postTransfer({ token: "admin-token", requestId: "test-admin-token-transfer-001" });
   assert(response.status === 401, "administrator credential cannot submit agent transfers");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/dashboard`, {
@@ -575,33 +623,49 @@ try {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
     body: JSON.stringify({
       id: "primary", maxTransferYocto: "2000000000000000000000000",
-      dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: ["recipient.near"]
+      dailyLimitYocto: null, weeklyLimitYocto: null
     })
   });
-  assert(response.status === 200, "admin can configure per-agent spending and recipient policy");
+  assert(response.status === 200, "admin can configure per-agent spending limits without mutating recipient authorization");
   const policyReserveCount = counters.reserve;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-recipient-001", to: "unlisted.near" });
   payload = await response.json();
-  assert(response.status === 403 && payload.reason === "recipient_not_allowed", "recipient allowlist blocks an unlisted recipient");
+  assert(response.status === 403 && payload.reason === "recipient_not_authorized", "unregistered exact account ID is denied");
   assert(counters.reserve === policyReserveCount + 1, "recipient policy is checked in the reservation transaction");
   response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-limit-001", amount: "3000000000000000000000000" });
   payload = await response.json();
   assert(response.status === 403 && payload.reason === "agent_per_transfer_limit", "per-agent transfer cap blocks an over-limit request");
 
-  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
-    method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: [] })
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", label: "Temporary recipient" })
   });
-  assert(response.status === 200, "admin can configure an explicit empty recipient allowlist");
-  response = await postTransfer({ token: "agent-one-token", requestId: "test-policy-deny-all-001", to: "recipient.near" });
+  assert(response.status === 200, "admin can authorize a recipient before revocation test");
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-recipient-revoke-001", to: "revoke.test" });
+  assert(response.status === 202, "authorized recipient can receive a pending transfer request");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "DELETE", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", reason: "test revoke" })
+  });
+  assert(response.status === 403, "agent credential cannot revoke recipients");
+  response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "DELETE", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "revoke.test", reason: "test revocation" })
+  });
   payload = await response.json();
-  assert(response.status === 403 && payload.reason === "recipient_not_allowed", "an empty recipient allowlist blocks every recipient");
+  assert(response.status === 200 && payload.recipient.pending_approvals === 1, "revocation reports pending approvals without releasing reservations");
+  response = await approveTransfer("test-recipient-revoke-001");
+  payload = await response.json();
+  assert(response.status === 409 && payload.reason === "recipient_not_authorized", "revoked recipient cannot pass approval revalidation");
+  assert(reservations.get("test-recipient-revoke-001").status === "awaiting_approval", "revocation leaves pending reservation intact");
+  response = await approveTransfer("test-recipient-revoke-001", "reject");
+  assert(response.status === 200, "admin can reject a pending request after recipient revocation");
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/policy`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null, allowedRecipients: null })
+    body: JSON.stringify({ id: "primary", maxTransferYocto: null, dailyLimitYocto: null, weeklyLimitYocto: null })
   });
-  assert(response.status === 200, "admin can restore unrestricted per-agent policy");
+  assert(response.status === 200, "admin can update per-agent limits without changing recipient authorizations");
 
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/transfers`, {
     method: "PATCH", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
