@@ -1,4 +1,4 @@
-# AgentGuard dashboard control inventory
+# ENCU dashboard control inventory
 
 Audit target: `agentguard/build-v1`  
 Audit date: 2026-11-03  
@@ -126,7 +126,7 @@ The navigation can be a compact left rail on desktop and a compact top/tab navig
 The existing dashboard remains the administrator control plane if a native NEAR treasury contract is added. Do not remove current OutLayer controls or create duplicate policy editors.
 
 When a native contract is implemented, add a treasury execution configuration/status panel showing:
-- Selected backend for that treasury (OutLayer or native AgentGuard contract).
+- Selected backend for that treasury (OutLayer or native ENCU contract).
 - Treasury contract account ID and network.
 - Contract deployment/version and verification status.
 - Restricted function-call key status and allowed methods.
