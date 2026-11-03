@@ -283,8 +283,9 @@ export default function Home() {
 
   async function decideTransfer(requestId: string, action: "approve" | "reject") {
     if (!adminToken.trim()) return;
-    const reason = action === "reject" ? window.prompt("Reason for rejecting this transfer?") : null;
-    if (action === "reject" && (!reason || reason.trim().length < 3)) return;
+    // Rejection is a single-tap admin action. Avoid window.prompt(), which is
+    // unreliable in embedded mobile browsers. The API records this reason.
+    const reason = action === "reject" ? "Rejected by admin. No transfer was submitted." : null;
     setReservationAction(requestId);
     setReservationActionError("");
     try {
