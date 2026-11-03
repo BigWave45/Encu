@@ -219,7 +219,7 @@ export default function DeveloperPortal() {
       <div className="developer-container">
         <header className="developer-topbar">
           <Link className="developer-brand" href="/">ENCU</Link>
-          <Link href="/">Operator console</Link>
+          <span>Developer control plane</span>
         </header>
 
         <div className="developer-eyebrow">Developer workspace</div>
@@ -290,7 +290,7 @@ export default function DeveloperPortal() {
                         <div><span>Allocated authority</span><strong>{near(limit)}</strong></div>
                         <div><span>Spent / reserved</span><strong>{near(allocation?.spent_yocto)} / {near(allocation?.reserved_yocto)}</strong></div>
                       </div>
-                      <p>{ready ? "Allocation exists. Operator-managed policy and recipient authorization still determine whether transfers can proceed." : "Awaiting operator configuration. This agent cannot spend from the shared treasury yet."}</p>
+                      <p>{ready ? "Allocation exists. Configure transfer limits, autonomous allowance and authorized recipients below to enable bounded execution." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
@@ -301,7 +301,7 @@ export default function DeveloperPortal() {
               </div>
             </section>
             <aside className="developer-panel">
-              <h2>How execution gets enabled</h2>
+              <h2>Configure bounded execution</h2>
               <p>1. Create your agent and securely store its bearer token.</p>
               <p>2. An ENCU operator reviews the agent and assigns its share of the shared Testnet treasury.</p>
               <p>3. The operator configures transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>

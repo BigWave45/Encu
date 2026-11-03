@@ -90,6 +90,6 @@ export async function POST(request: NextRequest) {
     status: "created",
     agent: { id: data.id, name: data.name, active: data.active, createdAt: data.created_at },
     token,
-    warning: "Copy this agent token now. It cannot be retrieved again. The agent has no spending allocation until an ENCU operator configures one."
+    warning: "Copy this agent token now. It cannot be retrieved again. The agent starts with zero allocation. Configure its allocation and spending policy in your developer workspace before requesting transfers."
   }, { status: 201, headers: { "Cache-Control": "no-store, private" } });
 }
