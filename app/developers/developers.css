@@ -802,3 +802,37 @@
   .developer-activity-summary > div span { font-size: 9px; }
   .developer-activity-summary > div strong { font-size: 18px; }
 }
+
+
+.execution-branch-mark {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-height: 25px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: #FFF0E9;
+  color: #984A25;
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+.execution-policy-icon {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 1px solid #AEB9C6;
+  border-radius: 4px;
+  color: var(--encu-slate);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
