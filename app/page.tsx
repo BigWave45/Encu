@@ -130,8 +130,7 @@ export default function Home() {
   const [rotationAgentId, setRotationAgentId] = useState("");
   const [reservationAction, setReservationAction] = useState<string | null>(null);
   const [reservationActionError, setReservationActionError] = useState("");
-  const [resolutionRequestId, setResolutionRequestId] = useState<string | null>(null);
-  const [resolutionReason, setResolutionReason] = useState("");
+  const [reservationActionMessage, setReservationActionMessage] = useState("");
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [budgetLimit, setBudgetLimit] = useState("");
@@ -311,6 +310,7 @@ export default function Home() {
     const evidenceReference = action === "failed_final" ? txHash : undefined;
     setReservationAction(requestId + ":resolve");
     setReservationActionError("");
+    setReservationActionMessage("");
     try {
       const response = await fetch("/api/admin/reservations/resolve", {
         method: "POST",
@@ -322,8 +322,7 @@ export default function Home() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) setReservationActionError(body.reason ?? body.error ?? "reservation_resolution_failed");
       else {
-        setResolutionRequestId(null);
-        setResolutionReason("");
+        setReservationActionMessage("Expired reservation cancelled. Refreshing the budget and transaction history.");
         await loadDashboard();
       }
     } catch {
@@ -552,17 +551,8 @@ export default function Home() {
           </button>
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
-        {reservationActionError && <p role="alert" style={{ color: "#92400e", marginTop: 16 }}>{reservationActionError}</p>}
-        {resolutionRequestId && <div role="group" aria-label="Confirm expired reservation cancellation" style={{ marginTop: 14, padding: 14, border: "1px solid #cbd5e1", borderRadius: 8, background: "#f8fafc" }}>
-          <strong>Confirm cancellation of expired request</strong>
-          <p style={{ color: "#475569", fontSize: 13 }}>This will release the reservation only if AgentGuard verifies that it is expired, unapproved and has no OutLayer/provider reference or transaction hash.</p>
-          <label htmlFor="resolution-reason" style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Reason for cancellation</label>
-          <input id="resolution-reason" value={resolutionReason} onChange={e => setResolutionReason(e.target.value)} placeholder="Expired request was never submitted" style={inputStyle} />
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button type="button" disabled={resolutionReason.trim().length < 3 || reservationAction !== null} onClick={() => resolveReservation(resolutionRequestId, "cancel_expired", resolutionReason)} style={{ ...buttonStyle, marginTop: 0 }}>Confirm cancellation</button>
-            <button type="button" disabled={reservationAction !== null} onClick={() => { setResolutionRequestId(null); setResolutionReason(""); }} style={{ ...buttonStyle, marginTop: 0, background: "#64748b" }}>Dismiss</button>
-          </div>
-        </div>}
+        {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
+        {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
           <strong>System health</strong>
           <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
@@ -653,7 +643,7 @@ export default function Home() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
                   <button type="button" disabled={reservationAction === item.requestId || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
-                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => { setResolutionRequestId(item.requestId); setResolutionReason("Expired request was never submitted"); }} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
+                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
                 </div>
               </div>)}
             </div>}
@@ -678,7 +668,7 @@ export default function Home() {
               {item.lastError && <div style={{ color: "#92400e", marginTop: 4 }}>Review: {item.lastError}</div>}
               {item.resolutionReason && <div style={{ color: "#475569", marginTop: 4 }}>Resolution: {item.resolutionReason} · by {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</div>}
               {item.resolutionEvidenceReference && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Evidence: {item.resolutionEvidenceReference}</div>}
-              {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => { setResolutionRequestId(item.requestId); setResolutionReason("Expired request was never submitted"); }} style={{ ...buttonStyle, marginTop: 10, fontSize: 12, padding: "8px 10px", background: "#92400e" }}>{reservationAction === item.requestId + ":resolve" ? "Cancelling expired reservation…" : "Cancel expired, unsubmitted request"}</button>}
+              {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 10, fontSize: 12, padding: "8px 10px", background: "#92400e" }}>{reservationAction === item.requestId + ":resolve" ? "Cancelling expired reservation…" : "Cancel expired, unsubmitted request"}</button>}
               {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 {item.providerRequestId && <button type="button"
                   disabled={reservationAction !== null}
