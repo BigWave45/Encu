@@ -100,6 +100,9 @@ begin
   if v_allocation.spent_yocto + v_allocation.reserved_yocto > v_allocation.allocation_limit_yocto then
     return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'agent_allocation_exceeded');
   end if;
+  if v_budget.spent_yocto + v_budget.reserved_yocto > v_budget.total_limit_yocto then
+    return pg_catalog.jsonb_build_object('claimed', false, 'reason', 'total_budget_exceeded');
+  end if;
 
   select coalesce(sum(amount_yocto), 0) into v_auto_committed
   from public.spend_reservations
