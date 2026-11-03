@@ -1,37 +1,74 @@
 # AgentGuard
 
-AgentGuard is a transaction-control gateway for AI agents making NEAR transfers on the explicitly selected network through OutLayer. Multiple independently authenticated agents share one spending budget. AgentGuard reserves budget before calling the provider, attributes each reservation to the authenticated agent, blocks replayed requests, and reconciles submitted transfers against NEAR finality before settling the ledger.
+AgentGuard is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
 
-## Current scope
+## V1 release scope — 2026-11-03
 
-- NEAR native-token transfers through one configured OutLayer wallet on the selected network (testnet by default; mainnet requires explicit configuration).
-- Multiple agents with separate bearer credentials and one shared budget.
-- Atomic budget reservation in Supabase before a provider call.
-- Request-ID idempotency and conflict detection.
-- Per-agent reservation attribution.
-- NEAR FINAL transaction reconciliation.
-- Admin-only dashboard, emergency stop, per-agent hard allocations, recipient controls, rolling spend limits and a separate cumulative autonomous allowance. Requests inside the allowance are eligible for automatic submission; requests outside it require administrator approval.
-- Persistent per-agent rate limiting, recipient allowlists and rolling spend windows.
+**This section defines the current hackathon release boundary and supersedes conflicting historical status notes later in this file.**
 
-This is a testnet V1. It is not a custody provider, smart contract, marketplace, or multi-chain gateway. A transfer has not been confirmed merely because OutLayer accepted a request or returned a transaction hash.
+The current V1 is a **single-operator Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated AgentGuard agents. It is not yet a multi-customer managed SaaS product.
+
+The current implementation includes:
+
+- Separate agent authentication and administrator authentication.
+- One shared treasury spending ceiling and independently enforced per-agent allocations.
+- Atomic reservations across the shared treasury and agent allocation ledgers.
+- Per-agent transfer, rolling spend and cumulative autonomous-execution limits.
+- Exact recipient authorization, expiry and revocation.
+- A treasury-wide emergency stop.
+- Administrator approval for requests outside an agent's configured autonomous allowance.
+- Request idempotency, atomic one-time submission claims and no blind retries after ambiguous provider outcomes.
+- OutLayer submission tracking and independent NEAR FINAL reconciliation before ledger settlement.
+- Administrator controls, transaction history, audit events and provider-policy inspection.
+
+**Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. AgentGuard does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and AgentGuard enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
+
+**Current enforcement boundary:** AgentGuard independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current AgentGuard adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native AgentGuard treasury contract. Therefore V1 does not claim that AgentGuard's policy is enforced by an AgentGuard smart contract on-chain.
 
 ## Architecture
 
 ```text
-Agent
-  -> AgentGuard API
-  -> authenticated agent identity
-  -> atomic policy and shared-budget reservation (Supabase)
-  -> autonomous authorization within admin-set per-agent allowance OR administrator approval
-  -> OutLayer transfer and independent OutLayer wallet-policy evaluation
-  -> NEAR testnet
-  -> NEAR FINAL reconciliation
-  -> settled shared ledger
+Logical AI agent
+  -> AgentGuard API authentication
+  -> AgentGuard policy evaluation
+  -> atomic shared-treasury + per-agent reservation (Supabase)
+  -> bounded autonomous authorization OR administrator approval
+  -> OutLayer wallet transfer/signing and provider wallet policy
+  -> NEAR Testnet
+  -> independent NEAR FINAL verification
+  -> exact-once ledger settlement and audit
 ```
 
-Supabase is the source of truth for the shared budget and reservation ledger. OutLayer is the configured transfer provider. NEAR RPC is used to independently verify final transaction execution.
+Supabase is the authoritative off-chain policy and reservation ledger for this V1. OutLayer is the configured execution provider. NEAR RPC is used to independently verify transaction signer, recipient, amount, action and finality before settlement.
 
-**Product boundary:** OutLayer supplies a TEE-backed custody and wallet-policy boundary. Its owner policy can enforce wallet-wide limits and transaction restrictions before signing. AgentGuard adds a separate application authorization boundary: logical agent identities, per-agent allocations, shared-treasury exposure accounting, request idempotency, exact-recipient authorization, approval workflow, attributable audit and NEAR-finality-based ledger settlement. The current integration uses one OutLayer wallet/API credential and does not map each AgentGuard agent to a distinct OutLayer signer or provider policy. AgentGuard's per-agent allocation ledger is therefore enforced by AgentGuard, while OutLayer's wallet policy is an independent wallet-wide backstop. An administrator can assign each AgentGuard agent a cumulative autonomous allowance separate from its absolute allocation ceiling. An agent may submit automatically only while its request fits within that allowance; excess requests enter AgentGuard's administrator approval queue. OutLayer may still impose a separate wallet approval requirement, so AgentGuard autonomy does not by itself guarantee provider-level unattended execution. The actual Preview wallet policy has not yet been inspected. OutLayer is the only execution provider implemented in V1. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md) for the provider-policy inspection and remaining integration tests.
+## Verification evidence
+
+- The latest recorded CI workflow run, [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507), passed build, lint, TypeScript, API-security and reconciliation test steps on the V1 branch head recorded in the project handoff.
+- A controlled 0.001 NEAR Testnet transfer was independently reconciled to NEAR FINAL and recorded as executed.
+- Automated tests cover shared-budget concurrency, per-agent allocation, recipient authorization/revocation, emergency stop, bounded autonomous execution, approval fallback, idempotency, duplicate-submission prevention and ambiguous provider responses.
+
+These results demonstrate the tested controls and paths. They are not an independent security audit, a proof that every bypass is impossible, or evidence of production/mainnet readiness.
+
+## Explicit V1 exclusions
+
+The following are outside this release and must not be represented as current capabilities:
+
+- Full multi-tenant SaaS onboarding and customer workspace isolation.
+- Individual customer wallet/treasury provisioning.
+- Automated developer deposits, withdrawals or treasury migration.
+- Billing and subscriptions.
+- Native NEAR treasury contract execution.
+- Additional execution providers or multi-chain execution.
+- Production or mainnet deployment.
+- Unrelated features without a verified defect or release requirement.
+
+## Separate native treasury contract investigation
+
+The native NEAR treasury contract is a separate research/design workstream, not part of the current V1 release. The existing design document is a proposal, not implemented code: [native NEAR treasury contract design](docs/native-near-treasury-contract-design.md).
+
+OutLayer's published Agent Custody documentation lists a NEAR contract-call endpoint (`POST /wallet/v1/call`) in addition to native transfers. However, AgentGuard's current adapter calls `POST /wallet/v1/transfer` only. Contract-call support in the provider API does not by itself establish that the current Preview wallet policy permits contract calls, that a secure contract treasury funding model exists, or that AgentGuard's agent identity and authorization can be enforced on-chain. Those points require a separate feasibility and adversarial design review before implementation. See [OutLayer Agent Custody documentation](https://app.outlayer.ai/docs/agent-custody).
+
+The current V1 remains Testnet-only for the hackathon. Mainnet configuration options in the code are not a claim of mainnet readiness.
 
 ## Environment variables
 
@@ -361,7 +398,7 @@ A successful health check confirms service connectivity, not that a transfer lif
 
 AgentGuard is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass AgentGuard to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that AgentGuard replaces.
 
-The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so AgentGuard authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch; its latest API and failure-path test suite is being added to CI and must pass before merge.
+The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so AgentGuard authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
 
 OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. AgentGuard independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
 
@@ -441,7 +478,7 @@ This is the current implementation record. Earlier dated database snapshots abov
 - Per-agent transfer, daily and weekly caps.
 - Exact recipient registry with administrator authorization, expiry and revocation.
 - Revalidation of agent state, recipient authorization, emergency stop and allocation exposure during approval.
-- Mandatory administrator approval before OutLayer submission.
+- Bounded per-agent autonomous execution within the administrator-configured cumulative allowance; requests outside that allowance remain administrator-approval-gated.
 - Request-ID idempotency and conflict protection.
 - Safe rejection and expired unsubmitted-request cancellation.
 - OutLayer submission tracking, signer identity verification and NEAR FINAL reconciliation.
@@ -459,7 +496,7 @@ This is the current implementation record. Earlier dated database snapshots abov
 These results are scoped to the tested commit and isolated environment. Re-check current branch, Preview deployment and database before further mutations.
 
 **Not implemented or not yet fully verified**
-- Full adversarial verification of the autonomous execution and failure paths in the latest branch (CI execution pending).
+- The latest API-security and reconciliation suites passed CI run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507); this does not constitute a complete independent adversarial audit.
 - Immutable policy versioning and policy-version binding on reservations.
 - Risk-based HOLD scoring, review quotas, deduplication and escalation.
 - Native NEAR treasury smart contract and native contract execution adapter.
@@ -469,7 +506,7 @@ These results are scoped to the tested commit and isolated environment. Re-check
 
 ### Execution architecture and provider independence
 
-OutLayer remains the only implemented execution provider. AgentGuard's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates AgentGuard policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify that owner policy through code; this must be inspected and evidenced for the deployed Preview wallet. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
+OutLayer remains the only implemented execution provider. AgentGuard's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates AgentGuard policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
 
 The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated AgentGuard treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
@@ -494,14 +531,14 @@ The first UI pass has widened the single-page layout and added sticky in-page na
 
 ### Next engineering sequence
 
-1. Complete remaining lifecycle and adversarial tests for both ledgers: final success, final failure, safe expiry cancellation, rejection, ambiguous provider submission, replay, recipient revocation, emergency-stop races and exact-once counter changes.
-2. Verify the current Preview deployment SHA, environment and database state. Do not rely on historical README snapshots for live state.
-3. Specify the NEAR treasury contract's authority model, storage, methods, state transitions, event schema and asynchronous transfer settlement.
-4. Build and test the contract in a disposable/local NEAR environment before deploying to testnet.
-5. Implement a separate native-contract execution adapter behind the existing AgentGuard authorization boundary. Preserve the OutLayer adapter.
-6. Reconcile contract events and NEAR FINAL transaction outcomes against the treasury and agent ledgers.
-7. Reorganize the existing dashboard in place, preserving all current controls and clearly displaying the selected execution backend.
-8. Run the full security suite and a controlled, low-value NEAR testnet transfer through the new contract only after explicit approval.
+1. Reconcile the remaining OutLayer V1 backlog against the latest implementation and test evidence; do not repeat completed tests without a reason.
+2. Close the unresolved V1 provider, dual-ledger lifecycle, ambiguous-outcome and dashboard evidence checks.
+3. Improve the existing dashboard only where needed for a clear, reliable hackathon demonstration.
+4. Review the release candidate, CI, migration state and PR diff.
+5. Merge V1 only after its release gates pass; keep Production and mainnet untouched.
+6. Complete the final README and technical documentation from verified implementation and test evidence.
+
+The native treasury contract investigation is a separate design-only workstream. It must not add code, dependencies or release gates to V1. Production Supabase and Production Vercel remain out of scope unless explicitly authorized. Do not initiate another live transfer without explicit approval.
 
 Production Supabase and Production Vercel remain out of scope unless the user explicitly authorizes changes. Do not merge the pull request or initiate another live transfer without authorization.
 
