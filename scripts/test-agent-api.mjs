@@ -219,12 +219,11 @@ const mock = createServer(async (req, res) => {
       const row = recipientAuthorizations.get(`${body.p_agent_id}|${body.p_account_id}`);
       if (!row) return send(res, 400, { message: "recipient_authorization_not_found" });
       const related = [...reservations.values()].filter(item => item.agentId === body.p_agent_id && item.recipient === body.p_account_id);
-      const pending = related.filter(item => item.status === "awaiting_approval" && !item.claimed).length;
       const claimed = related.filter(item => ["reserved", "needs_review"].includes(item.status) && item.claimed && !item.txHash && !item.providerRequestId).length;
       const submitted = related.filter(item => ["reserved", "needs_review"].includes(item.status) && (item.txHash || item.providerRequestId)).length;
       row.status = "revoked"; row.revoked_at = new Date().toISOString(); row.revoked_by = body.p_actor_agent_id;
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "recipient_revoked", target_id: body.p_agent_id, details: { account_id: body.p_account_id } });
-      return send(res, 200, { agent_id: body.p_agent_id, account_id: body.p_account_id, status: "revoked", pending_approvals: pending, claimed_inflight: claimed, provider_submitted: submitted });
+      return send(res, 200, { agent_id: body.p_agent_id, account_id: body.p_account_id, status: "revoked", claimed_inflight: claimed, provider_submitted: submitted });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_policy") {
       const body = await readJson(req);
@@ -243,29 +242,6 @@ const mock = createServer(async (req, res) => {
       agentPolicies.set(body.p_agent_id, policy);
       adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "agent_auto_spend_limit_updated", target_id: body.p_agent_id, details: {} });
       return send(res, 200, { agent_id: body.p_agent_id, auto_spend_limit_yocto: policy.auto_spend_limit_yocto });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/approve_agent_transfer") {
-      const body = await readJson(req);
-      const row = reservations.get(body.p_request_id);
-      if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
-      if (!systemControls.transfers_enabled) return send(res, 400, { message: "emergency_stop" });
-      const recipientAuth = recipientAuthorizations.get(`${row.agentId}|${row.recipient}`);
-      if (!recipientAuth || recipientAuth.status !== "active" || (recipientAuth.expires_at && new Date(recipientAuth.expires_at).getTime() <= Date.now())) return send(res, 400, { code: "P0001", message: "recipient_not_authorized", details: null, hint: null });
-      row.status = "reserved";
-      row.claimed = true;
-      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_approved", target_id: body.p_request_id, details: {} });
-      return send(res, 200, { request_id: body.p_request_id, agent_id: row.agentId, recipient: row.recipient, amount_yocto: row.amount, status: "reserved" });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/reject_agent_transfer") {
-      const body = await readJson(req);
-      const row = reservations.get(body.p_request_id);
-      if (!row || row.status !== "awaiting_approval") return send(res, 400, { message: "approval_not_pending" });
-      row.status = "rejected";
-      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
-      const allocation = allocations.get(row.agentId);
-      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
-      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "transfer_rejected", target_id: body.p_request_id, details: {} });
-      return send(res, 200, { request_id: body.p_request_id, status: "rejected" });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/set_agent_allocation") {
       const body = await readJson(req);
@@ -314,19 +290,6 @@ const mock = createServer(async (req, res) => {
         details: { name: agent.name }
       });
       return send(res, 200, { id: agent.id, name: agent.name, allocation_limit_yocto: "0" });
-    }
-    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/cancel_expired_agent_transfer") {
-      const body = await readJson(req);
-      const row = reservations.get(body.p_request_id);
-      if (!row || row.status !== "awaiting_approval" || new Date(row.approvalExpiresAt ?? 0).getTime() > Date.now()) {
-        return send(res, 400, { message: "reservation_not_safely_cancellable" });
-      }
-      row.status = "cancelled";
-      mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) - BigInt(row.amount)).toString();
-      const allocation = allocations.get(row.agentId);
-      allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) - BigInt(row.amount)).toString();
-      adminAudit.push({ actor_agent_id: body.p_actor_agent_id, action: "expired_transfer_cancelled", target_id: body.p_request_id, details: { reason: body.p_reason } });
-      return send(res, 200, { request_id: body.p_request_id, status: "cancelled" });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/resolve_agent_transfer_failed_final") {
       const body = await readJson(req);
@@ -532,16 +495,6 @@ async function postTransfer({ token, requestId, to = "recipient.near", amount = 
     method: "POST",
     headers,
     body: rawBody ?? JSON.stringify({ requestId, to, amountYocto: amount })
-  });
-}
-
-async function approveTransfer(requestId, action = "approve") {
-  return fetch(`http://127.0.0.1:${appPort}/api/admin/approvals`, {
-    method: "POST",
-    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify(action === "approve"
-      ? { action, requestId }
-      : { action, requestId, reason: "Rejected by integration test" })
   });
 }
 
@@ -826,23 +779,6 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "provider 5xx response is retained for reconciliation");
   assert(reservations.get("test-provider-error-001")?.status === "needs_review", "provider 5xx reservation remains held");
-
-  const expiredResolutionId = "test-expired-resolution-001";
-  const expiredAmount = "1000000000000000000000";
-  reservations.set(expiredResolutionId, {
-    amount: expiredAmount, recipient: "recipient.near", agentId: "primary",
-    status: "awaiting_approval", approvalExpiresAt: new Date(Date.now() - 60_000).toISOString()
-  });
-  mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + BigInt(expiredAmount)).toString();
-  allocations.get("primary").reserved_yocto = (BigInt(allocations.get("primary").reserved_yocto) + BigInt(expiredAmount)).toString();
-  response = await fetch("http://127.0.0.1:3000/api/admin/reservations/resolve", {
-    method: "POST",
-    headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
-    body: JSON.stringify({ action: "cancel_expired", requestId: expiredResolutionId, reason: "Approval expired and no provider submission was made." })
-  });
-  payload = await response.json();
-  assert(response.status === 200 && payload.status === "cancelled", "admin can cancel an expired unapproved reservation");
-  assert(reservations.get(expiredResolutionId)?.status === "cancelled" && adminAudit.some(entry => entry.action === "expired_transfer_cancelled"), "expired cancellation releases its reservation and writes an admin audit entry");
 
   const failedFinalResolutionId = "test-failed-final-resolution-001";
   const failedFinalAmount = "1000000000000000000000000";
