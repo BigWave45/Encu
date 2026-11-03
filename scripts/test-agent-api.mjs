@@ -387,13 +387,13 @@ const mock = createServer(async (req, res) => {
       }
       const autoLimit = policy.auto_spend_limit_yocto == null ? null : BigInt(policy.auto_spend_limit_yocto);
       const autoCommitted = [...reservations.values()]
-        .filter(row => row.agentId === body.p_agent_id && row.autoApproved === true && ["reserved", "needs_review", "executed"].includes(row.status))
+        .filter(row => row.agentId === body.p_agent_id && row.autoApproved === true && new Date(row.createdAt ?? Date.now()).getTime() >= Date.now() - 24 * 60 * 60 * 1000 && ["reserved", "needs_review", "executed"].includes(row.status))
         .reduce((sum, row) => sum + BigInt(row.amount), 0n);
       const autoApproved = autoLimit !== null && autoCommitted + amount <= autoLimit;
       const status = autoApproved ? "reserved" : "awaiting_approval";
       reservations.set(body.p_request_id, {
         amount: body.p_amount_yocto, recipient: body.p_recipient,
-        agentId: body.p_agent_id, status, autoApproved, claimed: false,
+        agentId: body.p_agent_id, status, autoApproved, claimed: false, createdAt: Date.now(),
         txHash: null, providerRequestId: null,
         approvalExpiresAt: autoApproved ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
@@ -414,6 +414,19 @@ const mock = createServer(async (req, res) => {
       }
       if (!systemControls.transfers_enabled || !tokens["agent-one-token"].active) return send(res, 200, { claimed: false, reason: "policy_blocked" });
       const policy = agentPolicies.get(body.p_agent_id) ?? {};
+      const autoLimit = policy.auto_spend_limit_yocto == null ? null : BigInt(policy.auto_spend_limit_yocto);
+      const autoCommitted = [...reservations.values()]
+        .filter(item => item.agentId === body.p_agent_id && item.autoApproved === true &&
+          new Date(item.createdAt ?? Date.now()).getTime() >= Date.now() - 24 * 60 * 60 * 1000 &&
+          ["reserved", "needs_review", "executed"].includes(item.status))
+        .reduce((sum, item) => sum + BigInt(item.amount), 0n);
+      if (autoLimit !== null && autoCommitted > autoLimit) {
+        row.status = "awaiting_approval";
+        row.autoApproved = false;
+        row.claimed = false;
+        row.approvalExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        return send(res, 200, { claimed: false, reason: "agent_autonomous_24h_allowance", awaiting_approval: true });
+      }
       if (policy.p_max_transfer_yocto && BigInt(row.amount) > BigInt(policy.p_max_transfer_yocto)) {
         row.status = "awaiting_approval";
         row.autoApproved = false;
@@ -1001,7 +1014,7 @@ try {
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
   });
   payload = await response.json();
-  assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "100000000000000000000000", "admin can set a bounded autonomous lifetime allowance");
+  assert(response.status === 200 && payload.policy.auto_spend_limit_yocto === "100000000000000000000000", "admin can set a bounded rolling 24-hour autonomous allowance");
   response = await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/auto-spend`, {
     method: "PATCH", headers: { authorization: "Bearer agent-one-token", "content-type": "application/json" },
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
@@ -1035,7 +1048,7 @@ try {
   restoredPolicy.p_max_transfer_yocto = null;
   agentPolicies.set("primary", restoredPolicy);
 
-  const providerBeforeAuto = counters.provider;
+  // A historical autonomous payment must not consume the current rolling window.\n  reservations.set("test-auto-aged-out-001", {\n    amount: "1000000000000000000000000", recipient: "recipient.near", agentId: "primary",\n    status: "executed", autoApproved: true, createdAt: Date.now() - 25 * 60 * 60 * 1000\n  });\n\n  const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review" && payload.providerRequestId, "within-allowance transfer submits to provider without per-transfer admin approval");
