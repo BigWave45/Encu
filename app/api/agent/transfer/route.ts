@@ -168,7 +168,8 @@ export async function POST(request: NextRequest) {
       "recipient_not_authorized", "recipient_not_allowed",
       "agent_per_transfer_limit", "agent_daily_limit", "agent_weekly_limit",
       "autonomous_allowance_exceeded", "agent_policy_not_configured",
-      "agent_not_active", "emergency_stop", "policy_blocked"
+      "agent_not_active", "agent_allocation_exceeded", "total_budget_exceeded",
+      "emergency_stop", "policy_blocked"
     ]);
     if (submissionClaim?.awaiting_approval === true || submissionBlockReasons.has(submissionClaim?.reason ?? "")) {
       const reason = submissionClaim?.reason ?? "current_policy_denied";
