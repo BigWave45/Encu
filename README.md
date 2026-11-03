@@ -503,3 +503,8 @@ The migration pair was applied to the isolated Supabase AgentGuard Test project 
 Privilege checks passed: RLS is enabled on `agent_allocations`; anon/authenticated have no table SELECT and service_role has SELECT; the allocation and transfer RPCs are executable by service_role only. Disposable PostgreSQL CI passed the upgrade/backfill/lifecycle workflow (`41568821735`) and the concurrent reservation workflow (`41568821906`). The API security/lifecycle suite and Next.js build passed on `f672edf` (`41568539324`). Production Supabase remains untouched.
 
 The admin API and dashboard controls are deployed to Vercel Preview: deployment `dpl_CpNGhPfqLRTGvCRiMjdhYvXhDV4y` is `READY` for commit `d1c88ec22b07e9482455fa0a4b3da037d21c214b`. The branch Preview URL is `https://agentguard-mzgq7hc2p-resonances-projects-13e560cd.vercel.app`. Its live health endpoint returned HTTP 200 with Supabase, budget, NEAR testnet RPC and OutLayer connected, and `signerMatches: true`. An unauthenticated dashboard request returned HTTP 403 (`admin_required`). The earlier Hobby build-rate limit is no longer blocking this deployment. Production Vercel and Production Supabase were not changed.
+
+
+### Recipient authorization phase
+
+The next security phase is specified in [`docs/recipient-authorization-design.md`](docs/recipient-authorization-design.md). The branch now contains the recipient registry migration, admin authorize/revoke endpoints, dashboard recipient panel and tests. The migration copies only explicit legacy allowlists; legacy NULL/unrestricted policies become deny-by-default. The migration is not yet applied to Preview. It must pass the disposable upgrade and concurrency workflows before rollout. Production remains untouched.
