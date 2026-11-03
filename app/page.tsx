@@ -705,23 +705,28 @@ export default function Home() {
   const buttonStyle = { marginTop: 12, padding: "11px 18px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontSize: 15, cursor: "pointer" as const };
 
   return (
-    <main className="dashboard-shell" style={{ maxWidth: 1180, margin: "32px auto", padding: "24px clamp(16px, 3vw, 32px)", fontFamily: "Arial, sans-serif", color: "#0f172a" }}>
-      <p style={{ color: "#64748b", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>NEAR · Agent Security</p>
-      <h1 style={{ fontSize: 40, margin: "8px 0 12px" }}>ENCU</h1>
-      <p style={{ color: "#475569", lineHeight: 1.6 }}>A policy control plane for agent-initiated NEAR transfers.</p>
+    <main className="dashboard-shell encu-v2" style={{ maxWidth: 1440, margin: "0 auto", padding: "28px clamp(14px, 3vw, 44px) 72px", fontFamily: "Arial, sans-serif" }}>
+      <header className="encu-masthead">
+        <div className="encu-brand-lockup">
+          <div className="encu-mark">E<span>·</span></div>
+          <div><div className="encu-wordmark">ENCU</div><div className="encu-product-line">NEAR AGENT CONTROL PLANE</div></div>
+        </div>
+        <div className="encu-header-meta"><span className="encu-network-dot" /> TESTNET ENVIRONMENT <span className="encu-header-divider" /> OPERATOR CONSOLE</div>
+      </header>
 
-      <form className="console-panel credential-panel" onSubmit={checkBalance} style={{ ...panel, marginTop: 28 }}>
-        <label htmlFor="agent-token" style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>Agent or admin token</label>
-        <input id="agent-token" type="password" autoComplete="off" value={token}
-          onChange={(event) => setToken(event.target.value)} placeholder="Enter your AGENTGUARD_AGENT_TOKEN"
-          required style={inputStyle} />
-        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>Use an agent token to check its wallet balance. The administrator token is required for the dashboard, budget controls, agent provisioning and credential rotation. The token stays in this page&apos;s memory and is not saved to browser storage. Never share it in chat.</p>
-        <button type="submit" disabled={loading || !token.trim()} style={buttonStyle}>{loading ? "Checking…" : "Check NEAR balance"}</button>
-        <label htmlFor="admin-token" style={{ display: "block", fontWeight: 600, margin: "20px 0 8px" }}>Administrator token</label>
-        <input id="admin-token" type="password" autoComplete="off" value={adminToken}
-          onChange={(event) => setAdminToken(event.target.value)} placeholder="Enter your AGENTGUARD_ADMIN_TOKEN"
-          style={inputStyle} />
-        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>The administrator token is separate from agent credentials. Use it only for the dashboard, budget controls and agent management. It cannot submit transfers.</p>
+      <section className="encu-intro">
+        <div><p className="encu-eyebrow">TREASURY OPERATIONS / 01</p><h1>Control what your agents can move.</h1><p className="encu-lede">One treasury. Independent agent identities. Policy checks before every transfer.</p></div>
+        <div className="encu-intro-note"><span className="encu-note-kicker">EXECUTION MODEL</span><strong>OutLayer · NEAR</strong><span>Shared executor with ENCU-enforced agent allocations and recipient controls.</span></div>
+      </section>
+
+      <form className="console-panel credential-panel encu-access-panel" onSubmit={checkBalance}>
+        <div className="encu-access-heading"><div><span className="encu-eyebrow">SECURE ACCESS</span><strong>Connect to the operator console</strong></div><span className="encu-memory-label">Credentials stay in page memory</span></div>
+        <div className="encu-access-grid">
+          <label htmlFor="admin-token">Administrator credential<input id="admin-token" type="password" autoComplete="off" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} placeholder="Paste admin token" /></label>
+          <label htmlFor="agent-token">Agent credential <span>(optional balance check)</span><input id="agent-token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste agent token" /></label>
+          <div className="encu-access-actions"><button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}>{dashboardLoading ? "Connecting…" : dashboard ? "Refresh console" : "Connect console"}</button><button type="submit" disabled={loading || !token.trim()} className="encu-secondary-action">{loading ? "Checking…" : "Check balance"}</button></div>
+        </div>
+        <p className="encu-access-footnote">Admin credentials control policy and treasury settings. Agent credentials authenticate agent requests. Neither is stored in browser storage. Never expose either credential in client-side application code.</p>
       </form>
 
       {result && <section aria-live="polite" className="developer-result balance-result" style={panel}>
@@ -743,6 +748,12 @@ export default function Home() {
           </button>
         </div>
         {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
+        {dashboard && <section className="encu-live-strip" aria-label="Live treasury status">
+          <div><span className="encu-live-label">CONTROL PLANE</span><strong><i className={dashboard.transfersEnabled ? "encu-state-dot is-live" : "encu-state-dot is-stopped"} />{dashboard.transfersEnabled ? "Transfers enabled" : "Emergency stop active"}</strong></div>
+          <div><span className="encu-live-label">AGENT IDENTITIES</span><strong>{dashboard.agents?.filter(agent => agent.active).length ?? 0} <small>active</small></strong></div>
+          <div><span className="encu-live-label">AWAITING DECISION</span><strong>{dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0} <small>in loaded results</small></strong></div>
+          <div><span className="encu-live-label">LAST SNAPSHOT</span><strong>{dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleTimeString() : "Just now"}</strong></div>
+        </section>}
         {outLayerPolicy && <section aria-label="OutLayer wallet policy" className="console-panel provider-policy-panel" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <strong>OutLayer wallet policy</strong>
@@ -758,8 +769,8 @@ export default function Home() {
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
         {dashboard && <nav className="dashboard-nav" aria-label="Dashboard views" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
           {[
-            ["overview", "Overview"], ["treasury", "Treasury"], ["agents", "Agents"], ["recipients", "Recipients"],
-            ["payments", "Payments"], ["security", "Security"], ["system", "System"], ["developer", "Developer tools"], ["access", "Agent access"]
+            ["overview", "01 / Overview"], ["treasury", "02 / Treasury"], ["agents", "03 / Agents"], ["recipients", "04 / Recipients"],
+            ["payments", "05 / Transfers"], ["security", "06 / Audit trail"], ["system", "07 / System"], ["developer", "08 / API test"], ["access", "09 / Credentials"]
           ].map(([view, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}>{label}</button>)}
         </nav>}
         <div hidden={activeView !== "system"}>
