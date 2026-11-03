@@ -21,6 +21,8 @@ on:
       - "lib/security-audit.ts"
       - "app/page.tsx"
       - "app/api/admin/dashboard/route.ts"
+      - "app/api/admin/outlayer-policy/route.ts"
+      - "supabase/20261103050000_agentguard_autonomy_recipient_guard.sql"
       - "app/api/admin/agents/auto-spend/route.ts"
       - "app/api/admin/agents/policy/route.ts"
       - "supabase/20261103040000_agentguard_autonomy_rpcs.sql"
