@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest) {
   } else if (input.action === "authorize_recipient") {
     result = await db.rpc("developer_authorize_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_label: input.label ?? null, p_expires_at: input.expiresAt ?? null });
   } else {
-    result = await db.rpc("developer_revoke_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason, p_actor_agent_id: actor });
+    result = await db.rpc("developer_revoke_agent_recipient", { p_owner_user_id: user.userId, p_agent_id: input.id, p_account_id: input.accountId, p_reason: input.reason });
   }
   if (result.error) return NextResponse.json({ error: "agent_configuration_update_failed", reason: result.error.message }, { status: 400 });
   return NextResponse.json({ status: "updated", result: result.data }, { headers: { "Cache-Control": "no-store, private" } });
