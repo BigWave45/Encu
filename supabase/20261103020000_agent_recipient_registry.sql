@@ -316,3 +316,5 @@ grant execute on function public.reserve_agent_spend(text,numeric,text,text) to 
 grant execute on function public.approve_agent_transfer(text,text) to service_role;
 
 commit;
+
+-- Upgrade suite assertion refinement: distinguish missing from duplicate finality audit events.
