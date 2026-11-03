@@ -889,15 +889,15 @@ export default function Home() {
             <select value={onboardingId} onChange={event => {
               const id = event.target.value;
               setSetupAgentId(id); setAllocationAgent(id); setPolicyAgent(id); setRecipientAgent(id);
-              const allocation = dashboard.allocations?.find(item => item.agentId === id);
-              const policy = dashboard.policies?.find(item => item.agentId === id);
+              const allocation = dashboard?.allocations?.find(item => item.agentId === id);
+              const policy = dashboard?.policies?.find(item => item.agentId === id);
               setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
               setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
               setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
               setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
               setPolicyAuto(policy?.autoSpendLimitYocto != null ? yoctoToInput(policy.autoSpendLimitYocto) : "");
             }} style={{ ...inputStyle, marginTop: 6 }}>
-              {(dashboard.agents ?? []).filter(agent => agent.id !== "primary").map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+              {(dashboard?.agents ?? []).filter(agent => agent.id !== "primary").map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
             </select>
           </label>
           {!onboardingAgent && <p style={{ color: "#92400e", fontSize: 13, marginTop: 12 }}>No non-primary agent exists yet. Create one in Agent access before continuing.</p>}
@@ -1010,7 +1010,7 @@ Content-Type: application/json
             <label style={{ display: "block", fontSize: 13 }}>Agent
               <select value={policyAgent} onChange={e => {
                 const id = e.target.value; setPolicyAgent(id);
-                const policy = dashboard.policies?.find(item => item.agentId === id);
+                const policy = dashboard?.policies?.find(item => item.agentId === id);
                 setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
                 setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
                 setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
@@ -1035,15 +1035,15 @@ Content-Type: application/json
               <select value={allocationAgent} onChange={event => {
                 const id = event.target.value;
                 setAllocationAgent(id);
-                const allocation = dashboard.allocations?.find(item => item.agentId === id);
+                const allocation = dashboard?.allocations?.find(item => item.agentId === id);
                 setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
                 setAllocationMessage("");
               }} style={{ ...inputStyle, marginTop: 5 }}>
-                {(dashboard.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+                {(dashboard?.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
               </select>
             </label>
             {(() => {
-              const allocation = dashboard.allocations?.find(item => item.agentId === allocationAgent);
+              const allocation = dashboard?.allocations?.find(item => item.agentId === allocationAgent);
               return allocation ? <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>
                 Spent: {near(allocation.spentYocto)} NEAR · Reserved: {near(allocation.reservedYocto)} NEAR · Available: {availableAgentNear(allocation)} NEAR
               </p> : <p style={{ color: "#92400e", fontSize: 12 }}>No allocation ledger row exists for this agent. The allocation migration must be applied before editing.</p>;
@@ -1064,7 +1064,7 @@ Content-Type: application/json
             <form onSubmit={authorizeRecipient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
               <label style={{ fontSize: 13 }}>Agent
                 <select value={recipientAgent} onChange={e => setRecipientAgent(e.target.value)} style={{ ...inputStyle, marginTop: 5 }}>
-                  {(dashboard.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+                  {(dashboard?.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
                 </select>
               </label>
               <label style={{ fontSize: 13 }}>Exact NEAR account ID
