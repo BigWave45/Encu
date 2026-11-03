@@ -1,4 +1,5 @@
 # Exercises reservation, finality and recovery races on disposable PostgreSQL.
+# Triggered by this workflow file so maintainers can rerun the isolated database suite on demand via a reviewed commit.
 name: AgentGuard PostgreSQL concurrency test
 
 on:
