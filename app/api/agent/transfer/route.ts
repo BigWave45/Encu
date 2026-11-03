@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   requestId: z.string().min(8).max(128),
   to: z.string().min(2).max(64).regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/),
-  amountYocto: z.string().max(78).regex(/^[1-9][0-9]*$/)
+  amountYocto: z.string().max(78).regex(/^[1-9][0-9]*$/),
+  expectedAgentId: z.string().min(2).max(48).regex(/^[a-z0-9_-]+$/).optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -32,6 +33,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_invalid_request" });
     return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  if (parsed.data.expectedAgentId && parsed.data.expectedAgentId !== identity.agentId) {
+    return NextResponse.json({ status: "blocked", created: false, reason: "agent_identity_mismatch", expectedAgentId: parsed.data.expectedAgentId, authenticatedAgentId: identity.agentId }, { status: 409 });
   }
 
   let rateLimit: Awaited<ReturnType<typeof consumeRateLimit>>;
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
   const cap = BigInt(process.env.AGENTGUARD_MAX_TRANSFER_YOCTO ?? "0");
   if (cap <= 0n || amount > cap) {
     await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_per_transaction_limit_blocked", requestId });
-    return NextResponse.json({ status: "blocked", reason: "per_transaction_limit" }, { status: 403 });
+    return NextResponse.json({ status: "blocked", reason: "per_transaction_limit", agentId: identity.agentId, created: false }, { status: 403 });
   }
 
   const db = getSupabase();
@@ -95,7 +100,7 @@ export async function POST(request: NextRequest) {
       requestId,
       details: { reason: reservation.reason ?? "policy_denied" }
     });
-    return NextResponse.json(reservation, { status: 403 });
+    return NextResponse.json({ ...reservation, agentId: identity.agentId }, { status: 403 });
   }
 
   // V1 never calls OutLayer from an agent request. Every transfer waits for
@@ -103,6 +108,7 @@ export async function POST(request: NextRequest) {
   if (reservation?.created === true && reservation.status === "awaiting_approval") {
     return NextResponse.json({
       status: "awaiting_approval",
+      agentId: identity.agentId,
       requestId,
       approvalExpiresAt: reservation.approval_expires_at ?? null
     }, { status: 202 });
@@ -111,6 +117,7 @@ export async function POST(request: NextRequest) {
   await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
   return NextResponse.json({
     status: reservation?.status ?? "already_processed",
+    agentId: identity.agentId,
     requestId
   }, { status: 409 });
 }
