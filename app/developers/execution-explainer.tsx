@@ -82,7 +82,7 @@ export default function ExecutionExplainer() {
         <div className="execution-branch">
           <span className="execution-branch-line" aria-hidden="true" />
           <div className="execution-branch-copy">
-            <span className="execution-branch-mark">!</span>
+            <span className="execution-branch-mark">STOP</span>
             <div>
               <strong>Policy rejection</strong>
               <span>A failed check stops the request before provider submission.</span>
@@ -158,7 +158,7 @@ export default function ExecutionExplainer() {
             ))}
           </div>
           <div className="execution-policy-foot">
-            <span className="execution-policy-icon">i</span>
+            <span className="execution-policy-icon">NOTE</span>
             <span>Illustrative control model. Actual decisions and reasons come from the evaluated request.</span>
           </div>
         </section>
