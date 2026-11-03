@@ -4,6 +4,52 @@ ENCU is an application-level transaction authorization and control layer for AI 
 
 **Naming note:** ENCU is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product.
 
+## Current project handoff — 2026-11-03
+
+This is the operational status for continuing work if the conversation context is lost. It supersedes older operational snapshots and next-step lists later in this README where they conflict.
+
+### Current state
+
+- Product name: **ENCU**. Repository and internal identifiers still use AgentGuard/agentguard.
+- Active implementation branch: `agentguard/build-v1`.
+- Pull request: [#1](https://github.com/BigWave45/agentguard/pull/1), still open as a draft. Do not merge until the release gates are reviewed and the user explicitly approves.
+- Latest frontend commit: `193e264b2299de54745c57b8bccbc30460a0f96e` (`Finish ENCU overview and treasury console styling`).
+- Latest Vercel Preview: [Open ENCU Preview](https://agentguard-csga2b6ix-resonances-projects-13e560cd.vercel.app). Deployment `dpl_DdmqHrXusZYcUnEAcUR4dE6tcP5j` is **READY**, built from the commit above. The build completed successfully. The dashboard has not yet passed the user's visual review on mobile.
+- Preview is a Testnet environment connected to the isolated `AgentGuard Test` Supabase project. Production Vercel and Production Supabase are out of scope.
+
+### Immediate next steps
+
+1. User inspects the READY Preview on an iPhone: dashboard layout, navigation, treasury overview, agent controls, recipient management, approvals, transaction history and developer tools. Record concrete defects rather than redesigning by preference.
+2. Fix only verified UI defects on `agentguard/build-v1`; redeploy Preview and re-check.
+3. Begin the **V1 developer experience workflow** in parallel with visual review. First produce a screen/actor/state map for the operator-approved lifecycle below, then implement it in small tested slices.
+4. Update the API and dashboard documentation against the actual routes and current autonomous/approval behavior. Keep historical environment snapshots clearly labelled as historical.
+5. Complete provider-policy, dual-ledger, ambiguous-outcome and transaction-evidence release checks; then review CI and PR #1. Merge only after explicit approval. No Production deployment or mainnet release in this hackathon scope.
+
+### V1 developer experience workflow
+
+The first experience is operator-approved, not public self-service SaaS:
+
+1. Developer requests access / an operator creates or approves the developer workspace context.
+2. Operator configures the existing ENCU Testnet execution environment and treasury.
+3. Developer/operator creates a logical agent and assigns its allocation and spending/autonomy limits.
+4. Configure one or more exact NEAR recipient accounts for that agent; issue and securely store its agent-scoped bearer credential.
+5. Developer integrates the agent with the ENCU API and sends a transfer request with a stable idempotency/request ID.
+6. ENCU authenticates the agent, evaluates current policy, reserves shared treasury and agent allocation, then either submits within the configured autonomous allowance or queues for administrator approval.
+7. ENCU tracks the OutLayer request and independently reconciles the exact transaction against NEAR FINAL before settling the ledger.
+8. Dashboard exposes the request lifecycle, approvals, audit trail, provider reference, transaction hash and reconciliation result.
+
+The current V1 uses one configured OutLayer execution wallet/API credential shared by logical agents. This workflow must not imply isolated customer treasuries, customer-owned wallet provisioning, instant self-registration, deposits/withdrawals, billing or full multi-tenancy. Those remain deferred.
+
+### Authorization extension under consideration
+
+The current recipient registry is authoritative for active recipient authorization. The next authorization improvement under consideration is support for multiple authorized destinations per agent plus explicit deny rules. The intended semantics are: explicit block takes precedence over allow; treasury-wide blocks override agent-level allows; revocation removes an existing allow; block and unblock are separately audited actions; pending requests are revalidated before provider submission. This is **not yet confirmed as implemented**. Before coding, inspect the actual recipient schema, management routes and dashboard controls, then add migration/API/UI tests for multiple recipients, independent revocation, deny precedence and revalidation.
+
+### Scope guardrails
+
+Keep the release focused on the OutLayer-backed NEAR Testnet product. Full multi-tenant onboarding, per-customer treasury isolation, self-service wallet provisioning/funding/withdrawals, billing, native NEAR contract execution, extra providers, multi-chain support and mainnet deployment remain deferred. Do not initiate a live transfer, change Production, merge the PR or promote a deployment without the required explicit approval.
+
+---
+
 ## V1 release scope — 2026-11-03
 
 **This section defines the current hackathon release boundary and supersedes conflicting historical status notes later in this file.**
@@ -116,6 +162,8 @@ The V1 forward migrations, in required order, are:
 7. `supabase/20261103030000_agentguard_autonomy_controls.sql`
 8. `supabase/20261103040000_agentguard_autonomy_rpcs.sql`
 9. `supabase/20261103050000_agentguard_autonomy_recipient_guard.sql`
+10. `supabase/20261103070000_revalidate_auto_policy_before_submission.sql`
+11. `supabase/20261103080000_restore_privileged_autonomy_rpcs.sql`
 
 The security-controls migration establishes fail-closed emergency-stop state, per-agent transfer/daily/weekly caps, recipient allowlists, persistent rate limiting, atomic agent provisioning and settlement audit. The later autonomy migrations add a bounded per-agent autonomous allowance and a guarded submission-claim path for eligible requests; requests outside that allowance remain administrator-approval-gated. The submission-audit migration replaces the provider-submission RPC with an audited implementation and restricts `service_role` on both audit tables to SELECT and INSERT. The administrator-identity migration separates the admin audit identity from agent identities and blocks self-approval. The next migration reserves the `admin` agent identifier and intentionally aborts if that identifier is already occupied. Investigate the existing record and audit history rather than renaming or deleting it automatically. The fifth migration revokes direct table privileges on the core agent, budget and reservation tables from `PUBLIC`, `anon` and `authenticated`. The sixth explicitly grants the trusted `service_role` backend SELECT access to those tables for server-side dashboard reads; write operations remain behind privileged RPCs. The autonomy migrations add a distinct cumulative per-agent autonomous allowance, mark autonomous reservations, route requests within the allowance to the provider-submission path, and retain database-level active-recipient authorization. The absolute agent allocation and shared treasury limit remain hard ceilings. These migrations must be applied in order to a fresh or correctly upgraded test database before enabling autonomy.
 
@@ -271,8 +319,10 @@ Body:
 - Reuse the same request ID only when retrying the same logical request with the same agent, recipient, and amount.
 - A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
 - The request is checked against the global emergency stop, per-agent limits, recipient allowlist, rolling spend windows and shared budget in one database transaction.
-- The reservation enters `awaiting_approval` and reserves budget for 15 minutes. Agent requests never call OutLayer directly.
-- An administrator must approve the exact recipient and amount. Approval is single-use and consumes the submission claim immediately before the OutLayer call. Rejected requests release their reservations. An expired, never-approved request can be cancelled by an administrator; an approved or ambiguously submitted request remains held.
+- ENCU atomically reserves both the shared treasury and the agent allocation, then revalidates current policy immediately before claiming provider submission.
+- A request within the configured cumulative autonomous allowance can be submitted once by the server after authorization. A request outside that allowance enters `awaiting_approval` for administrator review. Both paths remain subject to the absolute allocation, shared treasury ceiling, transfer and rolling limits, emergency stop and active recipient registry.
+- An autonomous request whose policy becomes ineligible before submission is downgraded to `awaiting_approval`; it is not sent to OutLayer. Revoked or blocked recipients and a newly active emergency stop prevent submission.
+- Rejected or safely cancelled unsubmitted requests release both reservations. Submitted or ambiguous requests retain exposure until provider/NEAR evidence resolves them.
 
 Current V1 behavior:
 
