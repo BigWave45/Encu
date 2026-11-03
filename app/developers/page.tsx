@@ -226,7 +226,7 @@ export default function DeveloperPortal() {
         <div className="developer-eyebrow">Developer workspace</div>
         <h1 className="developer-title">Connect your agents<br />to controlled execution.</h1>
         <p className="developer-lede">
-          Create a developer account, provision agents, manage credentials and configure each agent’s bounded spending authority.
+          Provision independent agent identities, assign spending authority and manage execution permissions from one workspace.
         </p>
 
         {!session ? (
@@ -306,7 +306,7 @@ export default function DeveloperPortal() {
               <p>1. Create your agent and securely store its bearer token.</p>
               <p>2. You assign an allocation from the shared Testnet treasury, subject to ENCU’s platform-wide ceiling.</p>
               <p>3. You set transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
-              <p>4. Your backend sends requests using the agent token. ENCU enforces the current policy before OutLayer submission.</p>
+              <p>4. Your backend sends requests using the agent token. ENCU enforces the current policy before execution by the configured backend.</p>
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
             </aside>
           </div>
