@@ -324,13 +324,22 @@ jobs:
             reserved numeric;
             spent numeric;
             rows_found integer;
+            winner_agent text;
+            agent_reserved numeric;
+            agent_spent numeric;
           BEGIN
             SELECT reserved_yocto, spent_yocto INTO reserved, spent
             FROM public.agent_budgets WHERE id = 'default';
             SELECT count(*) INTO rows_found FROM public.spend_reservations
             WHERE request_id IN ('${req_a}', '${req_b}');
-            IF reserved <> ${amount} OR spent <> 0 OR rows_found <> 1 THEN
-              RAISE EXCEPTION 'ledger_or_budget_mismatch: reserved=%, spent=%, rows=%', reserved, spent, rows_found;
+            SELECT agent_id INTO winner_agent FROM public.spend_reservations
+            WHERE request_id IN ('${req_a}', '${req_b}') LIMIT 1;
+            SELECT reserved_yocto, spent_yocto INTO agent_reserved, agent_spent
+            FROM public.agent_allocations WHERE agent_id = winner_agent;
+            IF reserved <> ${amount} OR spent <> 0 OR rows_found <> 1
+               OR agent_reserved <> ${amount} OR agent_spent <> 0 THEN
+              RAISE EXCEPTION 'dual_ledger_reservation_mismatch: treasury_reserved=%, treasury_spent=%, agent=%, agent_reserved=%, agent_spent=%, rows=%',
+                reserved,spent,winner_agent,agent_reserved,agent_spent,rows_found;
             END IF;
           END
           \$\$
@@ -358,17 +367,22 @@ jobs:
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<SQL
           DO \$\$
-          DECLARE reserved numeric; spent numeric; row_status text;
+          DECLARE reserved numeric; spent numeric; row_status text; winner_agent text; agent_reserved numeric; agent_spent numeric;
           BEGIN
             SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
-            SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${winner}';
-            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'executed' THEN
-              RAISE EXCEPTION 'executed_settlement_mismatch: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            SELECT status,agent_id INTO row_status,winner_agent FROM public.spend_reservations WHERE request_id = '${winner}';
+            SELECT reserved_yocto,spent_yocto INTO agent_reserved,agent_spent FROM public.agent_allocations WHERE agent_id=winner_agent;
+            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'executed'
+               OR agent_reserved<>0 OR agent_spent<>${amount} THEN
+              RAISE EXCEPTION 'executed_settlement_mismatch: treasury_reserved=%, treasury_spent=%, status=%, agent=%, agent_reserved=%, agent_spent=%',
+                reserved,spent,row_status,winner_agent,agent_reserved,agent_spent;
             END IF;
           END
           \$\$
           SQL
           req_failed="ag-concurrency-${suffix}-failed"
+          export PGPASSWORD=agentguard_test_only
+          primary_spent_before_failed=$(psql -v ON_ERROR_STOP=1 -U postgres -Atc "SELECT spent_yocto::text FROM public.agent_allocations WHERE agent_id='primary';")
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.reserve_agent_spend('${req_failed}', 1000000000000000000000000, 'agentguard-test.near', 'primary');" | jq -e '.created == true' >/dev/null
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.approve_agent_transfer('${req_failed}', 'admin');" | jq -e '.status == "reserved"' >/dev/null
@@ -377,12 +391,15 @@ jobs:
           export PGPASSWORD=agentguard_test_only
           psql -v ON_ERROR_STOP=1 -U postgres <<SQL
           DO \$\$
-          DECLARE reserved numeric; spent numeric; row_status text;
+          DECLARE reserved numeric; spent numeric; row_status text; agent_reserved numeric; agent_spent numeric;
           BEGIN
             SELECT reserved_yocto, spent_yocto INTO reserved, spent FROM public.agent_budgets WHERE id = 'default';
             SELECT status INTO row_status FROM public.spend_reservations WHERE request_id = '${req_failed}';
-            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'failed' THEN
-              RAISE EXCEPTION 'failed_settlement_mismatch: reserved=%, spent=%, status=%', reserved, spent, row_status;
+            SELECT reserved_yocto,spent_yocto INTO agent_reserved,agent_spent FROM public.agent_allocations WHERE agent_id='primary';
+            IF reserved <> 0 OR spent <> ${amount} OR row_status <> 'failed'
+               OR agent_reserved<>0 OR agent_spent<>${primary_spent_before_failed}::numeric THEN
+              RAISE EXCEPTION 'failed_settlement_mismatch: treasury_reserved=%, treasury_spent=%, status=%, agent_reserved=%, agent_spent=%, prior_agent_spent=%',
+                reserved,spent,row_status,agent_reserved,agent_spent,${primary_spent_before_failed};
             END IF;
           END
           \$\$
