@@ -1,2 +1,2 @@
--- PLACEHOLDER ONLY: this migration is intentionally empty and must not be applied.
--- Allocation schema and RPC changes are not ready. Replace or remove this file before migration rollout.
+-- Diagnostic only: do not apply.
+-- create table public.agent_allocations (agent_id text primary key);
