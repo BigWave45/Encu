@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Reject malformed provider/network configuration before reserving funds.
-  // This only validates configuration; the provider is called after admin approval.
+  // Provider submission is automatic only after the database authorizes the reservation.
   try {
     getOutLayerConfig();
   } catch (error) {
@@ -164,30 +164,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "needs_review", requestId, reason: "submission_claim_unavailable" }, { status: 202 });
   }
   if (submissionClaim?.claimed !== true) {
-    if (submissionClaim?.reason === "recipient_not_authorized") {
-      await db.rpc("finish_agent_spend", {
+    const submissionBlockReasons = new Set([
+      "recipient_not_authorized", "recipient_not_allowed",
+      "agent_per_transfer_limit", "agent_daily_limit", "agent_weekly_limit",
+      "autonomous_allowance_exceeded", "agent_policy_not_configured",
+      "agent_not_active", "emergency_stop", "policy_blocked"
+    ]);
+    if (submissionClaim?.awaiting_approval === true || submissionBlockReasons.has(submissionClaim?.reason ?? "")) {
+      const reason = submissionClaim?.reason ?? "current_policy_denied";
+      const { error: releaseError } = await db.rpc("finish_agent_spend", {
         p_request_id: requestId, p_outcome: "failed", p_tx_hash: null,
-        p_error: "recipient_authorization_revoked_before_submission"
+        p_error: `policy_blocked_before_submission:${reason}`
       });
-      await recordSecurityEvent({
-        actorAgentId: identity.agentId, eventType: "transfer_auto_submission_blocked",
-        requestId, details: { reason: "recipient_not_authorized_at_submission" }
-      });
-      return NextResponse.json({ status: "blocked", reason: "recipient_not_authorized" }, { status: 403 });
-    }
-    if (submissionClaim?.awaiting_approval === true) {
       await recordSecurityEvent({
         actorAgentId: identity.agentId,
-        eventType: "transfer_auto_authorization_downgraded",
+        eventType: "transfer_policy_blocked_at_submission",
         requestId,
-        details: { reason: submissionClaim.reason ?? "current_policy_requires_review" }
+        details: { reason, reservationReleased: !releaseError }
       });
-      return NextResponse.json({
-        status: "awaiting_approval",
-        requestId,
-        reason: submissionClaim.reason ?? "current_policy_requires_review",
-        approvalExpiresAt: submissionClaim.approval_expires_at ?? null
-      }, { status: 202 });
+      if (releaseError) {
+        return NextResponse.json({
+          status: "needs_review", requestId,
+          reason: "policy_blocked_reservation_release_failed"
+        }, { status: 503 });
+      }
+      return NextResponse.json({ status: "blocked", reason, requestId }, { status: 403 });
     }
     return NextResponse.json({ status: "already_processing", requestId }, { status: 409 });
   }
