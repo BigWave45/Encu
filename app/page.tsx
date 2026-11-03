@@ -563,6 +563,14 @@ export default function Home() {
       if (!response.ok && response.status !== 202) {
         setReservationActionError(body.error ?? body.reason ?? `${action}_failed`);
       }
+      if (action === "provider-status" && typeof body.providerStatus === "string") {
+        const providerStatus = body.providerStatus;
+        setReservationActionMessage(
+          providerStatus === "pending_approval"
+            ? `${requestId}: OutLayer is waiting for its wallet approver. This is a separate approval gate from AgentGuard.`
+            : `${requestId}: OutLayer provider status is "${providerStatus}". AgentGuard will still require independent NEAR finality before settling the reservation.`
+        );
+      }
       await loadDashboard();
       if (body.reason && body.status === "needs_review") {
         const diagnostic = body.checks ? "; checks: " + JSON.stringify(body.checks) : "";
