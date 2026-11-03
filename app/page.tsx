@@ -155,6 +155,7 @@ function parseNearToYocto(value: string): bigint | null {
 }
 
 export default function Home() {
+  const [activeView, setActiveView] = useState("overview");
   const [token, setToken] = useState("");
   const [adminToken, setAdminToken] = useState("");
   const [result, setResult] = useState<BalanceResult | null>(null);
@@ -755,13 +756,13 @@ export default function Home() {
         </section>}
         {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
         {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
-        {dashboard && <nav className="dashboard-nav" aria-label="Dashboard sections" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
+        {dashboard && <nav className="dashboard-nav" aria-label="Dashboard views" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
           {[
-            ["Overview", "#overview"], ["Treasury", "#treasury-settings"], ["Agents", "#agents"],
-            ["Recipients", "#recipients"], ["Payments", "#payments"], ["Approvals", "#approvals"],
-            ["Security & audit", "#admin-audit"], ["Health", "#system-health"], ["Developer tools", "#developer-tools"], ["Agent access", "#agent-access"]
-          ].map(([label, href]) => <a key={href} href={href} style={{ padding: "8px 12px", border: "1px solid #cbd5e1", borderRadius: 999, color: "#334155", textDecoration: "none", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</a>)}
+            ["overview", "Overview"], ["treasury", "Treasury"], ["agents", "Agents"], ["recipients", "Recipients"],
+            ["payments", "Payments"], ["security", "Security"], ["system", "System"], ["developer", "Developer tools"], ["access", "Agent access"]
+          ].map(([view, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}>{label}</button>)}
         </nav>}
+        <div hidden={activeView !== "system"}>
         <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
           <strong>System health</strong>
           <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
@@ -774,7 +775,9 @@ export default function Home() {
           <div><strong>OutLayer</strong><div>{String(health.outlayer ?? "unknown")}</div></div>
           <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
         </div>}
+        </div>
         {dashboard?.budget && <>
+          <div hidden={activeView !== "overview"}>
           <div id="overview" className="overview-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 12, marginTop: 20, scrollMarginTop: 76 }}>
             {[
               ["Treasury limit", near(dashboard.budget.totalLimitYocto)],
@@ -788,6 +791,8 @@ export default function Home() {
               <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
             </div>)}
           </div>
+          </div>
+          <div hidden={activeView !== "treasury"}>
           <form id="treasury-settings" onSubmit={updateBudget} style={{ marginTop: 22, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Shared budget limit</strong>
             <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
@@ -858,6 +863,8 @@ export default function Home() {
             </button>
             {allocationMessage && <p role="status" style={{ fontSize: 13 }}>{allocationMessage}</p>}
           </form>
+          </div>
+          <div hidden={activeView !== "recipients"}>
           <section id="recipients" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
             <strong>Authorized recipients</strong>
             <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Only exact NEAR account IDs authorized by an administrator can receive new transfers. Labels are display-only. Revocation blocks future requests and approvals; it does not recall claimed provider submissions or release pending reservations.</p>
@@ -898,6 +905,8 @@ export default function Home() {
             </div>
             {recipientMessage && <p role="status" style={{ fontSize: 13 }}>{recipientMessage}</p>}
           </section>
+          </div>
+          <div hidden={activeView !== "agents"}>
           <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
@@ -909,6 +918,8 @@ export default function Home() {
               </tr>)}</tbody>
             </table>
           </div>
+          </div>
+          <div hidden={activeView !== "payments"}>
           <h3 id="approvals" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
           {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
             <div style={{ display: "grid", gap: 10 }}>
@@ -976,6 +987,8 @@ export default function Home() {
               <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) >= (dashboard.reservationPage?.totalPages ?? 1)} onClick={() => loadDashboard((dashboard.reservationPage?.page ?? 1) + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
             </div>
           </div>
+          </div>
+          <div hidden={activeView !== "security"}>
           <h3 id="admin-audit" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
           {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
             <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} style={{ padding: 11, border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>
@@ -1004,10 +1017,11 @@ export default function Home() {
             </div>
           </div>
           <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the AgentGuard database.</p>
+          </div>
         </>}
       </section>
 
-      <section id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
+      <section hidden={activeView !== "developer"} id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
         <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Live agent request test</h2>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
           Sends a real authenticated request to AgentGuard&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
@@ -1043,7 +1057,7 @@ export default function Home() {
         </div>}
       </section>
 
-      <section id="agent-access" style={{ ...panel, scrollMarginTop: 76 }}>
+      <section hidden={activeView !== "access"} id="agent-access" style={{ ...panel, scrollMarginTop: 76 }}>
         <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Agent access management</h2>
         <p style={{ color: "#64748b", fontSize: 13 }}>Provisioning and credential rotation are administrator-only operations.</p>
         <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.5 }}>Create a separate credential for an agent that shares the same NEAR spending budget. Only the primary admin token can do this.</p>
