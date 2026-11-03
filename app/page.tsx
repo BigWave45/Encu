@@ -423,7 +423,8 @@ export default function Home() {
       }
       await loadDashboard();
       if (body.reason && body.status === "needs_review") {
-        setReservationActionError(`${requestId}: ${body.reason}`);
+        const diagnostic = body.checks ? "; checks: " + JSON.stringify(body.checks) : "";
+        setReservationActionError(requestId + ": " + body.reason + diagnostic);
       }
     } catch {
       setReservationActionError(`${requestId}: Could not reach AgentGuard. The reservation state has not been verified.`);
