@@ -49,3 +49,5 @@ end;
 $agentguard$;
 revoke all on function public.record_outlayer_submission(text,text,text,text) from public,anon,authenticated;
 grant execute on function public.record_outlayer_submission(text,text,text,text) to service_role;
+
+-- CI verification trigger: 2026-11-03 (no schema or runtime change).
