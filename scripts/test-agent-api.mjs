@@ -575,6 +575,12 @@ try {
   payload = await response.json();
   assert(response.status === 202 && payload.status === "awaiting_approval", "agent transfer creates a pending approval request");
   assert(counters.provider === providerCountBeforePrimary, "agent request cannot contact provider before admin approval");
+  mockSignerAddress = "unexpected.testnet";
+  response = await approveTransfer(primaryId);
+  payload = await response.json();
+  assert(response.status === 503 && payload.error === "outlayer_signer_mismatch", "approval fails closed when live OutLayer signer differs from configured signer");
+  assert(counters.provider === providerCountBeforePrimary && reservations.get(primaryId)?.status === "awaiting_approval", "signer mismatch does not consume approval or submit to OutLayer");
+  mockSignerAddress = "agentguard.testnet";
   response = await approveTransfer(primaryId);
   payload = await response.json();
   assert(response.status === 202 && payload.status === "needs_review", "admin approval submits transfer and holds it for chain confirmation");
