@@ -670,6 +670,7 @@ export default function Home() {
               {item.lastError && <div style={{ color: "#92400e", marginTop: 4 }}>Review: {item.lastError}</div>}
               {item.resolutionReason && <div style={{ color: "#475569", marginTop: 4 }}>Resolution: {item.resolutionReason} · by {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</div>}
               {item.resolutionEvidenceReference && <div style={{ color: "#64748b", marginTop: 4, overflowWrap: "anywhere" }}>Evidence: {item.resolutionEvidenceReference}</div>}
+              {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired")} style={{ ...buttonStyle, marginTop: 10, fontSize: 12, padding: "8px 10px", background: "#92400e" }}>{reservationAction === item.requestId + ":resolve" ? "Cancelling expired reservation…" : "Cancel expired, unsubmitted request"}</button>}
               {(item.status === "needs_review" || item.status === "reserved") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
                 {item.providerRequestId && <button type="button"
                   disabled={reservationAction !== null}
