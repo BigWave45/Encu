@@ -195,10 +195,6 @@ try {
   response = await postReconcile("agent-two-token", "success-001");
   assert(response.status === 404, "agent cannot inspect another agent's reservation");
 
-  response = await postReconcile("test-admin-token", "wrong-agent-001");
-  payload = await response.json();
-  assert(response.status === 200 && payload.status === "executed", "administrator can reconcile another agent's reservation");
-
   response = await postReconcile("agent-one-token", "missing-001");
   assert(response.status === 404, "unknown reservation is not found");
 
@@ -239,6 +235,11 @@ try {
   payload = await response.json();
   assert(response.status === 500 && payload.status === "needs_review", "ledger write failure is reported without claiming settlement");
   assert(reservations.get("finalize-error-001").status === "needs_review", "failed ledger finalisation leaves reservation pending");
+
+  failFinalization = false;
+  response = await postReconcile("test-admin-token", "wrong-agent-001");
+  payload = await response.json();
+  assert(response.status === 200 && payload.status === "executed", "administrator can reconcile another agent's reservation");
 
   process.stdout.write("\nReconciliation integration tests passed. Mock NEAR RPC and mock Supabase only; no credentials or real transfer used.\n");
 } catch (error) {
