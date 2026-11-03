@@ -472,3 +472,139 @@ body {
   .dashboard-workspace p { font-size: 13px; }
   .dashboard-workspace h2 { font-size: 21px !important; }
 }
+
+
+/* Operations-console transaction history */
+.history-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+  border: 1px solid #414b40;
+  border-radius: 12px;
+  background: #171d17;
+}
+.history-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: separate !important;
+  border-spacing: 0;
+  background: #171d17 !important;
+}
+.history-table thead th {
+  padding: 14px 13px !important;
+  border-bottom: 1px solid #414b40 !important;
+  background: #242c23 !important;
+  color: #c5cebd !important;
+  text-align: left;
+  font-size: 10px !important;
+  font-weight: 750;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.history-table td {
+  padding: 15px 13px !important;
+  border-bottom: 1px solid #303a30 !important;
+  vertical-align: middle;
+  color: #eef0e8 !important;
+  font-size: 13px;
+}
+.history-primary-row:hover td { background: #202820 !important; }
+.history-amount { display: block; color: #fff5df !important; font-size: 15px; font-weight: 800; white-space: nowrap; }
+.history-subline {
+  display: block;
+  max-width: 220px;
+  margin-top: 5px;
+  color: #b5c0b1 !important;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 27px;
+  padding: 5px 10px;
+  border: 1px solid #65705f;
+  border-radius: 6px;
+  background: #30392e;
+  color: #e5eadf !important;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+.status-executed { border-color: #397b59; background: #183d2b; color: #9ce4b6 !important; }
+.status-awaiting_approval { border-color: #a47a35; background: #493619; color: #ffda91 !important; }
+.status-needs_review { border-color: #a64f46; background: #4b2522; color: #ffb2a8 !important; }
+.status-reserved { border-color: #52769c; background: #20364d; color: #b4d7ff !important; }
+.status-failed, .status-rejected { border-color: #98544c; background: #422522; color: #ffb6aa !important; }
+.status-cancelled { border-color: #697365; background: #30382f; color: #d1d9cb !important; }
+.history-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 110px; }
+.history-actions button {
+  min-height: 31px !important;
+  padding: 6px 9px !important;
+  border: 1px solid #596653 !important;
+  background: #293328 !important;
+  color: #f0f2e9 !important;
+  font-size: 10px !important;
+  font-weight: 750 !important;
+  white-space: nowrap;
+}
+.history-detail-row td {
+  padding: 0 13px 16px !important;
+  background: #141a14 !important;
+}
+.history-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #354033;
+  border-radius: 9px;
+  background: #1c241c;
+}
+.history-detail-grid > div { min-width: 0; }
+.history-detail-grid > div > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #b6c1b2 !important;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.history-detail-grid strong,
+.history-detail-grid code {
+  display: block;
+  color: #f0f1e9 !important;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.history-detail-grid code {
+  color: #e8c98e !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.history-warning {
+  padding: 10px;
+  border: 1px solid #98554a;
+  border-radius: 7px;
+  background: #3c211e;
+}
+.history-warning strong { color: #ffc0b4 !important; }
+.empty-state {
+  padding: 34px 20px;
+  border: 1px dashed #4b5749;
+  border-radius: 10px;
+  background: #1a211a;
+  text-align: center;
+}
+.empty-state strong { color: #f2f0e8 !important; font-size: 15px; }
+.empty-state p { color: #bac4b6 !important; font-size: 13px; }
+@media (max-width: 700px) {
+  .history-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
