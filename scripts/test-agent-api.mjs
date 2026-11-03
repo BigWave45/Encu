@@ -22,6 +22,7 @@ const recipientAuthorizations = new Map();
 const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:00.000Z", updated_by: "admin" };
 let mockSignerAddress = "agentguard.testnet";
 let mockBudgetReadError = false;
+let revokeRecipientAtSignerCheck = null;
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -62,7 +63,14 @@ const mock = createServer(async (req, res) => {
         }
       });
     }
-    if (req.method === "GET" && url.pathname === "/wallet/v1/address") return send(res, 200, { executor_account_id: mockSignerAddress });
+    if (req.method === "GET" && url.pathname === "/wallet/v1/address") {
+      if (revokeRecipientAtSignerCheck) {
+        const row = recipientAuthorizations.get(revokeRecipientAtSignerCheck);
+        if (row) { row.status = "revoked"; row.revoked_at = new Date().toISOString(); row.revoked_by = "admin"; }
+        revokeRecipientAtSignerCheck = null;
+      }
+      return send(res, 200, { executor_account_id: mockSignerAddress });
+    }
     if (req.method === "GET" && url.pathname === "/wallet/v1/policy") return send(res, 200, {
       policy: {
         rules: { limits: { per_transaction: { native: "1000000000000000000000000" } }, transaction_types: ["transfer"] },
@@ -378,13 +386,28 @@ const mock = createServer(async (req, res) => {
       const status = autoApproved ? "reserved" : "awaiting_approval";
       reservations.set(body.p_request_id, {
         amount: body.p_amount_yocto, recipient: body.p_recipient,
-        agentId: body.p_agent_id, status, autoApproved, claimed: autoApproved,
+        agentId: body.p_agent_id, status, autoApproved, claimed: false,
         txHash: null, providerRequestId: null,
         approvalExpiresAt: autoApproved ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
       mockBudget.reserved_yocto = (BigInt(mockBudget.reserved_yocto) + amount).toString();
       allocation.reserved_yocto = (BigInt(allocation.reserved_yocto) + amount).toString();
       return send(res, 200, { created: true, status, auto_approved: autoApproved, request_id: body.p_request_id, approval_expires_at: reservations.get(body.p_request_id).approvalExpiresAt });
+    }
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/claim_agent_auto_submission") {
+      const body = await readJson(req);
+      const row = reservations.get(body.p_request_id);
+      const recipient = recipientAuthorizations.get(`${body.p_agent_id}|${body.p_recipient}`);
+      if (!recipient || recipient.status !== "active" || (recipient.expires_at && new Date(recipient.expires_at).getTime() <= Date.now())) {
+        return send(res, 200, { claimed: false, reason: "recipient_not_authorized" });
+      }
+      if (!row || row.agentId !== body.p_agent_id || row.recipient !== body.p_recipient ||
+          row.status !== "reserved" || row.autoApproved !== true || row.claimed) {
+        return send(res, 200, { claimed: false, reason: "reservation_not_claimable" });
+      }
+      if (!systemControls.transfers_enabled || !tokens["agent-one-token"].active) return send(res, 200, { claimed: false, reason: "policy_blocked" });
+      row.claimed = true;
+      return send(res, 200, { claimed: true, request_id: body.p_request_id });
     }
     if (req.method === "POST" && url.pathname === "/rest/v1/rpc/record_outlayer_submission") {
       counters.record++;
@@ -943,6 +966,20 @@ try {
     body: JSON.stringify({ id: "primary", autoSpendLimitYocto: "100000000000000000000000" })
   });
   assert(response.status === 403, "agent credential cannot change its autonomous allowance");
+  // Simulate recipient revocation after reservation and signer lookup but before
+  // the atomic provider-submission claim.
+  await fetch(`http://127.0.0.1:${appPort}/api/admin/agents/recipients`, {
+    method: "POST", headers: { authorization: "Bearer admin-token", "content-type": "application/json" },
+    body: JSON.stringify({ agentId: "primary", accountId: "race-revoke.test", label: "Race test recipient" })
+  });
+  revokeRecipientAtSignerCheck = "primary|race-revoke.test";
+  const providerBeforeRevocationRace = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-revoke-race-001", to: "race-revoke.test", amount: "10000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 403 && payload.reason === "recipient_not_authorized", "recipient revoked before atomic claim blocks autonomous submission");
+  assert(counters.provider === providerBeforeRevocationRace, "revocation race never reaches OutLayer");
+  assert(reservations.get("test-auto-revoke-race-001")?.claimed === false, "revoked request never receives a submission claim");
+
   const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
   payload = await response.json();
