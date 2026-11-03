@@ -31,7 +31,7 @@ Agent
 
 Supabase is the source of truth for the shared budget and reservation ledger. OutLayer is the configured transfer provider. NEAR RPC is used to independently verify final transaction execution.
 
-**Product boundary:** AgentGuard owns agent identity and authentication, policy evaluation, authorization, shared-budget reservation, idempotency, approval, attribution, audit, and finality-based ledger settlement. OutLayer submits approved transfers; it does not decide which agent may spend, how much it may spend, or whether a request is authorized. OutLayer is the only execution provider implemented in V1. Additional execution-provider adapters are a future extension point; multi-provider support is not part of the current NEAR hackathon scope.
+**Product boundary:** OutLayer supplies a TEE-backed custody and wallet-policy boundary. Its owner policy can enforce wallet-wide limits and transaction restrictions before signing. AgentGuard adds a separate application authorization boundary: logical agent identities, per-agent allocations, shared-treasury exposure accounting, request idempotency, exact-recipient authorization, approval workflow, attributable audit and NEAR-finality-based ledger settlement. The current integration uses one OutLayer wallet/API credential and does not map each AgentGuard agent to a distinct OutLayer signer or provider policy. AgentGuard's per-agent allocation ledger is therefore enforced by AgentGuard, while OutLayer's wallet policy is an independent wallet-wide backstop. OutLayer is the only execution provider implemented in V1. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md) for the provider-policy inspection and remaining integration tests.
 
 ## Environment variables
 
@@ -356,11 +356,11 @@ A successful health check confirms service connectivity, not that a transfer lif
 
 ### Product direction
 
-AgentGuard is being designed as an independently enforced financial authorization layer for autonomous agents. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass AgentGuard to spend from the protected wallet.
+AgentGuard is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass AgentGuard to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that AgentGuard replaces.
 
 The intended operating model is **policy-authorized autonomous execution**: an administrator authorizes a bounded spending policy once, and AgentGuard automatically executes transactions that satisfy it. Human approval is reserved for suspicious activity, policy exceptions and administrative changes. The current implementation still requires human approval for every transfer; automatic policy-authorized execution is a design decision and is **not implemented yet**.
 
-OutLayer remains the execution provider in the NEAR hackathon scope. AgentGuard independently owns identity, policy, authorization, budget reservation, execution gating, audit and finality-based accounting. Multi-provider support is a future extension, not part of the current hackathon implementation.
+OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. AgentGuard independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
 
 ### Agreed architecture decisions
 
@@ -466,7 +466,7 @@ These results are scoped to the tested commit and isolated environment. Re-check
 
 ### Execution architecture and provider independence
 
-OutLayer remains the only implemented execution provider. AgentGuard's policy engine is intended to remain provider-independent: it authenticates the agent, evaluates the current policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. An execution adapter performs signing and submission.
+OutLayer remains the only implemented execution provider. AgentGuard's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates AgentGuard policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify that owner policy through code; this must be inspected and evidenced for the deployed Preview wallet. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
 
 The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated AgentGuard treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
