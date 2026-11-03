@@ -54,12 +54,6 @@ type Dashboard = {
     providerRequestId: string | null;
     lastError: string | null;
     createdAt: string;
-    approvalExpiresAt?: string | null;
-    approvedAt?: string | null;
-    approvedBy?: string | null;
-    rejectedAt?: string | null;
-    rejectedBy?: string | null;
-    approvalReason?: string | null;
     cancelledAt?: string | null;
     cancelledBy?: string | null;
     resolvedAt?: string | null;
@@ -187,7 +181,6 @@ export default function Home() {
   const [allocationMessage, setAllocationMessage] = useState("");
   const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
-  const [selectedTransferIds, setSelectedTransferIds] = useState<string[]>([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [reservationSearch, setReservationSearch] = useState("");
@@ -361,31 +354,6 @@ export default function Home() {
       setPolicyMessage("Could not confirm policy update.");
     } finally {
       setPolicyBusy(false);
-    }
-  }
-
-  async function decideTransfer(requestId: string, action: "approve" | "reject") {
-    if (!adminToken.trim()) return;
-    // Rejection is a single-tap admin action. Avoid window.prompt(), which is
-    // unreliable in embedded mobile browsers. The API records this reason.
-    const reason = action === "reject" ? "Rejected by admin. No transfer was submitted." : null;
-    setReservationAction(requestId);
-    setReservationActionError("");
-    try {
-      const response = await fetch("/api/admin/approvals", {
-        method: "POST",
-        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
-        body: JSON.stringify(action === "approve"
-          ? { action, requestId }
-          : { action, requestId, reason: reason?.trim() })
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) setReservationActionError(body.reason ?? body.error ?? "approval_action_failed");
-      else await loadDashboard();
-    } catch {
-      setReservationActionError("Could not confirm the approval action. Refresh before retrying.");
-    } finally {
-      setReservationAction(null);
     }
   }
 
@@ -612,50 +580,6 @@ export default function Home() {
     }
   }
 
-  async function bulkDecideTransfers(action: "approve" | "reject") {
-    const ids = selectedTransferIds;
-    if (!ids.length || !adminToken.trim() || bulkBusy) return;
-    const pending = (dashboard?.reservations ?? []).filter(item => ids.includes(item.requestId) && item.status === "awaiting_approval");
-    if (pending.length !== ids.length) {
-      setSelectedTransferIds(pending.map(item => item.requestId));
-      setBulkMessage("Selection changed because one or more requests are no longer awaiting approval. Review the refreshed selection.");
-      return;
-    }
-    const totalYocto = pending.reduce((sum, item) => sum + BigInt(item.amountYocto), 0n);
-    const totalNear = near(totalYocto.toString());
-    const warning = action === "approve"
-      ? "This will submit " + pending.length + " transfers totalling " + totalNear + " NEAR, one at a time, through the normal policy checks. Confirm only if you intend to authorize these transfers."
-      : "This will reject " + pending.length + " pending transfer requests totalling " + totalNear + " NEAR.";
-    if (!window.confirm((action === "approve" ? "APPROVE AND SUBMIT " : "REJECT ") + pending.length + " selected requests?\n\n" + warning)) return;
-    setBulkBusy(true);
-    setBulkMessage("");
-    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-    try {
-      for (const item of pending) {
-        try {
-          const response = await fetch("/api/admin/approvals", {
-            method: "POST",
-            headers: { authorization: "Bearer " + adminToken.trim(), "content-type": "application/json" },
-            body: JSON.stringify(action === "approve"
-              ? { action, requestId: item.requestId }
-              : { action, requestId: item.requestId, reason: "Rejected in administrator bulk action." })
-          });
-          const body = await response.json().catch(() => ({}));
-          results.push({ id: item.requestId, ok: response.ok, error: response.ok ? undefined : body.reason ?? body.error ?? "action_failed" });
-        } catch {
-          results.push({ id: item.requestId, ok: false, error: "network_error_or_unknown_outcome" });
-        }
-      }
-      const succeeded = results.filter(item => item.ok).length;
-      const failed = results.filter(item => !item.ok);
-      setSelectedTransferIds(failed.map(item => item.id));
-      setBulkMessage("Transfer batch finished: " + succeeded + " accepted by the API, " + failed.length + " failed. Accepted does not mean NEAR finality; check each resulting transaction state." + (failed.length ? " Failed: " + failed.map(item => item.id + " (" + item.error + ")").join(", ") : ""));
-      await loadDashboard();
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
   async function inspectReservation(requestId: string, action: "provider-status" | "reconcile") {
     if (!adminToken.trim()) {
       setReservationActionError("Enter the administrator token before checking or reconciling a reservation.");
@@ -855,7 +779,6 @@ export default function Home() {
         {dashboard && <section className="encu-live-strip" aria-label="Live treasury status">
           <div><span className="encu-live-label">CONTROL PLANE</span><strong><i className={dashboard.transfersEnabled ? "encu-state-dot is-live" : "encu-state-dot is-stopped"} />{dashboard.transfersEnabled ? "Transfers enabled" : "Emergency stop active"}</strong></div>
           <div><span className="encu-live-label">AGENT IDENTITIES</span><strong>{dashboard.agents?.filter(agent => agent.active).length ?? 0} <small>active</small></strong></div>
-          <div><span className="encu-live-label">AWAITING DECISION</span><strong>{dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0} <small>in loaded results</small></strong></div>
           <div><span className="encu-live-label">LAST SNAPSHOT</span><strong>{dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleTimeString() : "Just now"}</strong></div>
         </section>}
         {outLayerPolicy && <section aria-label="OutLayer wallet policy" className="console-panel provider-policy-panel" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
@@ -1121,33 +1044,11 @@ Content-Type: application/json
           {bulkMessage && <p role="status" className="bulk-message">{bulkMessage}</p>}
           </div>
           <div hidden={activeView !== "payments"}>
-          <h3 id="approvals" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfers awaiting approval ({dashboard.reservations?.filter(item => item.status === "awaiting_approval").length ?? 0})</h3>
-          <div className="bulk-toolbar">
-            <span>{selectedTransferIds.length} transfers selected · current dashboard page only</span>
-            <button type="button" disabled={bulkBusy || !selectedTransferIds.length || !adminToken.trim()} onClick={() => bulkDecideTransfers("approve")}>Approve and submit selected</button>
-            <button type="button" disabled={bulkBusy || !selectedTransferIds.length || !adminToken.trim()} onClick={() => bulkDecideTransfers("reject")}>Reject selected</button>
-            <button type="button" disabled={bulkBusy || !selectedTransferIds.length} onClick={() => setSelectedTransferIds([])}>Clear</button>
-          </div>
-          {!dashboard.reservations?.some(item => item.status === "awaiting_approval") ? <p style={{ color: "#64748b", fontSize: 13 }}>No pending approvals on this page. Use the status filter to find other pending requests.</p> :
-            <div style={{ display: "grid", gap: 10 }}>
-              {dashboard.reservations.filter(item => item.status === "awaiting_approval").map(item => <div key={item.requestId} className="approval-record">
-                <label className="bulk-select-row"><input type="checkbox" aria-label={"Select transfer " + item.requestId} disabled={bulkBusy} checked={selectedTransferIds.includes(item.requestId)} onChange={event => setSelectedTransferIds(current => event.target.checked ? [...current, item.requestId] : current.filter(id => id !== item.requestId))} /><span><strong>{item.agentId}</strong> requests {near(item.amountYocto)} NEAR</span></label>
-                <p style={{ margin: "6px 0" }}>Recipient: <code>{item.recipient}</code></p>
-                <p style={{ margin: "6px 0", color: "#64748b" }}>Request ID: {item.requestId}</p>
-                <p style={{ margin: "6px 0", color: "#64748b" }}>Expires: {item.approvalExpiresAt ? new Date(item.approvalExpiresAt).toLocaleString() : "Not available"}</p>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" disabled={reservationAction === item.requestId || bulkBusy || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "approve")} style={{ ...buttonStyle, marginTop: 4 }}>Approve and submit</button>
-                  <button type="button" disabled={reservationAction === item.requestId || bulkBusy || !adminToken.trim()} onClick={() => decideTransfer(item.requestId, "reject")} style={{ ...buttonStyle, marginTop: 4, background: "#991b1b" }}>Reject</button>
-                  {item.approvalExpiresAt && Date.now() >= new Date(item.approvalExpiresAt).getTime() && <button type="button" disabled={reservationAction !== null || bulkBusy || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")} style={{ ...buttonStyle, marginTop: 4, background: "#475569" }}>Cancel expired request</button>}
-                </div>
-              </div>)}
-            </div>}
-          {bulkMessage && <p role="status" className="bulk-message">{bulkMessage}</p>}
           <h3 id="payments" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
             <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
             <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
-              <option value="all">All statuses</option><option value="aged">Aged / ambiguous (15+ min)</option><option value="awaiting_approval">Awaiting approval</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option>
+              <option value="all">All statuses</option><option value="aged">Aged / ambiguous (15+ min)</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option>
             </select>
             <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
           </div>
@@ -1159,7 +1060,7 @@ Content-Type: application/json
                 </tr></thead>
                 <tbody>{dashboard.reservations.map(item => {
                   const released = ["failed", "rejected", "cancelled"].includes(item.status);
-                  const providerLabel = item.providerRequestId || item.txHash ? "Reference recorded" : item.status === "needs_review" ? "Outcome ambiguous" : item.status === "reserved" ? "Submission in progress" : ["awaiting_approval", "rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No reference";
+                  const providerLabel = item.providerRequestId || item.txHash ? "Reference recorded" : item.status === "needs_review" ? "Outcome ambiguous" : item.status === "reserved" ? "Submission in progress" : ["rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No reference";
                   const finalityLabel = item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash";
                   return <Fragment key={item.requestId}>
                     <tr className="history-primary-row">
@@ -1173,7 +1074,6 @@ Content-Type: application/json
                         {item.providerRequestId && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "provider-status")}>{reservationAction === item.requestId + ":provider-status" ? "Checking…" : "Check provider"}</button>}
                         {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "reconcile")}>{reservationAction === item.requestId + ":reconcile" ? "Checking…" : "Reconcile"}</button>}
                         {item.txHash && (item.status === "needs_review" || item.status === "reserved") && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", "Provider confirms final failure", item.txHash)}>Resolve failure</button>}
-                        {item.status === "awaiting_approval" && item.approvalExpiresAt && new Date(item.approvalExpiresAt).getTime() <= Date.now() && !item.providerRequestId && !item.txHash && !item.approvedAt && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "cancel_expired", "Expired request was never submitted")}>Cancel expired</button>}
                       </div></td>
                     </tr>
                     <tr className="history-detail-row"><td colSpan={7}>
