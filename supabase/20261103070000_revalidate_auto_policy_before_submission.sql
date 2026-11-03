@@ -83,9 +83,6 @@ begin
   if v_policy.max_transfer_yocto is not null
      and v_reservation.amount_yocto > v_policy.max_transfer_yocto then
     v_policy_reason := 'agent_per_transfer_limit';
-  elsif v_policy.allowed_recipients is not null
-     and not (p_recipient = any(v_policy.allowed_recipients)) then
-    v_policy_reason := 'recipient_not_allowed';
   elsif v_policy.daily_limit_yocto is not null then
     select coalesce(sum(amount_yocto), 0) into v_daily
     from public.spend_reservations
