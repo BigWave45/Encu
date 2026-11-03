@@ -211,8 +211,8 @@ export default function Home() {
   const [policyMessage, setPolicyMessage] = useState("");
   const [requestAgentToken, setRequestAgentToken] = useState("");
   const [requestAgentId, setRequestAgentId] = useState("test-agent-alpha");
-  const [requestRecipient, setRequestRecipient] = useState("lensherr.testnet");
-  const [requestAmount, setRequestAmount] = useState("3");
+  const [requestRecipient, setRequestRecipient] = useState("");
+  const [requestAmount, setRequestAmount] = useState("");
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestResult, setRequestResult] = useState<Record<string, unknown> | null>(null);
 
@@ -1134,9 +1134,13 @@ export default function Home() {
       </section>
 
       <section hidden={activeView !== "developer"} id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
-        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Live agent request test</h2>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Testnet transfer request</h2>
+        <div role="alert" className="history-warning" style={{ margin: "12px 0", padding: 14 }}>
+          <strong>Live execution warning</strong>
+          <p style={{ margin: "6px 0 0", color: "#ffc0b4" }}>This sends a real authenticated transfer request. If ENCU authorizes it within the agent&apos;s autonomous allowance, ENCU can submit it to OutLayer and initiate a NEAR Testnet transfer. Requests outside that allowance enter administrator review. This is not a dry run.</p>
+        </div>
         <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
-          Sends a real authenticated request to ENCU&apos;s reservation API. It does not call OutLayer. The agent token is held only in this page&apos;s memory and cleared after submission.
+          Use only a testnet agent, an explicitly authorized recipient and an amount you intend to transfer. The agent token is held only in this page&apos;s memory and cleared after submission.
         </p>
         <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>
