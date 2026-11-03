@@ -26,6 +26,7 @@ on:
       - "supabase/20261103050000_agentguard_autonomy_recipient_guard.sql"
       - "supabase/20261103060000_atomic_recipient_submission_claim.sql"
       - "supabase/20261103070000_revalidate_auto_policy_before_submission.sql"
+      - "supabase/20261103080000_restore_privileged_autonomy_rpcs.sql"
       - "supabase/20261031221500_restrict_privileged_rpc_access.sql"
   workflow_dispatch:
 
@@ -90,6 +91,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/20261103050000_agentguard_autonomy_recipient_guard.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103060000_atomic_recipient_submission_claim.sql
           psql -v ON_ERROR_STOP=1 -f supabase/20261103070000_revalidate_auto_policy_before_submission.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/20261103080000_restore_privileged_autonomy_rpcs.sql
           export PGPASSWORD=service_role_test_only
           psql -v ON_ERROR_STOP=1 -U service_role -Atc "SELECT public.set_agentguard_transfers_enabled(true, 'admin');" | jq -e '.transfers_enabled == true' >/dev/null
           export PGPASSWORD=agentguard_test_only
