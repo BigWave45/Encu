@@ -1,12 +1,14 @@
-# AgentGuard
+# ENCU
 
-AgentGuard is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
+ENCU is an application-level transaction authorization and control layer for AI agents making native NEAR transfers.
+
+**Naming note:** ENCU is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
 
 ## V1 release scope — 2026-11-03
 
 **This section defines the current hackathon release boundary and supersedes conflicting historical status notes later in this file.**
 
-The current V1 is a **single-operator Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated AgentGuard agents. It is not yet a multi-customer managed SaaS product.
+The current V1 is a **single-operator Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated ENCU agents. It is not yet a multi-customer managed SaaS product.
 
 The current implementation includes:
 
@@ -21,16 +23,16 @@ The current implementation includes:
 - OutLayer submission tracking and independent NEAR FINAL reconciliation before ledger settlement.
 - Administrator controls, transaction history, audit events and provider-policy inspection.
 
-**Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. AgentGuard does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and AgentGuard enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
+**Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. ENCU does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and ENCU enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
 
-**Current enforcement boundary:** AgentGuard independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current AgentGuard adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native AgentGuard treasury contract. Therefore V1 does not claim that AgentGuard's policy is enforced by an AgentGuard smart contract on-chain.
+**Current enforcement boundary:** ENCU independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current ENCU adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native ENCU treasury contract. Therefore V1 does not claim that ENCU's policy is enforced by an ENCU smart contract on-chain.
 
 ## Architecture
 
 ```text
 Logical AI agent
-  -> AgentGuard API authentication
-  -> AgentGuard policy evaluation
+  -> ENCU API authentication
+  -> ENCU policy evaluation
   -> atomic shared-treasury + per-agent reservation (Supabase)
   -> bounded autonomous authorization OR administrator approval
   -> OutLayer wallet transfer/signing and provider wallet policy
@@ -66,7 +68,7 @@ The following are outside this release and must not be represented as current ca
 
 The native NEAR treasury contract is a separate research/design workstream, not part of the current V1 release. The existing design document is a proposal, not implemented code: [native NEAR treasury contract design](docs/native-near-treasury-contract-design.md).
 
-OutLayer's published Agent Custody documentation lists a NEAR contract-call endpoint (`POST /wallet/v1/call`) in addition to native transfers. The current AgentGuard adapter in `lib/outlayer.ts` calls `POST /wallet/v1/transfer` only. The Preview wallet policy inspected on 2026-11-03 allows `transfer` transaction types only, so it does not currently authorize contract calls. Enabling `call` would be a deliberate provider-policy change requiring a new least-privilege review and test. There is also an identity-boundary problem: an OutLayer contract call is signed by the configured OutLayer wallet, so the contract would see that wallet as the caller, not the originating AgentGuard agent. Passing an `agent_id` argument from the server would not independently authenticate the agent. A native design therefore needs a contract-verifiable agent authorization mechanism (for example, agent-held signing keys and verifiable request signatures, or distinct restricted on-chain keys), plus replay protection and exact request binding. Contract-call API availability alone does not solve that problem or establish a safe treasury funding/withdrawal model. These are explicit feasibility gates, not V1 work. See [OutLayer Agent Custody documentation](https://app.outlayer.ai/docs/agent-custody).
+OutLayer's published Agent Custody documentation lists a NEAR contract-call endpoint (`POST /wallet/v1/call`) in addition to native transfers. The current ENCU adapter in `lib/outlayer.ts` calls `POST /wallet/v1/transfer` only. The Preview wallet policy inspected on 2026-11-03 allows `transfer` transaction types only, so it does not currently authorize contract calls. Enabling `call` would be a deliberate provider-policy change requiring a new least-privilege review and test. There is also an identity-boundary problem: an OutLayer contract call is signed by the configured OutLayer wallet, so the contract would see that wallet as the caller, not the originating ENCU agent. Passing an `agent_id` argument from the server would not independently authenticate the agent. A native design therefore needs a contract-verifiable agent authorization mechanism (for example, agent-held signing keys and verifiable request signatures, or distinct restricted on-chain keys), plus replay protection and exact request binding. Contract-call API availability alone does not solve that problem or establish a safe treasury funding/withdrawal model. These are explicit feasibility gates, not V1 work. See [OutLayer Agent Custody documentation](https://app.outlayer.ai/docs/agent-custody).
 
 The current V1 remains Testnet-only for the hackathon. Mainnet configuration options in the code are not a claim of mainnet readiness.
 
@@ -99,7 +101,7 @@ The repository has two different database paths. Keep them separate.
 
 Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the baseline multi-agent schema and privileged RPCs. Then apply the forward migrations listed below in timestamp order to bring that baseline to the current V1 schema. The setup script is not an upgrade mechanism and must not be run against an existing database.
 
-### Existing AgentGuard database
+### Existing ENCU database
 
 Do not assume that a database is at a particular migration step because a previous README version said so. Inspect both its schema and `supabase_migrations.schema_migrations` before applying anything. The SQL files are forward changes; do not replay a migration that is already represented in the database or whose effects are already present.
 
@@ -130,7 +132,7 @@ Older installations may also require the earlier multi-agent, request-ID, reconc
 
 These earlier scripts are prerequisites only when their schema changes are absent. Establish the actual baseline before choosing an upgrade path. Do not apply the entire list blindly.
 
-### Connected AgentGuard database: observed state on 2026-11-02
+### Connected ENCU database: observed state on 2026-11-02
 
 The connected Supabase project was inspected read-only. Its migration history contains these five entries:
 
@@ -312,7 +314,7 @@ Body:
 }
 ```
 
-AgentGuard queries NEAR testnet RPC for final execution and verifies the signer, recipient, and exact single transfer action against the reservation. Only a matching FINAL transaction can settle the reservation as executed or failed.
+ENCU queries NEAR testnet RPC for final execution and verifies the signer, recipient, and exact single transfer action against the reservation. Only a matching FINAL transaction can settle the reservation as executed or failed.
 
 A pending transaction, unavailable RPC, missing hash, or transaction mismatch leaves the reservation held for review. The route does not retry the transfer.
 
@@ -366,7 +368,7 @@ Create a local `.env.local` with the required environment variables. Do not comm
 
 The repository includes a backend test that sends two simultaneous 3 NEAR calls to the real `reserve_agent_spend` RPC. With a dedicated disposable database seeded with the standard 5 NEAR budget and two active agents, exactly one request must reserve 3 NEAR and the other must be blocked. It also checks the persisted ledger, same-payload replay, changed-payload idempotency conflict, and restores the original budget snapshot.
 
-**Never run this against the production AgentGuard database.** It temporarily writes reservation rows and budget counters. Use a dedicated disposable Supabase project with the same schema and seeded agents, no live app traffic, and a service-role key stored only in your local environment.
+**Never run this against the production ENCU database.** It temporarily writes reservation rows and budget counters. Use a dedicated disposable Supabase project with the same schema and seeded agents, no live app traffic, and a service-role key stored only in your local environment.
 
 Run it with:
 
@@ -374,7 +376,7 @@ Run it with:
 AGENTGUARD_TEST_DATABASE=true SUPABASE_URL="https://YOUR-TEST-PROJECT.supabase.co" SUPABASE_SERVICE_ROLE_KEY="YOUR_TEST_SERVICE_ROLE_KEY" npm run test:reservation-concurrency
 ```
 
-The script refuses to run without the explicit isolation flag and refuses a database that is not empty with a 5 NEAR budget, zero spent/reserved, and both agents active. It never calls the AgentGuard transfer route or OutLayer.
+The script refuses to run without the explicit isolation flag and refuses a database that is not empty with a 5 NEAR budget, zero spent/reserved, and both agents active. It never calls the ENCU transfer route or OutLayer.
 
 ## Known V1 limitations
 
@@ -396,11 +398,11 @@ A successful health check confirms service connectivity, not that a transfer lif
 
 ### Product direction
 
-AgentGuard is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass AgentGuard to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that AgentGuard replaces.
+ENCU is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass ENCU to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that ENCU replaces.
 
-The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so AgentGuard authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
+The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so ENCU authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
 
-OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. AgentGuard independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
+OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. ENCU independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
 
 ### Agreed architecture decisions
 
@@ -450,7 +452,7 @@ The overview should make four things immediately visible: how much authority exi
 
 ### Threat model and mandatory safeguards
 
-Prioritize these attack surfaces because failure would invalidate AgentGuard's core security promise:
+Prioritize these attack surfaces because failure would invalidate ENCU's core security promise:
 
 - **Provider bypass / credential compromise:** agents must not possess OutLayer credentials; only the trusted server can call the provider.
 - **Concurrent overspending:** treasury and agent reservations must be atomic against shared authoritative records. Application-side read-then-write checks are insufficient.
@@ -506,9 +508,9 @@ These results are scoped to the tested commit and isolated environment. Re-check
 
 ### Execution architecture and provider independence
 
-OutLayer remains the only implemented execution provider. AgentGuard's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates AgentGuard policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
+OutLayer remains the only implemented execution provider. ENCU's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates ENCU policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
 
-The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated AgentGuard treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
+The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated ENCU treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
 This is an approved architectural direction, not implemented functionality. Before deployment, specify and test contract ownership, key rotation/recovery, deposit and withdrawal authority, asynchronous transfer promises/callbacks, pending/failed settlement, duplicate calls, contract upgrades and emergency recovery. Supabase remains the off-chain policy, workflow and audit store; the contract becomes the authoritative on-chain enforcement boundary for funds held by that contract. Reconciliation must compare contract state and NEAR FINAL outcomes with the off-chain ledger.
 
@@ -545,7 +547,7 @@ Production Supabase and Production Vercel remain out of scope unless the user ex
 
 ## Planned execution backends
 
-The developer-facing AgentGuard payment API is intended to remain provider-neutral. An administrator configures the execution backend for each treasury; an agent requests a payment against an authorized treasury and cannot choose a different backend in the request.
+The developer-facing ENCU payment API is intended to remain provider-neutral. An administrator configures the execution backend for each treasury; an agent requests a payment against an authorized treasury and cannot choose a different backend in the request.
 
 Planned backend types are distinct:
 - **OutLayer wallet:** current V1, using OutLayer custody and its native NEAR transfer endpoint.
@@ -558,6 +560,6 @@ The first native contract release is scoped to native NEAR transfers. NEP-141 to
 
 ## NEAR Intents and other NEAR payment infrastructure
 
-OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. AgentGuard does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
+OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. ENCU does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
 
-The planned native AgentGuard contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
+The planned native ENCU contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
