@@ -175,6 +175,20 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ status: "blocked", reason: "recipient_not_authorized" }, { status: 403 });
     }
+    if (submissionClaim?.awaiting_approval === true) {
+      await recordSecurityEvent({
+        actorAgentId: identity.agentId,
+        eventType: "transfer_auto_authorization_downgraded",
+        requestId,
+        details: { reason: submissionClaim.reason ?? "current_policy_requires_review" }
+      });
+      return NextResponse.json({
+        status: "awaiting_approval",
+        requestId,
+        reason: submissionClaim.reason ?? "current_policy_requires_review",
+        approvalExpiresAt: submissionClaim.approval_expires_at ?? null
+      }, { status: 202 });
+    }
     return NextResponse.json({ status: "already_processing", requestId }, { status: 409 });
   }
 
