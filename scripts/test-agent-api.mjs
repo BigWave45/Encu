@@ -780,7 +780,7 @@ try {
   payload = await response.json();
   assert(response.status === 409 && payload.reason === "recipient_not_authorized", `revoked recipient cannot pass approval revalidation (HTTP ${response.status}: ${JSON.stringify(payload)})`);
   assert(reservations.get("test-recipient-revoke-001").status === "awaiting_approval", "revocation leaves pending reservation intact");
-  assert(securityEvents.some(event => event.event_type === "transfer_approval_blocked" && event.request_id === "test-recipient-revoke-001"), `blocked approval attempt is recorded in the security event log (${JSON.stringify(securityEvents.filter(event => event.request_id === "test-recipient-revoke-001"))})`);
+  assert(securityEvents.some(event => event.event_type === "transfer_approval_blocked" && event.request_id === "test-recipient-revoke-001" && event.details?.reason === "recipient_not_authorized" && event.details?.code === "P0001"), "blocked approval audit records the specific recipient authorization denial");
   response = await approveTransfer("test-recipient-revoke-001", "reject");
   assert(response.status === 200, "admin can reject a pending request after recipient revocation");
 
