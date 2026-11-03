@@ -7,7 +7,7 @@ create or replace function public.set_agent_auto_spend_limit(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = ''/g
+set search_path = ''
 as $$
 declare
   v_allocation public.agent_allocations%rowtype;
@@ -71,7 +71,7 @@ create or replace function public.reserve_agent_spend(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = ''/g
+set search_path = ''
 as $$
 declare
   v_budget public.agent_budgets%rowtype;
