@@ -5,6 +5,7 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 import Link from "next/link";
 import "./developers.css";
 import AgentConfiguration from "./agent-configuration";
+import ExecutionExplainer from "./execution-explainer";
 
 type DeveloperAgent = {
   id: string;
@@ -369,6 +370,7 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         )}
+        <ExecutionExplainer />
       </div>
     </main>
   );
