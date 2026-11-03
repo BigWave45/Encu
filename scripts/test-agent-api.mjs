@@ -23,6 +23,7 @@ const systemControls = { transfers_enabled: true, updated_at: "2026-01-01T00:00:
 let mockSignerAddress = "agentguard.testnet";
 let mockBudgetReadError = false;
 let revokeRecipientAtSignerCheck = null;
+let tightenPolicyAtSignerCheck = null;
 const counters = { reserve: 0, finish: 0, record: 0, provider: 0, providerStatus: 0 };
 const budget = 5n * 10n ** 24n;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -68,6 +69,12 @@ const mock = createServer(async (req, res) => {
         const row = recipientAuthorizations.get(revokeRecipientAtSignerCheck);
         if (row) { row.status = "revoked"; row.revoked_at = new Date().toISOString(); row.revoked_by = "admin"; }
         revokeRecipientAtSignerCheck = null;
+      }
+      if (tightenPolicyAtSignerCheck) {
+        const policy = agentPolicies.get(tightenPolicyAtSignerCheck.agentId) ?? {};
+        policy.p_max_transfer_yocto = tightenPolicyAtSignerCheck.maxTransferYocto;
+        agentPolicies.set(tightenPolicyAtSignerCheck.agentId, policy);
+        tightenPolicyAtSignerCheck = null;
       }
       return send(res, 200, { executor_account_id: mockSignerAddress });
     }
@@ -406,6 +413,14 @@ const mock = createServer(async (req, res) => {
         return send(res, 200, { claimed: false, reason: "reservation_not_claimable" });
       }
       if (!systemControls.transfers_enabled || !tokens["agent-one-token"].active) return send(res, 200, { claimed: false, reason: "policy_blocked" });
+      const policy = agentPolicies.get(body.p_agent_id) ?? {};
+      if (policy.p_max_transfer_yocto && BigInt(row.amount) > BigInt(policy.p_max_transfer_yocto)) {
+        row.status = "awaiting_approval";
+        row.autoApproved = false;
+        row.claimed = false;
+        row.approvalExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        return send(res, 200, { claimed: false, reason: "agent_per_transfer_limit", awaiting_approval: true, approval_expires_at: row.approvalExpiresAt });
+      }
       row.claimed = true;
       return send(res, 200, { claimed: true, request_id: body.p_request_id });
     }
@@ -979,6 +994,17 @@ try {
   assert(response.status === 403 && payload.reason === "recipient_not_authorized", "recipient revoked before atomic claim blocks autonomous submission");
   assert(counters.provider === providerBeforeRevocationRace, "revocation race never reaches OutLayer");
   assert(reservations.get("test-auto-revoke-race-001")?.claimed === false, "revoked request never receives a submission claim");
+
+  // A policy tightened after reservation but before the atomic submission
+  // claim must downgrade the request to manual approval without provider use.
+  tightenPolicyAtSignerCheck = { agentId: "primary", maxTransferYocto: "1000000000000000000000" };
+  const providerBeforePolicyDowngrade = counters.provider;
+  response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-policy-downgrade-001", to: "recipient.near", amount: "10000000000000000000000" });
+  payload = await response.json();
+  assert(response.status === 202 && payload.status === "awaiting_approval" && payload.reason === "agent_per_transfer_limit", "tightened policy downgrades an auto-authorized request to manual approval");
+  assert(counters.provider === providerBeforePolicyDowngrade && reservations.get("test-auto-policy-downgrade-001")?.status === "awaiting_approval", "policy downgrade prevents provider submission and preserves reservation");
+  response = await approveTransfer("test-auto-policy-downgrade-001", "reject");
+  assert(response.status === 200 && reservations.get("test-auto-policy-downgrade-001")?.status === "rejected", "administrator can safely reject downgraded request");
 
   const providerBeforeAuto = counters.provider;
   response = await postTransfer({ token: "agent-one-token", requestId: "test-auto-spend-001", to: "recipient.near", amount: "50000000000000000000000" });
