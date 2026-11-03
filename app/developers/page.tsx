@@ -245,9 +245,19 @@ export default function DeveloperPortal() {
 
   const authorityTotals = agents.reduce((totals, agent) => {
     try {
-      totals.allocated += BigInt(agent.allocation?.allocation_limit_yocto ?? "0");
-      totals.spent += BigInt(agent.allocation?.spent_yocto ?? "0");
-      totals.reserved += BigInt(agent.allocation?.reserved_yocto ?? "0");
+      const allocated = BigInt(agent.allocation?.allocation_limit_yocto ?? "0");
+      const spent = BigInt(agent.allocation?.spent_yocto ?? "0");
+      const reserved = BigInt(agent.allocation?.reserved_yocto ?? "0");
+
+      // Agent allocations are isolated. Validate each ledger before aggregating;
+      // spare capacity on one agent must never conceal another agent's overrun.
+      if (allocated < 0n || spent < 0n || reserved < 0n || spent + reserved > allocated) {
+        totals.valid = false;
+      }
+
+      totals.allocated += allocated;
+      totals.spent += spent;
+      totals.reserved += reserved;
     } catch {
       totals.valid = false;
     }
