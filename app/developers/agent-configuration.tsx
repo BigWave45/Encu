@@ -83,8 +83,8 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
 
   function amounts(values: string[]) {
     const parsed = values.map(parseNear);
-    if (parsed.some(value => value === undefined)) {
-      setError("Use valid NEAR amounts with no more than 24 decimal places. Leave a field blank to clear that limit.");
+    if (parsed.some(value => value === undefined || value === "0")) {
+      setError("Use positive NEAR amounts with no more than 24 decimal places. Leave a field blank to clear that limit; set allocation or autonomous allowance to zero to stop spending.");
       return null;
     }
     return parsed;
@@ -94,7 +94,7 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
     <details className="developer-config">
       <summary>Configure spending authority</summary>
       <div className="developer-config-body">
-        <p className="developer-footnote">Amounts are in NEAR. Allocation comes from the shared Testnet pool and remains subject to ENCU’s platform-wide ceiling.</p>
+        <p className="developer-footnote">Amounts are in NEAR. Allocation comes from the shared Testnet pool and remains subject to ENCU’s platform-wide ceiling. Requests outside configured limits or the autonomous allowance are rejected; there is no manual approval queue.</p>
         {config ? <>
           <div className="developer-meta">
             <div><span>Allocated</span><strong>{displayNear(config.allocation?.allocation_limit_yocto)}</strong></div>
