@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   if (id && !idSchema.safeParse(id).success) return NextResponse.json({ error: "invalid_agent_id" }, { status: 400 });
 
   let query = getSupabase().from("agent_policies")
-    .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,updated_at,updated_by")
+    .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,auto_spend_limit_yocto::text,updated_at,updated_by")
     .order("agent_id", { ascending: true });
   if (id) query = query.eq("agent_id", id);
   const { data, error } = await query;
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     maxTransferYocto: row.max_transfer_yocto,
     dailyLimitYocto: row.daily_limit_yocto,
     weeklyLimitYocto: row.weekly_limit_yocto,
+    autoSpendLimitYocto: row.auto_spend_limit_yocto,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by
   })) }, { headers: { "Cache-Control": "no-store, private" } });
