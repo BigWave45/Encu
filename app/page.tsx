@@ -950,11 +950,7 @@ Content-Type: application/json
 }`)} style={{ ...buttonStyle, marginTop: 0 }}>Copy request example</button>
             </div>
             <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>Use the agent token only. Keep it in your server-side secret manager. 1 NEAR = 10²⁴ yoctoNEAR; send amounts as positive integer strings, never floating-point values.</p>
-            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>POST /api/agent/transfer
-Authorization: Bearer &lt;AGENT_TOKEN&gt;
-Content-Type: application/json
-
-{"requestId":"&lt;STABLE_ID_FOR_THIS_PAYMENT&gt;","to":"&lt;AUTHORIZED_NEAR_ACCOUNT_ID&gt;","amountYocto":"&lt;POSITIVE_INTEGER_STRING&gt;"}</pre>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>{["POST /api/agent/transfer", "Authorization: Bearer <AGENT_TOKEN>", "Content-Type: application/json", "", '{ "requestId": "<STABLE_ID_FOR_THIS_PAYMENT>", "to": "<AUTHORIZED_NEAR_ACCOUNT_ID>", "amountYocto": "<POSITIVE_INTEGER_STRING>" }'].join("\n")}</pre>
             <p style={{ color: "#64748b", fontSize: 12, marginBottom: 0 }}>Reuse the same request ID only for retries of the same logical payment. A 202 response is not proof of settlement; check the dashboard and wait for NEAR FINAL reconciliation.</p>
           </section>
           <p style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginTop: 18, color: "#64748b", fontSize: 12 }}>A completed checklist is not a guarantee that a transfer will execute. The live request path still revalidates current policy and provider state. Do not test with funds until the configured recipient, amount and execution intent have been reviewed.</p>
