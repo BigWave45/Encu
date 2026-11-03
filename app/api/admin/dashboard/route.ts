@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
         .eq("id", "default")
         .maybeSingle(),
       db.from("agent_policies")
-        .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,updated_at,updated_by")
+        .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,auto_spend_limit_yocto::text,updated_at,updated_by")
         .order("agent_id", { ascending: true }),
       db.from("agent_allocations")
         .select("agent_id,allocation_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at,updated_by")
@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
         maxTransferYocto: policy.max_transfer_yocto,
         dailyLimitYocto: policy.daily_limit_yocto,
         weeklyLimitYocto: policy.weekly_limit_yocto,
+        autoSpendLimitYocto: policy.auto_spend_limit_yocto,
         updatedAt: policy.updated_at,
         updatedBy: policy.updated_by
       })),
