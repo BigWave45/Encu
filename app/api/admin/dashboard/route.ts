@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       `request_id.ilike.%${search}%,agent_id.ilike.%${search}%,recipient.ilike.%${search}%,outlayer_tx_hash.ilike.%${search}%,outlayer_request_id.ilike.%${search}%`
     );
     reservationsQuery = reservationsQuery.range((page - 1) * pageSize, page * pageSize - 1);
-    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult, controlsResult, policiesResult] = await Promise.all([
+    const [budgetResult, agentsResult, reservationsResult, auditResult, securityResult, controlsResult, policiesResult, allocationsResult] = await Promise.all([
       db.from("agent_budgets")
         .select("id,total_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at")
         .eq("id", "default")
@@ -75,10 +75,13 @@ export async function GET(request: NextRequest) {
         .maybeSingle(),
       db.from("agent_policies")
         .select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,allowed_recipients,updated_at,updated_by")
+        .order("agent_id", { ascending: true }),
+      db.from("agent_allocations")
+        .select("agent_id,allocation_limit_yocto::text,spent_yocto::text,reserved_yocto::text,updated_at,updated_by")
         .order("agent_id", { ascending: true })
     ]);
 
-    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error || controlsResult.error || policiesResult.error || !controlsResult.data) {
+    if (budgetResult.error || agentsResult.error || reservationsResult.error || auditResult.error || securityResult.error || controlsResult.error || policiesResult.error || allocationsResult.error || !controlsResult.data) {
       return NextResponse.json({ error: "dashboard_query_failed" }, { status: 500 });
     }
     if (!budgetResult.data) {
@@ -107,6 +110,14 @@ export async function GET(request: NextRequest) {
         allowedRecipients: policy.allowed_recipients,
         updatedAt: policy.updated_at,
         updatedBy: policy.updated_by
+      })),
+      allocations: (allocationsResult.data ?? []).map((allocation) => ({
+        agentId: allocation.agent_id,
+        allocationLimitYocto: asString(allocation.allocation_limit_yocto),
+        spentYocto: asString(allocation.spent_yocto),
+        reservedYocto: asString(allocation.reserved_yocto),
+        updatedAt: allocation.updated_at,
+        updatedBy: allocation.updated_by
       })),
       agents: (agentsResult.data ?? []).map((agent) => ({
         id: agent.id,
