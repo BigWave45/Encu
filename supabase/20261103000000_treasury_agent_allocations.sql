@@ -1,2 +1,2 @@
--- Treasury and per-agent allocation ledger migration.
--- Forward-only change. Apply to isolated Preview only after review.
+-- PLACEHOLDER ONLY: this migration is intentionally empty and must not be applied.
+-- Allocation schema and RPC changes are not ready. Replace or remove this file before migration rollout.
