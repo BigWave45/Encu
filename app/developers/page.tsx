@@ -313,7 +313,7 @@ export default function DeveloperPortal() {
                     <div><span>Allocated authority</span><strong>{near(totals.allocated.toString())}</strong></div>
                     <div><span>Spent</span><strong>{near(totals.spent.toString())}</strong></div>
                     <div><span>Reserved</span><strong>{near(totals.reserved.toString())}</strong></div>
-                    <div><span>Available across agents</span><strong>{near((available >= 0n ? available : 0n).toString())}</strong></div>
+                    <div><span>Available across agents</span><strong>{available >= 0n ? near(available.toString()) : "Ledger mismatch"}</strong></div>
                   </>;
                 })()}
               </div>
