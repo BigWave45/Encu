@@ -5,7 +5,7 @@ const YOCTO = 10n ** 24n;
 
 function parseNear(value: string): string | null {
   const input = value.trim();
-  if (!/^(0|[1-9][0-9]*)(\\.[0-9]{1,24})?$/.test(input)) return null;
+  if (!/^(0|[1-9][0-9]*)(\.[0-9]{1,24})?$/.test(input)) return null;
   const [whole, fraction = ""] = input.split(".");
   const amount = BigInt(whole) * YOCTO + BigInt((fraction + "0".repeat(24)).slice(0, 24));
   return amount > 0n ? amount.toString() : null;
