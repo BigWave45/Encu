@@ -67,3 +67,22 @@ A funding implementation cannot safely be limited to a deposit table, a balance 
 ## Current audit result
 
 The design can be implemented without redesigning the existing UI or discarding the policy engine. It is a cross-cutting financial architecture change, not a small dashboard feature. The highest-risk work is database lifecycle migration and execution/finality routing. Keep this branch isolated until those changes pass automated tests and testnet verification.
+
+
+## Live test-project verification (2026-11-04)
+
+Read-only inspection was performed against the Supabase project named `AgentGuard Test` (project ref `rrvrlvitjithqizwutfl`). This is the configured test project, not proof about any other Supabase project.
+
+- The applied migration registry includes the developer identity/ownership migrations, developer-owned configuration RPCs, allocation enforcement, submission revalidation and rolling-autonomy restoration through version `20261103190317` (`retire_manual_approval_rpcs`).
+- The live public schema has no first-class workspace or treasury tables. `agent_budgets` has one row, `default`; `agent_allocations` has five agent rows.
+- The live `agents` table has five agents: two have non-null `owner_user_id`; three are owner-null legacy/test agents. These owner-null records must not be auto-assigned to a developer treasury.
+- The live `spend_reservations` table has six records. The inspected records are all terminal states (executed/rejected/failed/cancelled); no open reservation was present in that snapshot.
+- The global `default` budget currently reports total limit 5 NEAR, spent 0.001 NEAR and reserved 0 NEAR. This is the test project's current database ledger state, not a chain balance or proof of funds held by the provider.
+- Live definitions of `reserve_agent_spend`, `claim_agent_auto_submission`, `record_outlayer_submission`, `finish_agent_spend`, `resolve_agent_transfer_failed_final`, `update_agent_budget_limit` and `set_agentguard_transfers_enabled` were queried read-only. The key reserve/claim/record/settle/failure-resolution functions still lock and mutate the global `agent_budgets.default` row and agent allocation rows. The submission claim also checks the global `agentguard_system_controls.default` stop.
+- The live provider adapter source remains single-signer OutLayer. No evidence has been obtained that OutLayer can submit from a workspace-specific NEAR account or treasury contract.
+
+### Important correction to migration planning
+
+The current test database has two developer-owned agents but no workspace relation. We cannot infer that each user should receive one treasury solely from `owner_user_id` until membership and workspace semantics are decided. The safe migration needs an explicit mapping table and a reviewed backfill plan. Existing owner-null agents and their historical reservations remain attached to the legacy operator treasury unless an operator explicitly migrates them.
+
+This live inspection used read-only project, migration, table and SELECT/function-definition operations. No data, schema, migration, wallet, secret, Preview or Production state was changed.
