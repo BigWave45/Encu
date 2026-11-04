@@ -336,3 +336,10 @@
 .developer-integration-workspace .developer-token>button { justify-self:start; }
 .developer-integration-workspace .developer-token code { overflow-wrap:anywhere; }
 @media(max-width:560px) { .developer-integration-field-notes { grid-template-columns:1fr; } }
+
+
+/* Dark V1 treatment for the developer explainer sidebar. */
+.developer-grid > aside { background:linear-gradient(160deg,#15212aee,#101820f2); border-color:var(--dev-line); color:var(--dev-text); }
+.developer-grid > aside h2 { color:var(--dev-text); }
+.developer-grid > aside p { border-top-color:var(--dev-line); color:var(--dev-muted); }
+.developer-grid > aside .developer-footnote { border-color:var(--dev-line); background:#101a21; color:#c0cdd2; }
