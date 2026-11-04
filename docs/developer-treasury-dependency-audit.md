@@ -183,3 +183,52 @@ Keep each executor API key server-side, encrypted at rest, never in browser stor
 8. Do all binding and agent execution paths share the same wallet policy counters?
 
 Feasibility conclusion: Personal Account Binding is a viable candidate for developer-controlled asset ownership without Encu holding developer private keys. It still depends on OutLayer's executor, signing service and policy engine, and requires executor gas. It is not implementation-ready until the questions above, wallet compatibility, workspace account isolation and receipt-aware reconciliation are verified. No wallet, binding, policy, credential or transfer was created during this research.
+
+
+## Follow-up verification: binding policy, balances, request lifecycle and integration risks (2026-11-04)
+
+Reviewed current OutLayer Personal Account Binding, Binding API and Agent Custody documentation. These are vendor-documentation findings, not a live API test.
+
+### Confirmed endpoint and account semantics
+
+- `GET /wallet/v1/binding` returns `binding_status`, `status_reason`, `executor_account_id`, `gas_balance`, `gas_balance_low` and threshold. Only `active` is spendable. Poll it; personal-account binding has no partner lifecycle webhook (the documented binding events webhook is lease-only).
+- `GET /wallet/v1/binding/balance` reads the developer asset account. `GET /wallet/v1/balance` without `account=asset` reads the executor's own balance. Never confuse the two.
+- `POST /wallet/v1/binding/transfer` sends native NEAR from the bound asset account through a contract call. `POST /wallet/v1/call` is the full-envelope alternative. The normal `/wallet/v1/transfer` spends the executor account and must not be used as a fallback.
+- `GET /wallet/v1/address` returns executor and asset account identities. Persist and compare both against the workspace binding record.
+- API docs describe pending/active/suspended/revoked states; only active is allowed. `DELETE /wallet/v1/binding` cancels pending approvals and removes the provider binding record, but owner-signed on-chain extension removal is the actual authority revocation.
+- Executor gas and developer asset funds are separate. The executor needs its own NEAR gas reserve; the developer funds the bound asset account.
+
+### New critical policy-control question
+
+OutLayer says the policy is owned/controlled by the OutLayer wallet owner/controller, encrypted on chain, and enforced by the TEE. The Personal Account Binding docs say the policy is the only spending limit for a personal account and explicitly warn that no policy means unrestricted spending. The public docs reviewed do not establish, with sufficient precision, who is the controller for a workspace executor provisioned by Encu, how the developer can independently inspect/change/freeze that executor's policy, or whether a developer signature can own/control the executor wallet policy while preserving the binding arrangement.
+
+This must be answered before implementation. If Encu alone controls the executor policy, the developer has on-chain authority to revoke the extension but does not necessarily have direct control over the OutLayer policy. That may be an acceptable disclosed delegation model, but it is not equivalent to developer-controlled policy. Do not claim developers control both keys and policy until proven.
+
+The docs also list `GET /wallet/v1/policy` and dashboard policy management, but the public API reference reviewed does not establish a supported write endpoint for policy configuration. We must not invent one. Confirm whether policy is configured through the OutLayer dashboard, a controller-signed on-chain call, or another supported owner flow. Verify read-back before enabling binding.
+
+### Policy enforcement limitation
+
+OutLayer documents per-transaction limits, address rules, transaction type gates, time restrictions, freeze and approval controls as exact TEE checks. However, its daily/hourly/monthly cumulative spend and hourly transaction-count limits use a gateway-supplied usage counter and are best-effort under concurrent requests: parallel submissions can read the same pre-spend counter and collectively exceed a cap. Encu must retain its own PostgreSQL atomic reservations and serialize per-workspace submissions where needed. OutLayer velocity limits are defense-in-depth, not a replacement for Encu's shared-budget ledger.
+
+For native binding transfers, the OutLayer policy must permit transaction type `call`, include the bound asset account in the address whitelist (or disable address filtering deliberately), and include `native` in allowed tokens. A restrictive policy must exist and be verified before the developer signs the binding setup transaction. Do not allow an unconfigured/unrestricted policy to reach `active` in the product flow.
+
+### Request and reconciliation requirements
+
+OutLayer's general API docs describe `GET /wallet/v1/requests/{request_id}` and structured statuses for asynchronous operations, approvals and `needs_review`; a lost response may mean the operation is still processing. Encu must persist the provider request ID before considering a submission complete, poll rather than resubmit, and use idempotency support only where the binding endpoint explicitly documents it. The current public binding page does not fully specify all response variants for binding transfers, nor does it give a complete receipt schema proving the inner native transfer. Obtain an exact sample response and final-receipt contract from OutLayer, then test against Testnet. Outer transaction success alone is insufficient.
+
+### Wallet onboarding and product UX
+
+OutLayer says the setup requires NEP-591 `UseGlobalContract`; it documents Intear Wallet on Testnet/Mainnet and near-cli as working paths and warns that most NEAR wallets, including MyNearWallet in its described flow, do not complete the action. The current package has no NEAR wallet connector. Do not claim generic wallet-connect compatibility. Browser/mobile support, wallet deep-link return, transaction payload compatibility and account-state checks require an actual Testnet spike. Accounts already running contract code must be rejected by the vendor flow; do not attempt to overwrite multisig/2FA contracts.
+
+OutLayer's hosted connect example places the long-lived `wk_` API key in a URL query parameter. This creates browser-history/referrer/log leakage risk. Prefer a first-party wallet connector and server-side setup retrieval. If the hosted connect flow is used, require a short-lived single-use handoff mechanism confirmed by OutLayer; do not expose a long-lived API key in the URL.
+
+### Revised technical decision gates
+
+1. Confirm who controls and can update/freeze the OutLayer executor wallet policy, and how the developer can verify policy state.
+2. Confirm deterministic wallet / API credential provisioning and ownership; confirm one executor wallet can have only one personal binding (current API behavior refuses rebinding to a different account without DELETE, so design one executor per workspace unless vendor confirms otherwise).
+3. Confirm binding transfer response, request polling, idempotency and exact inner receipt proof.
+4. Verify Intear wallet browser/mobile support for NEP-591 setup, including return-to-app behavior.
+5. Confirm executor gas funding/replenishment and key revocation/rotation.
+6. Only then build a disposable Testnet spike. Keep Encu's database reservations authoritative and fail closed on stale/unavailable binding state.
+
+No runtime, schema, provider, wallet, credential, policy, database or deployment changes were made during this research pass.
