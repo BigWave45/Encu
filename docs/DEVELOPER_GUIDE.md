@@ -1,6 +1,6 @@
 # Encu Developer Guide
 
-This guide explains how a developer creates a workspace, provisions a logical agent, integrates that agent with the transfer API and reconciles its requests. It does not describe independent wallet provisioning: all V1 logical agents use the deployment's shared OutLayer Testnet execution wallet.
+This guide describes the developer workspace and HTTP API available in V1, followed by the intended integration pattern for future SDK and execution-provider support. Current capabilities and planned capabilities are explicitly separated.
 
 ## 1. Create a developer workspace
 
@@ -130,7 +130,24 @@ The authenticated agent can reconcile its own reservation; the platform administ
 
 A `200` response with `finality: "FINAL"` and status `executed` or `failed` means the matching transaction was reconciled and the ledger updated. A `202` response means evidence is not yet available or did not match; retain the reservation and investigate. A provider request ID without a transaction hash is not finality evidence.
 
-## 7. Safe integration and testing
+## 7. Intended developer integration model
+
+The product direction is to keep one developer-facing payment interface while execution providers remain replaceable behind Encu's server-side adapter boundary.
+
+The intended lifecycle is:
+
+1. The developer creates a workspace and registers a logical agent.
+2. The developer assigns explicit spending authority and exact recipient permissions.
+3. The agent credential is stored in the agent runtime's server-side secret store.
+4. The agent submits a payment request through the Encu API.
+5. Encu authenticates the agent, evaluates policy and reserves exposure.
+6. An authorized request is sent through the configured execution adapter.
+7. The integration tracks the request through provider status and chain evidence.
+8. Encu reconciles the matching operation and settles its ledger only after verification.
+
+The current V1 implementation supports the workspace and HTTP transfer/reconciliation flow described above. A published SDK, native NEAR treasury adapter, NEAR Intents adapter, token/contract payment methods and additional execution providers are future work. Do not build against these as if they were available interfaces.
+
+## 8. Safe integration and testing
 
 - Use NEAR Testnet and a dedicated test agent.
 - Confirm allocation, per-transfer cap, rolling limits and autonomous allowance.
@@ -140,10 +157,11 @@ A `200` response with `finality: "FINAL"` and status `executed` or `failed` mean
 - Treat `POST /api/agent/transfer` as a potentially value-moving action. It can initiate a real Testnet transfer when policy permits.
 - Never use production credentials or a wallet holding valuable assets.
 
-## 8. Related documentation
+## 9. Related documentation
 
-- [Architecture](ARCHITECTURE.md): component boundaries and request/reconciliation sequence.
+- [Product Vision and Roadmap](ROADMAP.md): product intent, future integrations and current V1 boundary.
+- [Architecture](ARCHITECTURE.md): implemented components, target adapter boundary and settlement sequence.
 - [Security Model](SECURITY_MODEL.md): threat model, evidence and implementation limitations.
-- [Demo Runbook](DEMO_RUNBOOK.md): safe demonstration sequence.
+- [Demonstration Guide](DEMO_RUNBOOK.md): preparation, presenter procedure and expected outcomes.
 
 **V1 boundary:** developers can manage separate application accounts and logical agent policies. The execution wallet and provider credential remain shared across logical agents.
