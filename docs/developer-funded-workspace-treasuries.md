@@ -136,3 +136,20 @@ References:
 - OutLayer Personal Account Binding: https://app.outlayer.ai/docs/account-binding
 - OutLayer MPC Vaults: https://app.outlayer.ai/docs/vaults
 - OutLayer Agent Connect: https://app.outlayer.ai/docs/agent-connect
+
+
+## Personal Account Binding implementation specification (decision update, 2026-11-04)
+
+The product owner selected developer-controlled NEAR account binding as the priority. This supersedes the earlier tentative recommendation to prototype OutLayer custody wallets per workspace.
+
+Documented sequence: assign an OutLayer executor wallet to the workspace; developer connects a compatible named NEAR account; server records PUT /wallet/v1/binding with kind=personal_account; server fetches the unsigned GET /wallet/v1/binding/setup?kind=personal_account transaction; developer reviews and signs; server polls GET /wallet/v1/binding until active; configure and verify restrictive policy; fund the asset account and separately maintain executor gas; submit via POST /wallet/v1/binding/transfer or POST /wallet/v1/call.
+
+The setup transaction references OutLayer's global wallet contract and adds the executor to the developer account extension set. It must be signed by the developer account. OutLayer currently documents Intear Wallet and near-cli for NEP-591 UseGlobalContract; do not assume broad wallet support. Reject accounts already running contract code.
+
+The owner revokes access by removing the executor extension on chain. OutLayer documents up to five seconds of cached allow decisions. DELETE /wallet/v1/binding cleans up OutLayer's record and pending approvals but does not replace on-chain revocation.
+
+Current Encu adapter and reconciler are incompatible: they use one global credential, plain executor-wallet transfer, and direct-transfer transaction checks. Binding calls require workspace-specific executor context and receipt-aware verification of the inner native transfer. Keep funds reserved in needs_review until exact inner effects are proven.
+
+One personal NEAR account cannot represent multiple separately funded workspaces. Require one named account per workspace or explicitly model a shared treasury. Keep executor credentials server-side; do not put long-lived wk_ keys in hosted connect URLs. Current package has no NEAR wallet connector, so binding onboarding is a new capability.
+
+No runtime, schema, provider, wallet or transfer changes are authorized by this specification. All details are based on OutLayer public docs and require Testnet verification before deployment.
