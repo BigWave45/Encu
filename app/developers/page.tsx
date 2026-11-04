@@ -465,10 +465,13 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const requestVersion = useRef(0);
   const selectedAgent = agents.find(agent => agent.id === agentId) ?? agents[0] ?? null;
 
   const load = useCallback(async (id: string) => {
-    if (!id) { setRecipients([]); return; }
+    const version = ++requestVersion.current;
+    if (!id) { setRecipients([]); setLoading(false); return; }
+    setRecipients([]);
     setLoading(true); setError("");
     try {
       const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(id)}`, {
@@ -476,10 +479,13 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not load recipient permissions.");
+      if (version !== requestVersion.current) return;
       setRecipients(Array.isArray(body.recipients) ? body.recipients : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load recipient permissions.");
-    } finally { setLoading(false); }
+      if (version === requestVersion.current) setError(e instanceof Error ? e.message : "Could not load recipient permissions.");
+    } finally {
+      if (version === requestVersion.current) setLoading(false);
+    }
   }, [accessToken]);
 
   useEffect(() => {
@@ -487,26 +493,43 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
     if (!agents.length) { setAgentId(""); setRecipients([]); }
   }, [agents, agentId]);
 
-  useEffect(() => { if (selectedAgent) void load(selectedAgent.id); }, [selectedAgent?.id, load]);
+  useEffect(() => {
+    setRecipients([]);
+    setAccountId(""); setLabel(""); setExpiresAt("");
+    setError(""); setMessage("");
+    if (selectedAgent) void load(selectedAgent.id);
+    else { requestVersion.current += 1; setLoading(false); }
+    return () => { requestVersion.current += 1; };
+  }, [selectedAgent?.id, load]);
 
-  async function update(payload: Record<string, unknown>) {
-    if (!selectedAgent) return;
+  async function update(payload: Record<string, unknown>): Promise<boolean> {
+    const targetAgentId = selectedAgent?.id;
+    if (!targetAgentId) return false;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/developer/agents/config", {
         method: "PATCH",
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-        body: JSON.stringify({ id: selectedAgent.id, ...payload })
+        body: JSON.stringify({ id: targetAgentId, ...payload })
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient permission update failed.");
+      if (selectedAgent?.id !== targetAgentId) return false;
       setMessage(payload.action === "authorize_recipient" ? "Recipient authorized." : "Recipient permission revoked.");
-      await load(selectedAgent.id);
+      await load(targetAgentId);
       onSaved();
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Recipient permission update failed.");
+      if (selectedAgent?.id === targetAgentId) setError(e instanceof Error ? e.message : "Recipient permission update failed.");
+      return false;
     } finally { setBusy(false); }
   }
+
+  const recipientStatus = (recipient: RecipientRecord) => {
+    if (recipient.status !== "active") return recipient.status;
+    if (recipient.expires_at && new Date(recipient.expires_at).getTime() <= Date.now()) return "expired";
+    return "active";
+  };
 
   return (
     <section className="developer-panel developer-recipient-workspace">
@@ -519,26 +542,42 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
             {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
           </select>
         </label>
-        <form className="developer-form" onSubmit={event => {
+        <form className="developer-form" onSubmit={async event => {
           event.preventDefault();
-          if (!accountId.trim()) return;
-          void update({ action: "authorize_recipient", accountId: accountId.trim(), label: label.trim() || undefined, expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null });
-          setAccountId(""); setLabel(""); setExpiresAt("");
+          const normalizedAccountId = accountId.trim().toLowerCase();
+          if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(normalizedAccountId) || normalizedAccountId.length < 2 || normalizedAccountId.length > 64) {
+            setError("Enter a valid NEAR account ID using lowercase letters, numbers, dots, hyphens or underscores.");
+            return;
+          }
+          let expiry: string | null = null;
+          if (expiresAt) {
+            const localDate = new Date(expiresAt);
+            if (!Number.isFinite(localDate.getTime()) || localDate.getTime() <= Date.now()) {
+              setError("Expiry must be a valid future date and time.");
+              return;
+            }
+            expiry = localDate.toISOString();
+          }
+          const saved = await update({ action: "authorize_recipient", accountId: normalizedAccountId, label: label.trim() || undefined, expiresAt: expiry });
+          if (saved) { setAccountId(""); setLabel(""); setExpiresAt(""); }
         }}>
           <h3>Authorize a recipient</h3>
-          <label>Exact NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required placeholder="recipient.near" /></label>
+          <label>Exact NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required maxLength={64} placeholder="recipient.near" /></label>
           <label>Label (optional)<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} placeholder="Vendor or service name" /></label>
           <label>Expiry (optional)<input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} /></label>
           <button className="developer-button" type="submit" disabled={busy || !accountId.trim()}>{busy ? "Saving…" : "Authorize recipient"}</button>
         </form>
         <div className="developer-recipient-list">
-          <div className="developer-activity-head"><h3>Agent allowlist</h3><button className="developer-button secondary" type="button" disabled={loading} onClick={() => selectedAgent && void load(selectedAgent.id)}>Refresh</button></div>
+          <div className="developer-activity-head"><h3>Agent allowlist</h3><button className="developer-button secondary" type="button" disabled={loading || busy} onClick={() => selectedAgent && void load(selectedAgent.id)}>Refresh</button></div>
           {loading && <p>Loading recipient permissions…</p>}
           {!loading && recipients.length === 0 && <p>No recipients authorized. Transfers to all recipients remain blocked.</p>}
-          {recipients.map(recipient => <div className="developer-recipient" key={recipient.account_id}>
-            <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
-            {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void update({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
-          </div>)}
+          {recipients.map(recipient => {
+            const status = recipientStatus(recipient);
+            return <div className="developer-recipient" key={recipient.account_id}>
+              <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
+              {status === "active" && <button type="button" disabled={busy} onClick={() => void update({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
+            </div>;
+          })}
         </div>
       </>}
       {message && <p className="developer-message" role="status">{message}</p>}
