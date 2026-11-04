@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Props = { agentId: string; accessToken: string; onSaved?: () => void };
 type Config = {
@@ -39,13 +39,16 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const loadVersion = useRef(0);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agentId)}`, {
       headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Could not load configuration.");
+    if (version !== loadVersion.current) return;
     const data = body as Config;
     setConfig(data);
     setAllocation(formatNear(data.allocation?.allocation_limit_yocto));
@@ -56,9 +59,11 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
   }, [agentId, accessToken]);
 
   useEffect(() => {
-    let active = true;
-    load().catch(e => { if (active) setError(e instanceof Error ? e.message : "Configuration unavailable."); });
-    return () => { active = false; };
+    setConfig(null);
+    setAllocation(""); setMaxTransfer(""); setDaily(""); setWeekly(""); setAutoSpend("");
+    setError(""); setMessage("");
+    load().catch(e => { if (e instanceof Error) setError(e.message); else setError("Configuration unavailable."); });
+    return () => { loadVersion.current += 1; };
   }, [load]);
 
   async function save(payload: Record<string, unknown>) {
