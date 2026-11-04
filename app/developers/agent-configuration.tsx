@@ -116,7 +116,9 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
             <label>Maximum autonomous spend (NEAR)<input inputMode="decimal" value={autoSpend} onChange={e => setAutoSpend(e.target.value)} placeholder="Clear to disable autonomous spend" /></label>
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
-        </> : <p>Loading configuration…</p>}
+        </> : <div className="developer-config-load-state">
+          {error ? <button className="developer-button secondary" type="button" onClick={() => { setError(""); void load().catch(e => setError(e instanceof Error ? e.message : "Configuration unavailable.")); }}>Retry loading configuration</button> : <p>Loading configuration…</p>}
+        </div>}
         {message && <p className="developer-message" role="status">{message}</p>}
         {error && <p className="developer-message developer-error" role="alert">{error}</p>}
       </div>
