@@ -486,7 +486,7 @@ function AgentPlayground({ agentId }: { agentId: string }) {
     setMessage("");
     setPayload("");
     const value = amount.trim();
-    if (!/^(0|[1-9][0-9]*)(\\.[0-9]{1,24})?$/.test(value)) {
+    if (!/^(0|[1-9][0-9]*)(\.[0-9]{1,24})?$/.test(value)) {
       setMessage("Enter a positive NEAR amount with no more than 24 decimal places.");
       return;
     }
