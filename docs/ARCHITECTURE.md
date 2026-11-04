@@ -1,8 +1,12 @@
 # Encu Architecture
 
-This document describes the implemented V1 architecture. It distinguishes application-level controls from the custody and signing functions supplied by OutLayer.
+## 1. Architectural purpose
 
-## 1. System context
+Encu separates **payment authority and accounting** from the infrastructure that holds keys, signs transactions and submits them. Its policy layer determines whether an authenticated logical agent may initiate a payment. An execution adapter carries an authorized request to a provider. A reconciliation layer verifies the resulting transaction before the internal ledger is settled.
+
+This separation is the product's architectural direction. The current V1 implementation is narrower: one OutLayer-backed native NEAR Testnet execution path and NEAR RPC reconciliation.
+
+## 2. Implemented V1 system context
 
 ```mermaid
 flowchart LR
@@ -31,7 +35,7 @@ flowchart LR
     API --> AUDIT
     AUDIT --> DB
     LEDGER -->|"Authorized submission"| OL
-    OL -->|"Transaction hash / provider reference"| AG
+    OL -->|"Provider / transaction reference"| AG
     AG -->|"Separate reconcile request + request ID"| RECON
     RECON <--> RPC
     RECON -->|"Verified FINAL evidence"| LEDGER
@@ -42,14 +46,14 @@ flowchart LR
 | Component | Responsibility |
 |---|---|
 | Developer workspace | Supabase Auth signup/sign-in; provisions and manages developer-owned logical agents, allocations, policies and recipient permissions. |
-| Agent runtime | Requests a payment using its agent-scoped bearer credential. The credential, not request-body data, establishes the logical agent identity. |
+| Agent runtime | Requests a payment using its agent-scoped bearer credential. The credential, not request-body data, establishes logical agent identity. |
 | Transfer API | Validates request shape, authenticates the agent, applies rate limits and coordinates policy reservation and provider submission. |
 | Policy and reservation logic | Evaluates agent and treasury authority, recipient permission, emergency state, idempotency and autonomous allowance. |
 | PostgreSQL | Persists developer ownership, policies, allocations, treasury exposure, reservations, audit and security events. Atomic database functions protect exposure invariants. |
 | OutLayer | Supplies the configured Testnet wallet custody, signing and transaction-submission path shared by logical agents in V1. |
 | Reconciliation API and NEAR RPC | A separate reconciliation request queries NEAR transaction evidence and verifies finality and transfer details before ledger settlement. |
 
-## 2. Authorization and execution sequence
+## 3. Authorization and execution sequence
 
 The transfer endpoint and reconciliation endpoint are separate requests. The first may submit through OutLayer and return a `needs_review` lifecycle state with a transaction hash or provider request reference. The agent or operator then calls the reconciliation endpoint with the same request ID.
 
@@ -88,45 +92,84 @@ sequenceDiagram
 
 A provider response is not proof of payment. The reconciliation endpoint may return a pending/review result while a transaction hash is unavailable or NEAR evidence cannot yet be verified. Settlement requires matching NEAR FINAL evidence.
 
-## 3. Policy model
+## 4. Policy and accounting model
 
-A transfer request is evaluated against several independent constraints:
+A transfer must satisfy the applicable controls:
 
-- **Identity:** the bearer token resolves to one active logical agent. An optional `expectedAgentId` must match that authenticated identity.
-- **Agent authority:** the agent's allocation, per-transfer cap, rolling limits and autonomous allowance.
-- **Recipient authority:** the exact NEAR account ID must be authorized for that agent.
-- **Treasury authority:** aggregate spent plus reserved exposure must remain within the global treasury ceiling.
-- **Global controls:** emergency stop and persistent request rate limits.
-- **Replay control:** request IDs bind a logical payment instruction. A changed payload under the same ID is rejected; an already processed or pending request does not trigger a second provider submission.
+- authenticated agent identity;
+- active agent status;
+- agent allocation and per-transfer limit;
+- daily and weekly rolling spend limits;
+- configured autonomous allowance or approval requirement;
+- exact recipient authorization;
+- shared treasury ceiling;
+- emergency-stop state;
+- persistent request rate limit;
+- idempotency and changed-payload replay protection.
 
-A newly created reservation is required before provider submission. Policy and recipient state are revalidated at the submission boundary to reduce time-of-check/time-of-use risk.
+The reservation transaction protects shared exposure under concurrency. Exposure paths follow the lock order:
 
-## 4. Accounting invariants and concurrency
+**treasury row → allocation row → reservation row**
 
-The system tracks exposure as:
+The shared treasury ceiling and agent allocation are separate constraints. A request that fits an agent's allocation can still exceed the global ceiling. A budget does not implicitly authorize a destination.
 
-`treasury exposure = spent + reserved`
+## 5. Target architecture: provider-independent control plane
 
-`agent exposure = spent + reserved`
+The following diagram describes the intended extension boundary. Dashed connections are future integrations, not implemented V1 paths.
 
-The atomic reservation path must prevent concurrent agents from exceeding either the shared treasury ceiling or their individual allocations. Exposure paths use one consistent database lock order:
+```mermaid
+flowchart TB
+    AG["Agent runtimes"] --> API["Encu API / future SDK"]
+    API --> AUTH["Agent identity and authentication"]
+    AUTH --> POLICY["Policy and authorization engine"]
+    POLICY --> BUDGET["Atomic treasury and agent accounting"]
+    POLICY --> APPROVAL["Approval and review workflow"]
+    BUDGET --> ADAPTER["Execution adapter interface"]
+    APPROVAL --> ADAPTER
+    ADAPTER --> OL["OutLayer adapter · implemented V1"]
+    ADAPTER -. future .-> NATIVE["Native NEAR treasury adapter"]
+    ADAPTER -. future .-> INTENTS["NEAR Intents adapter"]
+    ADAPTER -. future .-> OTHER["Additional execution providers"]
+    OL --> EVIDENCE["Provider / chain evidence"]
+    NATIVE -. future .-> EVIDENCE
+    INTENTS -. future .-> EVIDENCE
+    OTHER -. future .-> EVIDENCE
+    EVIDENCE --> VERIFY["Operation-specific verification"]
+    VERIFY --> LEDGER["Encu reconciliation and settled ledger"]
+```
 
-`treasury row → allocation row → reservation row`
+The adapter interface is intended to isolate provider-specific execution details. It must not move agent policy, shared-budget reservation or approval semantics into an adapter. Each future adapter must define its own idempotency mapping, submission state, transaction evidence, ambiguity recovery and verification rules.
 
-A reservation is settled at most once. Unknown provider outcomes remain held for reconciliation; they are not optimistically released and must not be blindly resubmitted.
+A provider's acceptance response cannot settle Encu's ledger. The verification layer must establish that the executed operation matches the original authorized request. For token, swap, cross-chain or contract operations, verification must be operation-specific; checking only a transaction hash is insufficient.
 
-## 5. Trust boundaries and key handling
+## 6. Integration boundaries and roadmap
 
-- Developer accounts authenticate through Supabase Auth. Developer session tokens authorize workspace operations; they are not agent payment credentials.
-- Each logical agent has a separate bearer token. The developer workspace shows a newly issued token once; it must be stored in the agent runtime's server-side secret manager.
-- The administrator credential controls platform-wide operations and must never be given to an agent.
-- The Supabase service-role key and OutLayer API key remain server-side.
-- Multiple logical agents share one configured OutLayer execution wallet and provider credential in V1. They do not have isolated custody or independent provider principals.
-- OutLayer wallet-level policy is separate from Encu's application-level agent policy. The current integration does not manage or independently verify every provider-side policy setting.
-- Encu does not currently verify a transfer-bound TEE attestation.
+### OutLayer
 
-## 6. Implemented boundary
+OutLayer is the current V1 custody, signing and native NEAR Testnet submission provider. It also has its own wallet-level policy capabilities. Those provider controls are a defense-in-depth boundary and are distinct from Encu's per-agent allocations and shared application ledger.
 
-V1 supports native NEAR transfers on Testnet through OutLayer. Developers can have separate application accounts and own logical agent configurations, but those agents still share the configured OutLayer execution wallet. V1 does not implement independent customer custody, per-customer wallets, a native NEAR treasury contract, additional execution providers, mainnet execution or independent TEE attestation verification.
+The current integration does not create, read back or verify the effective OutLayer owner policy as part of every request. It also does not fetch, store or independently verify transfer-bound TEE attestations.
 
-Automated API and reconciliation suites use mocks. They establish behavior under their fixtures, not live provider semantics. See [Security Model](SECURITY_MODEL.md) for the evidence classification and threat analysis.
+### Native NEAR treasury
+
+A future treasury contract could enforce selected controls on-chain for funds held by that contract. It would need its own authorization, allocation, recipient, pause, replay and settlement design. This work is deferred from V1.
+
+### NEAR Intents and other payment rails
+
+The current adapter does not call NEAR Intents endpoints. Future Intents, token, DEX, escrow and cross-chain flows require exact binding between the authorized request and the asset, amount, destination and quote/route or execution artifact. They must not be represented as supported until implemented and verified.
+
+### Developer interface
+
+The current product provides a Supabase Auth developer workspace and HTTP transfer/reconciliation APIs. A common SDK and provider-neutral developer interface are future directions, not current deliverables.
+
+See [Product Vision and Roadmap](ROADMAP.md) for the broader product rationale and planned integration directions.
+
+## 7. Trust boundaries and V1 limitations
+
+- Developer sessions, agent bearer tokens, administrator credentials, Supabase service-role credentials and OutLayer API credentials have different privileges and must remain separate.
+- Agent bearer tokens authenticate logical agents; they do not grant direct OutLayer access.
+- The server-side OutLayer credential and configured wallet are shared across V1 logical agents.
+- Agent allocations are application-level ledger limits, not independent on-chain balances.
+- OutLayer has its own wallet policy engine; its configured policy must not be assumed to mirror Encu policy.
+- The current integration does not independently verify transfer-bound TEE attestations.
+- V1 supports native NEAR Testnet transfers only. It is not mainnet-ready and has not undergone an independent formal security audit.
