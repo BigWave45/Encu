@@ -459,3 +459,16 @@ Official references:
 - https://app.outlayer.ai/docs/account-binding
 - https://app.outlayer.ai/docs/binding-api
 - https://app.outlayer.ai/docs/agent-custody
+
+
+## Follow-up: existing V1 credential and isolated sub-agent wallet path (2026-11-04)
+
+The V1 release code confirms that the current deployment uses one global `OUTLAYER_API_KEY` and one global `OUTLAYER_NEAR_ADDRESS`. The configured credential has been identified by the operator as a `wk_` key. No credential value was disclosed or retrieved.
+
+Current OutLayer Agent Custody documentation states that a custody wallet can register a derived sub-agent key through `PUT /wallet/v1/api-key` using the parent wallet credential, a deterministic `seed`, and `key_hash`. The response includes a `wallet_id` and `near_account_id`; the derived sub-agent uses a `wk_` bearer credential. The documented hash is `SHA256("wk_" + derived_key_hex)`. The API supports revocation by key hash through `DELETE /wallet/v1/api-key/{key_hash}`; it returns 409 if the key is the wallet's last active key.
+
+This suggests a possible way to derive a separate executor identity from the existing OutLayer parent wallet without reusing the V1 executor account. It is documentation evidence only. The exact derivation of `derived_key_hex`, safe handling of the derived secret, and whether the child wallet has the required independent policy-controller semantics for Personal Account Binding still need verification. Do not invent the key derivation algorithm or derive credentials in a browser/client. Do not call the registration endpoint until the derivation and revocation path are independently verified and the operator explicitly approves creating a disposable Testnet executor.
+
+The existing V1 `wk_` key must remain unchanged and must not be used to bind `agentg.testnet`. The proposed workspace executor should have a distinct `wallet_id`, `near_account_id`, credential record, policy verification and binding lifecycle. This does not by itself prove that the developer controls the child wallet's policy; the policy-controller and owner-authority gate remains open.
+
+Source reviewed: OutLayer Agent Custody documentation, sections “Delegate keys for sub-agents” and “Security Model”; Personal Account Binding and Binding API reference. No API call, key derivation, wallet creation, binding, policy update, transfer, database mutation or deployment was performed during this follow-up.
