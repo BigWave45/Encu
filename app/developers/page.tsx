@@ -58,6 +58,7 @@ export default function DeveloperPortal() {
   const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
+  const [activeView, setActiveView] = useState<"overview" | "agents" | "transactions" | "audit" | "execution">("overview");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -302,6 +303,10 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
+          <>
+          <nav className="developer-nav" aria-label="Developer workspace sections">
+            {([["overview","Overview"],["agents","Agents"],["transactions","Transactions"],["audit","Audit & Security"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
+          </nav>
           <div className="developer-grid">
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -325,6 +330,7 @@ export default function DeveloperPortal() {
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
+              {activeView === "agents" && <>
               <form className="developer-form" onSubmit={createAgent}>
                 <label>Agent ID<input required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" value={agentId} onChange={event => setAgentId(event.target.value)} placeholder="e.g. research-agent" /></label>
                 <label>Agent name<input required minLength={2} maxLength={80} value={agentName} onChange={event => setAgentName(event.target.value)} placeholder="e.g. Research Agent" /></label>
@@ -363,7 +369,8 @@ export default function DeveloperPortal() {
                   );
                 })}
               </div>
-              <section className="developer-activity" aria-label="Recent transaction activity">
+              </>}
+              {activeView === "transactions" && <section className="developer-activity" aria-label="Recent transaction activity">
                 <div className="developer-activity-head">
                   <div><span className="developer-section-kicker">ACTIVITY</span><h2>Recent transactions</h2></div>
                   <button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => session && void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh"}</button>
@@ -383,20 +390,22 @@ export default function DeveloperPortal() {
                   </article>)}
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
-                <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />
-              </section>
+              </section>}
+              {activeView === "audit" && <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />
             </section>
-            <aside className="developer-panel">
+            {activeView === "overview" && <aside className="developer-panel">
               <h2>Configure bounded execution</h2>
               <p>1. Create your agent and securely store its bearer token.</p>
               <p>2. You assign an allocation from the shared Testnet treasury, subject to ENCU’s platform-wide ceiling.</p>
               <p>3. You set transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
               <p>4. Your backend sends requests using the agent token. ENCU enforces the current policy before execution by the configured backend.</p>
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
-            </aside>
+            </aside>}
           </div>
-        )}
-        {session && <ExecutionExplainer />}
+          {activeView === "overview" && <ExecutionExplainer />}
+          {activeView === "execution" && <ExecutionExplainer />}
+          </>
+        )}}
       </div>
     </main>
   );
