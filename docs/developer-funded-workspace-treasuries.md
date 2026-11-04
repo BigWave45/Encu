@@ -117,3 +117,22 @@ Extend the existing ExecutionProvider boundary with treasury-scoped context. Do 
 - Arbitrary contract calls by agents.
 - Automatic migration or sweeping of the existing operator treasury.
 - Changes to the accepted dashboard visual system before the data model and user flow are settled.
+
+
+## OutLayer-backed implementation options (research update, 2026-11-04)
+
+The initial preference for a dedicated native treasury contract is not yet a final decision. OutLayer documentation now exposes two plausible implementations:
+
+1. **OutLayer custody wallet per workspace.** `POST /register` creates a wallet with its own wallet ID, API key and NEAR account. Distinct wallet IDs derive distinct NEAR accounts/keys. The developer funds the workspace's published account directly. This is the shortest route to per-workspace balances and deposit destinations, but custody is managed by OutLayer's TEE/MPC system. It must be disclosed as OutLayer-managed custody, not developer-held keys. A per-customer MPC vault can add a customer-controlled recovery path, but adds provisioning and recovery complexity.
+2. **Personal Account Binding.** The developer keeps control of an existing named NEAR account and signs a setup transaction authorizing the OutLayer executor through a wallet contract. Spending uses OutLayer's binding endpoints and the developer's on-chain policy. This is closer to non-custodial ownership but requires wallet connection/setup, active-binding verification, owner policy configuration and a different transfer adapter.
+
+OutLayer's `hos_lease` Agent Connect mode is not currently the right default: it is a partner-provisioned leased-account programme and is not a generic self-service developer treasury.
+
+**Recommended next technical step:** build a disposable Testnet spike for Option A only after explicit approval to provision a test wallet; in parallel, write a short Option B feasibility note. No wallet has been registered and no funds have moved. Do not choose the native treasury contract until these options have been tested against custody requirements and operational costs.
+
+References:
+- OutLayer Agent Custody: https://app.outlayer.ai/docs/agent-custody
+- OutLayer Binding API: https://app.outlayer.ai/docs/binding-api
+- OutLayer Personal Account Binding: https://app.outlayer.ai/docs/account-binding
+- OutLayer MPC Vaults: https://app.outlayer.ai/docs/vaults
+- OutLayer Agent Connect: https://app.outlayer.ai/docs/agent-connect
