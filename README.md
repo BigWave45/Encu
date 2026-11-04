@@ -819,3 +819,6 @@ Rebuilt `IntegrationGuide` as a guided API integration experience using the actu
 Commits: guided Integration component `e8e16801409e1ce7eeb6c822633432aa370e369e`; styles `11333bf4ecb8c84e35b2bc0eba828948c4482aeb`; cURL example correction `a95cc59fbd15feac0d82df407ceb586fcc279e55`. Re-fetched source confirms the route path, identity assertion, warning, and responsive styles. No API or database changes and no live transfer were made. GitHub Actions does not expose a workflow run for this head. The Vercel status is failing due the known build-rate-limit blocker; preview is not verified. PR #5 remains open and unmergeable. Do not deploy or merge without explicit authorization.
 
 Next: review the developer workspace end-to-end for UI consistency and functional completeness, especially navigation persistence, mobile behavior, loading/empty/error states, token visibility/expiry, and the dashboard explainer placement. Fix any concrete issues found, then rerun available checks before considering release.
+
+
+Integration sample correction: the cURL body is now generated with `JSON.stringify` and embedded as a shell single-quoted JSON argument, avoiding escaped-quote corruption when copied. Commit: `cc2cf992e0f516407f5cc3799553027b3896fed9`. Re-fetched source confirms the request payload keys match the live transfer route schema.
