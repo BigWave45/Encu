@@ -67,7 +67,7 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
     const version = loadVersion.current + 1;
     load(agentId).catch(e => { if (loadVersion.current === version) setError(e instanceof Error ? e.message : "Configuration unavailable."); });
     return () => { loadVersion.current += 1; };
-  }, [load]);
+  }, [load, agentId]);
 
   async function save(payload: Record<string, unknown>) {
     setBusy(true); setError(""); setMessage("");
