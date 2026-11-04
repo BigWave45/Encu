@@ -1,56 +1,126 @@
-## RELEASE STATUS — PAYLOAD BUILDER FIX IN REVIEW (2026-11-04)
+# Encu
 
-**A browser-compatibility fix for Request Payload Builder generation is committed on `fix/payload-builder-request-id`. It has not been merged or deployed.** The reported Preview behavior was that the Generate payload button did nothing despite populated fields. Source inspection found a direct call to `crypto.randomUUID()` with no fallback or local error handling. The fix now uses `crypto.randomUUID()` when available, falls back to `crypto.getRandomValues()`, and has a last-resort unique identifier fallback; unexpected generation errors now produce a visible status message.
+**Policy enforcement and transaction accounting for AI-agent payments on NEAR.**
 
-- Fix commit: `29a197f29e7513d8010a867f67eac81e32a9be06`.
-- Changed component: `app/developers/agent-playground.tsx`.
-- The payload schema, NEAR-to-yocto integer conversion, and separate explicit transfer submission action are unchanged.
-- No transfer was submitted and no Supabase data was changed.
-- Next: review PR/CI, then decide whether to update the existing Preview. Do not create an additional deployment or deploy Production without explicit approval.
+Encu is an application-level authorization gateway for autonomous agents making native NEAR transfers. It authenticates each logical agent, evaluates spending and recipient policy, reserves shared treasury exposure before execution, and reconciles submitted transfers against NEAR finality before settling its ledger.
 
-## RELEASE STATUS — PREVIEW LIVE, LOGIN-PAGE SMOKE TEST REPORTED (2026-11-04)
+**NEAR HACKATHON 2026 · Track 06: AI Security & Defense**
 
-**The intended Encu V1 and developer-dashboard code is merged into `main`. A READY Vercel Preview is available, and the user reports opening its login page and observing the buttons working. This is a manual smoke-test report, not evidence that every authenticated workflow or transfer path has passed end-to-end testing.**
+## What it does
 
-### Product identity
-- Public product name: **Encu**.
-- Repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard). The repository slug remains `agentguard`.
-- Internal identifiers such as `AgentGuard`, `agentguard`, `AGENTGUARD_*`, database names, API paths and migration identifiers remain unchanged where they are part of the implementation.
+AI agents need to make payments, but giving each agent unrestricted access to a wallet creates unnecessary financial and operational risk. Encu places an enforceable policy and accounting layer between an agent and the configured execution provider.
 
-### Exact merge state
-- PR #5 (developer dashboard end-to-end) merged into `agentguard/build-v1`: `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
-- PR #6 (release reconciliation into V1) merged into `agentguard/build-v1`: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
-- PR #7 (V1 reconciliation into `main`) merged into `main`: `762e7112d904b6010c73972251f1fa5eaeca6379`.
-- PR #1 (V1 release into `main`) merged into `main`: `47b19be8945fff0908485426dce0b302e73269ff`.
-- Do not infer that every branch or PR was merged. The rejected editorial-light redesign remains excluded.
+- Authenticate agents with individual bearer credentials.
+- Enforce a shared treasury ceiling and per-agent allocations.
+- Apply per-transfer and rolling spend limits, plus configured autonomous allowances.
+- Authorize exact NEAR recipient account IDs.
+- Reserve treasury and agent exposure atomically before provider submission.
+- Reject replayed requests and changed-payload idempotency conflicts.
+- Apply an emergency stop and persistent request rate limits.
+- Track provider submission separately from NEAR finality.
+- Reconcile signer, recipient, transfer action and exact yocto amount before settling.
 
-### CI verification
-- The code-bearing `main` commit `d669c5a8192d5615b729591e7dc721140ce2137c` passed [CI run #1106](https://github.com/BigWave45/agentguard/actions/runs/41803211828) on 4 November 2026.
-- Verified steps included dependency installation/audit, lint, TypeScript type-check, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
-- This verifies the source build and automated tests, not every live hosted interaction.
+## Current implementation boundary
 
-### Current Preview and manual check
-- READY Preview: https://agentguard-t8q8sxmu9-resonances-projects-13e560cd.vercel.app
-- Deployment ID: `dpl_5ce1uq4aHWiVHgTAT2GDpHAnB7zr`.
-- Source commit: `6bd7603e1aa677c2e8f355edab0084d3f07e2d4d`.
-- Vercel target: Preview. No Production deployment was initiated.
-- Read-only HTTP checks returned 200 for `/developers`, `/admin` and `/api/health`. Health reported Supabase connected, budget configured, NEAR Testnet RPC connected, OutLayer connected and signer match true.
-- **User-reported manual smoke test (4 November 2026):** user opened the Preview at the login page and reported that the buttons appeared to work. The exact buttons and resulting actions were not itemized in the report. Record this as a positive login-page/UI smoke test only; do not infer successful account creation, authenticated dashboard operations, persistence, agent provisioning or transfer execution from it.
-- No account creation, agent mutation, credential submission or live Testnet transfer is recorded as part of the automated HTTP checks. No new live transfer is authorized by this documentation update.
+Encu V1 is a **NEAR Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated logical agents. Agent identity, policy evaluation, shared-budget reservations, idempotency, audit and finality reconciliation are enforced by Encu. OutLayer provides the configured wallet custody and signing/submission path.
 
-### Remaining verification
-1. Confirm developer sign-in/account creation and authenticated session persistence.
-2. Confirm agent creation, zero initial allocation, one-time bearer-token display and credential clearing on sign-out.
-3. Confirm allocation/policy persistence and exact recipient authorization/revocation.
-4. Confirm payload construction, request persistence, transaction/audit views and responsive diagrams/explainers.
-5. Exercise policy denials and provider/finality handling without initiating a live transfer unless the user explicitly authorizes that exact test.
-6. Capture demo media, prepare the public X post and complete the hackathon submission. Re-check official submission instructions before submitting.
+This is not independent customer custody, isolated per-developer wallets, a native NEAR treasury contract, or a mainnet-ready payment service. OutLayer is the only implemented execution provider. The current integration does not surface or independently verify a transfer-bound TEE attestation. See [Security Model](docs/SECURITY_MODEL.md) and [OutLayer V1 boundary](docs/outlayer-v1-backlog.md).
 
-### Release boundaries
-- V1 is a NEAR Testnet prototype using the configured OutLayer execution wallet. It is not mainnet-ready or a production custody service.
-- Preserve the accepted dark V1 interface and its responsive diagrams/explainers. Do not reintroduce the rejected editorial-light redesign.
-- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit user approval.
-- For further code changes, branch from the latest `main`, verify changes in CI and Preview, then merge by reviewed PR. Do not assume `agentguard/build-v1` and `main` are identical.
+## Try the project
+
+The deployed Preview currently available in the repository handoff was built from an earlier commit and does **not** contain the merged payload-builder fix. A new Preview from the current `main` commit is pending because Vercel rejected deployment requests under its daily deployment limit. Do not treat the older Preview as proof of the latest code.
+
+For a local run:
+
+1. Use Node.js compatible with the project's Next.js 15 runtime.
+2. Install dependencies with `npm install`.
+3. Copy `.env.example` to `.env.local`.
+4. Configure a dedicated Supabase **test** project and a dedicated OutLayer **Testnet** wallet. Set the required Supabase, OutLayer and NEAR RPC variables shown in `.env.example`. Never use production credentials for a demo.
+5. Apply the repository's database migrations to that disposable test project.
+6. Start the application with `npm run dev` and open `http://localhost:3000/developers`.
+7. Sign in to the developer workspace, create or select an agent, configure its allocation and limits, and authorize an exact Testnet recipient.
+8. Use the Integration view to inspect the documented request contract. Generate a payload in Live Testnet Tools and inspect the JSON. **Generating a payload does not submit a transfer.**
+9. The separate **Submit through ENCU** action can initiate a real Testnet transfer when policy permits it. Do not click it unless the operator has explicitly approved the exact agent, recipient, amount and current policy state.
+
+Expected results and a safe judge walkthrough are in [Demo Runbook](docs/DEMO_RUNBOOK.md). The API contract is `POST /api/agent/transfer`; it requires an agent bearer token and a JSON body containing `requestId`, `to` and integer-string `amountYocto`. The optional `expectedAgentId` binds the caller's expected logical identity.
+
+## Automated checks
+
+Run the non-destructive mocked suites:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+npm run test:agent-api
+npm run test:reconciliation
+```
+
+The API and reconciliation suites run the application against local mock services; they do not prove live OutLayer behavior or a live NEAR transfer. The reservation concurrency suite uses a real Supabase database and mutates test rows and budget counters. Run it **only** against a dedicated disposable test project that satisfies the script's preconditions:
+
+```bash
+AGENTGUARD_TEST_DATABASE=true npm run test:reservation-concurrency
+```
+
+Read the script before running it. Never point this test at production or a project containing real funds or business data.
+
+## Architecture at a glance
+
+```text
+AI agent
+  │ agent bearer credential + request ID
+  ▼
+Encu API ── authenticate identity / rate limit / validate request
+  │
+  ▼
+Atomic policy + reservation transaction
+  ├── agent allocation and rolling limits
+  ├── shared treasury ceiling
+  ├── exact recipient authorization
+  ├── emergency stop / autonomous allowance
+  └── idempotency and reservation ledger
+  │ authorized new reservation only
+  ▼
+OutLayer Testnet wallet
+  │ provider request / transaction hash
+  ▼
+NEAR RPC finality verification
+  │ signer + recipient + one native transfer + exact amount
+  ▼
+Encu ledger settlement + audit
+```
+
+The execution-provider interface is a boundary for future adapters, not evidence that multiple providers are currently supported. Only OutLayer is implemented. The lock order for exposure paths is treasury row → allocation row → reservation row.
+
+## Documentation
+
+- [Security Model](docs/SECURITY_MODEL.md): assets, trust boundaries, enforcement and limitations.
+- [Demo Runbook](docs/DEMO_RUNBOOK.md): repeatable judge walkthrough and expected results.
+- [Hackathon Submission Checklist](docs/SUBMISSION_CHECKLIST.md): track fit, required links and final checks.
+- [OutLayer V1 backlog](docs/outlayer-v1-backlog.md): provider-specific evidence and unresolved release gates.
+- [Native NEAR treasury design](docs/native-near-treasury-contract-design.md): future design only; no contract is implemented.
+
+## Build and release status · 4 November 2026
+
+- Current `main` includes the merged Request Payload Builder browser-compatibility fix: merge commit `ec0b849043e7735ffb0e3e1b6a8043578d42708f` (PR [#8](https://github.com/BigWave45/agentguard/pull/8)).
+- The corrected PR CI run passed dependency audit, lint, type-check, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
+- The merged fix makes request-ID generation resilient when `crypto.randomUUID()` is unavailable and surfaces generation errors. The payload schema and separate transfer submission action are unchanged.
+- The existing Preview is older than this merge. Vercel has rejected deployment requests under its free daily deployment limit; no deployment of the merge commit has been created and no Production deployment was attempted.
+- The latest browser report before the payload-builder fix was a login-page smoke test only. Full authenticated workflow verification against the merged code remains outstanding.
+- No live Testnet transfer was initiated as part of the payload-builder fix.
+
+## Scope and limitations
+
+- Testnet only. Not mainnet-ready.
+- One configured OutLayer execution wallet/API credential is shared by logical agents.
+- No independent customer custody or per-developer treasury isolation.
+- No native NEAR treasury contract or additional execution provider is implemented.
+- OutLayer owner policy is separate from Encu policy; the current integration does not manage or verify every provider-side policy setting.
+- Mocked tests do not establish live provider semantics. A successful provider response is not equivalent to NEAR finality.
+- No independent formal security audit or production security certification is claimed.
+
+Repository and internal implementation identifiers retain `agentguard` / `AgentGuard` where required. The public product name is **Encu**.
+
 
 ---
 
