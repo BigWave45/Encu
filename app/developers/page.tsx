@@ -5,9 +5,6 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 import Link from "next/link";
 import "./developers.css";
 import AgentConfiguration from "./agent-configuration";
-import AgentPlayground from "./agent-playground";
-import ExecutionExplainer from "./execution-explainer";
-import DeveloperAuditLog from "./audit-log";
 
 type DeveloperAgent = {
   id: string;
@@ -332,7 +329,7 @@ export default function DeveloperPortal() {
                       </div>
                       <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
                       <AgentConfiguration agentId={agent.id} accessToken={session.access_token} />
-                      <AgentPlayground agentId={agent.id} onSubmitted={() => void loadTransactions(session.access_token)} />
+                      <AgentPlayground agentId={agent.id} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
@@ -361,7 +358,6 @@ export default function DeveloperPortal() {
                   </article>)}
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
-                <DeveloperAuditLog accessToken={session.access_token} />
               </section>
             </section>
             <aside className="developer-panel">
@@ -374,9 +370,65 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         )}
-        {session && <ExecutionExplainer />}
       </div>
     </main>
   );
 }
 
+
+function AgentPlayground({ agentId }: { agentId: string }) {
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [payload, setPayload] = useState("");
+  const [message, setMessage] = useState("");
+
+  function generatePayload() {
+    setMessage("");
+    setPayload("");
+    const value = amount.trim();
+    if (!/^(0|[1-9][0-9]*)(\\.[0-9]{1,24})?$/.test(value)) {
+      setMessage("Enter a positive NEAR amount with no more than 24 decimal places.");
+      return;
+    }
+    const [whole, fraction = ""] = value.split(".");
+    const amountYocto = (BigInt(whole) * 10n ** 24n + BigInt((fraction + "0".repeat(24)).slice(0, 24))).toString();
+    if (amountYocto === "0") {
+      setMessage("Amount must be greater than zero.");
+      return;
+    }
+    const to = recipient.trim();
+    if (to.length > 64 || !/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(to)) {
+      setMessage("Enter a valid lowercase NEAR account ID (maximum 64 characters).");
+      return;
+    }
+    setPayload(JSON.stringify({ requestId: "encu-" + crypto.randomUUID(), to, amountYocto, expectedAgentId: agentId }, null, 2));
+  }
+
+  async function copyPayload() {
+    try {
+      await navigator.clipboard.writeText(payload);
+      setMessage("JSON payload copied.");
+    } catch {
+      setMessage("Clipboard unavailable. Select and copy the JSON manually.");
+    }
+  }
+
+  return (
+    <section className="developer-playground" aria-label="Request Payload Builder">
+      <span className="developer-section-kicker">DEVELOPER TOOL</span>
+      <h4>Request Payload Builder</h4>
+      <p>Prepare a request body for this agent. This tool does not submit a request or execute a transfer.</p>
+      <div className="developer-playground-fields">
+        <label>Recipient NEAR account<input value={recipient} onChange={event => setRecipient(event.target.value)} placeholder="recipient.near" autoCapitalize="none" autoCorrect="off" /></label>
+        <label>Amount (NEAR)<input value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.001" inputMode="decimal" /></label>
+      </div>
+      <div className="developer-playground-controls">
+        <button className="developer-button" type="button" onClick={generatePayload}>Generate payload</button>
+        {payload && <button className="developer-button secondary" type="button" onClick={() => void copyPayload()}>Copy JSON</button>}
+      </div>
+      {message && <p className="developer-playground-warning" role="status">{message}</p>}
+      {payload && <pre className="developer-playground-payload">{payload}</pre>}
+      <p className="developer-playground-warning">A generated payload is not an authorization decision. Your backend must authenticate the agent and enforce current allocation, limits and recipient permissions before execution.</p>
+    </section>
+  );
+}
