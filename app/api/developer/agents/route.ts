@@ -39,14 +39,23 @@ export async function GET(request: NextRequest) {
   const ids = (agents ?? []).map(agent => agent.id);
   if (!ids.length) return NextResponse.json({ agents: [] }, { headers: { "Cache-Control": "no-store, private" } });
 
-  const [allocations, policies] = await Promise.all([
+  const [allocations, policies, recipients] = await Promise.all([
     db.from("agent_allocations").select("agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto").in("agent_id", ids),
-    db.from("agent_policies").select("agent_id,max_transfer_yocto,daily_limit_yocto,weekly_limit_yocto,auto_spend_limit_yocto").in("agent_id", ids)
+    db.from("agent_policies").select("agent_id,max_transfer_yocto,daily_limit_yocto,weekly_limit_yocto,auto_spend_limit_yocto").in("agent_id", ids),
+    db.from("agent_authorized_recipients").select("agent_id,status,expires_at").in("agent_id", ids)
   ]);
-  if (allocations.error || policies.error) return NextResponse.json({ error: "developer_agent_details_read_failed" }, { status: 503 });
+  if (allocations.error || policies.error || recipients.error) return NextResponse.json({ error: "developer_agent_details_read_failed" }, { status: 503 });
 
   const allocationById = new Map((allocations.data ?? []).map(row => [row.agent_id, row]));
   const policyById = new Map((policies.data ?? []).map(row => [row.agent_id, row]));
+  const now = Date.now();
+  const recipientCountById = new Map<string, number>();
+  for (const recipient of recipients.data ?? []) {
+    const unexpired = recipient.expires_at == null || Date.parse(recipient.expires_at) > now;
+    if (recipient.status === "active" && unexpired) {
+      recipientCountById.set(recipient.agent_id, (recipientCountById.get(recipient.agent_id) ?? 0) + 1);
+    }
+  }
   return NextResponse.json({
     agents: (agents ?? []).map(agent => ({
       id: agent.id,
@@ -54,7 +63,8 @@ export async function GET(request: NextRequest) {
       active: agent.active,
       createdAt: agent.created_at,
       allocation: allocationById.get(agent.id) ?? null,
-      policy: policyById.get(agent.id) ?? null
+      policy: policyById.get(agent.id) ?? null,
+      activeRecipientCount: recipientCountById.get(agent.id) ?? 0
     }))
   }, { headers: { "Cache-Control": "no-store, private" } });
 }
