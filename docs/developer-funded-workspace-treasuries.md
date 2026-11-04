@@ -153,3 +153,18 @@ Current Encu adapter and reconciler are incompatible: they use one global creden
 One personal NEAR account cannot represent multiple separately funded workspaces. Require one named account per workspace or explicitly model a shared treasury. Keep executor credentials server-side; do not put long-lived wk_ keys in hosted connect URLs. Current package has no NEAR wallet connector, so binding onboarding is a new capability.
 
 No runtime, schema, provider, wallet or transfer changes are authorized by this specification. All details are based on OutLayer public docs and require Testnet verification before deployment.
+
+
+## Follow-up binding integration constraints (2026-11-04)
+
+OutLayer's binding API distinguishes the executor (signer and gas account) from the asset account (developer-owned balance). `GET /wallet/v1/binding/balance` reads asset funds; `GET /wallet/v1/balance` defaults to executor funds. Only `binding_status=active` may submit. Personal-account bindings do not expose the lease lifecycle webhook. Native transfers use `/wallet/v1/binding/transfer` or `/wallet/v1/call`; never fall back to `/wallet/v1/transfer`.
+
+Important unresolved governance issue: OutLayer describes wallet policy as controlled by the OutLayer wallet owner/controller. Personal binding requires a restrictive policy and says the policy is the only spending limit, but docs reviewed do not prove that a developer who owns the bound asset account can independently control the executor wallet's policy. Determine whether the developer can own/control the executor wallet identity (for example through a supported deterministic wallet credential) or whether policy administration remains with Encu. This is a product/security decision gate, not an implementation detail.
+
+OutLayer's cumulative velocity controls are best-effort under concurrent submissions because usage counters are gateway-supplied. Keep Encu's PostgreSQL atomic reservations as the authoritative shared budget; serialize per-workspace provider submission as needed. Exact TEE controls include per-transaction limits, address rules, transaction type, freeze and approval triggers.
+
+The policy for native binding transfers must allow `call`, include the bound asset account in address rules (or intentionally disable filtering), and include `native` in allowed tokens. Verify policy read-back before the developer signs setup. The public docs list a policy read endpoint but do not establish a policy-write API; do not invent one.
+
+OutLayer documents Intear Wallet and near-cli for NEP-591 `UseGlobalContract`; generic wallet compatibility is not available. Browser/mobile wallet support and return-to-app behavior must be tested. Do not use a long-lived `wk_` key in the hosted connect URL. Prefer server-side setup retrieval and a wallet connector; request a short-lived one-time handoff if using hosted flow.
+
+The general OutLayer API describes request polling and `needs_review` semantics, but the binding docs do not fully specify all transfer response variants or the inner-receipt proof contract. Confirm exact response/receipt fields before writing the reconciler. No implementation is authorized until these gates are resolved.
