@@ -472,3 +472,37 @@ This suggests a possible way to derive a separate executor identity from the exi
 The existing V1 `wk_` key must remain unchanged and must not be used to bind `agentg.testnet`. The proposed workspace executor should have a distinct `wallet_id`, `near_account_id`, credential record, policy verification and binding lifecycle. This does not by itself prove that the developer controls the child wallet's policy; the policy-controller and owner-authority gate remains open.
 
 Source reviewed: OutLayer Agent Custody documentation, sections “Delegate keys for sub-agents” and “Security Model”; Personal Account Binding and Binding API reference. No API call, key derivation, wallet creation, binding, policy update, transfer, database mutation or deployment was performed during this follow-up.
+
+
+## Follow-up: sub-agent identity and policy-control review (2026-11-04)
+
+A second pass over the current OutLayer Agent Custody and Personal Account Binding documentation narrows the feasibility result.
+
+### What is documented
+
+- `PUT /wallet/v1/api-key` registers a delegate `wk_` key against a parent wallet, with a `seed` and `key_hash`; the response returns `wallet_id` and `near_account_id`.
+- The sub-agent authenticates with its own `wk_` bearer credential. Revocation is documented through `DELETE /wallet/v1/api-key/{key_hash}`.
+- The docs describe sub-agent keys as derived from a NEAR key plus seed, but the reviewed public instructions do not specify a complete, reproducible derivation procedure for `derived_key_hex`. They show how to hash a key that is already derived, not how to derive that secret. We must not invent a KDF or generate a credential based on assumptions.
+- OutLayer's custody overview says the wallet owner controls the policy and that only the controller can change the encrypted on-chain policy. It also documents policy controls such as exact per-transaction limits, allowlists, capabilities, approvals and freeze.
+- Personal Account Binding requires the named-account owner to sign the setup transaction adding the executor to the account's extension set. The owner can revoke that extension on-chain. The docs say the connected owner is linked to the policy editor after binding.
+- Binding execution is a contract-call path. The asset account and executor account are distinct; the executor pays gas. The integration must use binding-specific endpoints, not the existing V1 direct-transfer endpoint.
+
+### What remains unproven / newly identified risks
+
+1. **Delegate credential derivation is incomplete in public docs.** We do not yet have a vendor-confirmed algorithm, encoding, entropy requirement or test vector for deriving `wk_` secret material. The SHA-256 instruction is only the registration hash calculation.
+2. **Policy-controller relationship is not explicit for this composition.** Public docs describe custody-wallet policy ownership and developer-signed Personal Account Binding, but do not unambiguously state whether the named-account developer becomes the sole controller of the bound executor wallet's policy when the executor is a child/sub-agent wallet created under an existing parent custody wallet. A policy editor link is not proof of exclusive on-chain controller authority.
+3. **Parent/child authority boundary is not fully specified.** We need confirmation whether the parent credential can modify child policy, freeze/delete the child wallet, rotate or recreate its credentials, or otherwise bypass the developer's intended controls. Revoking a delegate key is not equivalent to revoking the parent wallet's administrative authority.
+4. **OutLayer cumulative policy counters are best-effort under concurrent requests.** Its custody docs state hourly/daily/monthly totals and transaction-count rate limits can be exceeded by concurrent requests because the gateway supplies the usage counter. Encu's atomic PostgreSQL reservation ledger must therefore remain the authoritative budget control; OutLayer policy is a secondary enforcement layer, not a replacement.
+5. **A child wallet is not automatically a developer-owned custody wallet.** A unique `wallet_id` and `near_account_id` prove identity separation, not asset ownership, policy independence, or developer-exclusive revocation.
+
+### Decision
+
+Do not implement this sub-agent route yet. Keep the existing V1 global `wk_` credential and executor untouched. Before any registration or binding experiment, obtain explicit written answers from OutLayer on (a) exact delegate-key derivation and test vectors, (b) parent versus child policy-controller rights, (c) who can freeze, update policy, delete the wallet and rotate credentials, and (d) whether a child executor can be bound to a developer-owned Personal Account Binding with the developer as sole policy controller.
+
+If OutLayer cannot confirm the required authority boundary, this route fails the self-custody requirement. Reassess the architecture rather than describing parent-managed custody as developer-controlled funds.
+
+### Policy concurrency note
+
+The V1 database reservation ledger remains mandatory. OutLayer's cumulative policy counters are not atomic across concurrent submissions per its own documentation. Exact per-transaction limits, address checks, capability checks, freeze and approval triggers are described as TEE-enforced, but they do not replace Encu's shared-budget reservation and reconciliation logic.
+
+No key was derived, API endpoint called, wallet created, binding signed, policy changed, transfer submitted, database mutated or deployment performed in this review.
