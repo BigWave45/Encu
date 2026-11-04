@@ -446,9 +446,13 @@ export default function DeveloperPortal() {
                       <div className="developer-meta">
                         <div><span>Allocated authority</span><strong>{near(limit)}</strong></div>
                         <div><span>Spent / reserved</span><strong>{near(allocation?.spent_yocto)} / {near(allocation?.reserved_yocto)}</strong></div>
+                        <div><span>Max per transfer</span><strong>{near(agent.policy?.max_transfer_yocto)}</strong></div>
+                        <div><span>Daily limit</span><strong>{near(agent.policy?.daily_limit_yocto)}</strong></div>
+                        <div><span>Weekly limit</span><strong>{near(agent.policy?.weekly_limit_yocto)}</strong></div>
+                        <div><span>Autonomous allowance</span><strong>{near(agent.policy?.auto_spend_limit_yocto)}</strong></div>
                       </div>
-                      <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
-                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />
+                      <p>{ready ? "Spending authority is subject to these limits and the shared platform ceiling." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
+                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} onSaved={async () => { await loadAgents(session.access_token); }} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
