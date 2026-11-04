@@ -28,5 +28,6 @@
   },
   "overrides": {
     "postcss": "^8.5.23"
-  }
+  },
+  "description": "Encu is a transaction-control gateway for AI agents making policy-governed native NEAR transfers."
 }
