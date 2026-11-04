@@ -17,6 +17,7 @@ type DeveloperAgent = {
   createdAt: string;
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
+  activeRecipientCount: number;
 };
 
 type AgentResponse = { status?: string; agent?: { id: string; name: string }; token?: string; warning?: string; error?: string };
@@ -58,7 +59,7 @@ export default function DeveloperPortal() {
   const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
-  const [activeView, setActiveView] = useState<"overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution">("overview");
+  const [activeView, setActiveView] = useState<"setup" | "overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution">("setup");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -308,12 +309,12 @@ export default function DeveloperPortal() {
         ) : (
           <>
           <nav className="developer-nav" aria-label="Developer workspace sections">
-            {([["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["integration","Integration"],["transactions","Transactions"],["audit","Audit & Security"],["tools","Developer tools"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
+            {([["setup","Connect / Setup"],["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["integration","Integration"],["transactions","Transactions"],["audit","Audit & Security"],["tools","Developer tools"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
           </nav>
           <div className="developer-grid">
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <div><h2>{activeView === "overview" ? "Workspace overview" : activeView === "agents" ? "Your agents" : activeView === "recipients" ? "Recipient permissions" : activeView === "integration" ? "Integration" : activeView === "transactions" ? "Transactions" : activeView === "audit" ? "Audit & Security" : activeView === "tools" ? "Developer tools" : "How ENCU works"}</h2><p>Signed in as {session.user.email}</p></div>
+                <div><h2>{activeView === "setup" ? "Connect / Setup" : activeView === "overview" ? "Workspace overview" : activeView === "agents" ? "Your agents" : activeView === "recipients" ? "Recipient permissions" : activeView === "integration" ? "Integration" : activeView === "transactions" ? "Transactions" : activeView === "audit" ? "Audit & Security" : activeView === "tools" ? "Developer tools" : "How ENCU works"}</h2><p>Signed in as {session.user.email}</p></div>
 {activeView === "overview" && <div className="developer-workspace-summary" aria-label="Workspace spending summary">
                 {(() => {
                   const totals = agents.reduce((sum, agent) => ({
@@ -333,6 +334,45 @@ export default function DeveloperPortal() {
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
+              {activeView === "setup" && (() => {
+                const loaded = !agentsBusy && !transactionsBusy;
+                const activeAgents = agents.filter(agent => agent.active);
+                const allocatedAgents = activeAgents.filter(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
+                const policyConfiguredAgents = activeAgents.filter(agent => !!agent.policy && !!(agent.policy.max_transfer_yocto || agent.policy.daily_limit_yocto || agent.policy.weekly_limit_yocto));
+                const autonomousAgents = activeAgents.filter(agent => !!agent.policy?.auto_spend_limit_yocto && BigInt(agent.policy.auto_spend_limit_yocto) > 0n);
+                const authorizedAgents = activeAgents.filter(agent => agent.activeRecipientCount > 0);
+                const hasIssuedCredential = !!issuedToken && !!issuedTokenAgentId;
+                const hasRequests = transactions.length > 0;
+                const items = [
+                  { title: "Create an agent identity", detail: "Provision a separate machine identity for each agent.", count: agents.length, done: agents.length > 0, action: "agents" as const, actionLabel: "Manage agents" },
+                  { title: "Assign spending authority", detail: "Active agents need a positive allocation within the shared Testnet pool.", count: allocatedAgents.length, total: activeAgents.length, done: allocatedAgents.length > 0, action: "agents" as const, actionLabel: "Configure allocation" },
+                  { title: "Set spending limits", detail: "Configure at least one per-transfer, daily or weekly cap.", count: policyConfiguredAgents.length, total: activeAgents.length, done: policyConfiguredAgents.length > 0, action: "agents" as const, actionLabel: "Set limits" },
+                  { title: "Authorize exact recipients", detail: "Each agent needs at least one active, unexpired account authorization.", count: authorizedAgents.length, total: activeAgents.length, done: authorizedAgents.length > 0, action: "recipients" as const, actionLabel: "Manage recipients" },
+                  { title: "Configure autonomous allowance", detail: "Optional. Enables autonomous submission within the configured cumulative allowance.", count: autonomousAgents.length, total: activeAgents.length, done: autonomousAgents.length > 0, action: "agents" as const, actionLabel: "Configure allowance", optional: true },
+                  { title: "Copy and securely store an agent token", detail: "ENCU cannot verify storage in your own secret manager. Tokens are shown once and held only in this page session.", count: hasIssuedCredential ? 1 : 0, done: hasIssuedCredential, action: "integration" as const, actionLabel: hasIssuedCredential ? "View one-time token" : "Open integration", manual: true },
+                  { title: "Integrate your backend", detail: "Add the agent bearer token to your server-side secret manager and implement the request contract.", done: false, action: "integration" as const, actionLabel: "Open quickstart", manual: true },
+                  { title: "Send the first request", detail: "A persisted request proves the API received a request. It does not by itself prove payment or NEAR finality.", count: transactions.length, done: hasRequests, action: "transactions" as const, actionLabel: "View requests" }
+                ];
+                const completed = items.filter(item => item.done && !item.optional).length;
+                return <section className="developer-setup-workspace" aria-label="Connect and setup checklist">
+                  <div className="developer-setup-intro">
+                    <div><span className="developer-section-kicker">ONBOARDING</span><h2>Bring an agent online</h2><p>Configure bounded authority, authorize destinations, connect your backend and inspect the first request. Status below is derived from the workspace records ENCU can currently verify.</p></div>
+                    <div className="developer-setup-progress"><strong>{loaded ? completed : "—"}<span> / {items.filter(item => !item.optional).length}</span></strong><small>Verified setup steps</small></div>
+                  </div>
+                  {!loaded && <p className="developer-setup-loading">Loading workspace records before evaluating setup…</p>}
+                  {(agentError || transactionsError) && <p className="developer-error" role="alert">{agentError || transactionsError}</p>}
+                  {agents.length === 0 && loaded && <div className="developer-setup-empty"><strong>No agent identities yet</strong><span>Create your first agent to begin. New agents start with zero spending authority.</span><button className="developer-button" type="button" onClick={() => setActiveView("agents")}>Create an agent</button></div>}
+                  <div className="developer-setup-list">
+                    {items.map((item,index) => <article className="developer-setup-step" key={item.title}>
+                      <div className={item.done ? "developer-setup-state is-complete" : "developer-setup-state"}>{loaded && item.done ? "✓" : String(index+1).padStart(2,"0")}</div>
+                      <div className="developer-setup-copy"><div className="developer-setup-title"><h3>{item.title}</h3>{item.optional && <span>Optional</span>}{item.manual && <span>Manual confirmation</span>}</div><p>{item.detail}</p>{item.count !== undefined && <small>{item.count}{item.total !== undefined ? ` of ${item.total} active agents` : item.title === "Create an agent identity" ? " agent identities" : " matching records"}</small>}</div>
+                      <button className="developer-button secondary" type="button" onClick={() => setActiveView(item.action)}>{item.actionLabel}</button>
+                    </article>)}
+                  </div>
+                  <div className="developer-setup-footnote"><strong>Credential and payment evidence</strong><p>Copying a token does not prove it was stored securely. An API request does not prove a transfer settled. ENCU keeps those claims separate from the checks it can verify.</p></div>
+                  <div className="developer-setup-shortcuts"><button type="button" onClick={() => setActiveView("overview")}>Workspace overview</button><button type="button" onClick={() => setActiveView("execution")}>Understand execution controls</button></div>
+                </section>;
+              })()}
               {activeView === "overview" && (() => {
                 const activeAgents = agents.filter(agent => agent.active);
                 const configuredAgents = agents.filter(agent => agent.active && BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
