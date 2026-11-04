@@ -232,3 +232,46 @@ OutLayer's hosted connect example places the long-lived `wk_` API key in a URL q
 6. Only then build a disposable Testnet spike. Keep Encu's database reservations authoritative and fail closed on stale/unavailable binding state.
 
 No runtime, schema, provider, wallet, credential, policy, database or deployment changes were made during this research pass.
+
+
+## Critical correction and deterministic-wallet ownership path (2026-11-04)
+
+This section supersedes any earlier statement in this document that Personal Account Binding has an on-chain spend grant. Current OutLayer Personal Account Binding documentation explicitly says: a personal account has NO separate on-chain spend grant; the OutLayer wallet policy is the only limit on the bound account. A missing policy means the agent can move everything in the bound account. The separate on-chain spend grant applies to the leased `hos_lease` mode. Do not conflate the two modes.
+
+### Newly identified candidate: deterministic OutLayer executor wallet
+
+OutLayer's Agent Custody docs describe deterministic wallets derived from `(account_id, seed, vault_or_none)`. The same inputs recreate the same wallet; different seeds produce independent wallet identities. Authentication uses a raw Ed25519 signature from a full-access NEAR key on every request (`Authorization: Bearer near:<base64url>`), and OutLayer says it stores no auth credential for this mode. Removing the NEAR key revokes access within a documented 60-second cache TTL. Function-call keys are not accepted for this auth mode.
+
+This may solve the policy-controller gap: if each workspace's executor wallet is deterministically derived under the developer's NEAR account, the developer may be the wallet controller and can control its on-chain OutLayer policy, while the personal binding authorizes that executor to act through the developer's named asset account. This is a promising architecture, not yet proven. The current docs do not fully explain whether the controller of a deterministic executor wallet can set/freeze policy for the bound asset account as expected, or the exact delegate-key flow for giving Encu backend access without storing the developer's full-access private key.
+
+OutLayer also documents `PUT /wallet/v1/api-key` and `DELETE /wallet/v1/api-key/{key_hash}` for delegate API keys. The docs say custody wallets can create sub-agent keys by supplying `seed` and `key_hash`; the exact semantics, response handling, permissions and applicability to a deterministic wallet must be confirmed. Do not infer that the API key can be safely created/revoked by the developer without verifying the request/response and authorization model.
+
+### Candidate architecture to test
+
+1. Developer signs a short-lived deterministic-wallet registration challenge using a NEAR full-access key; the backend never receives or stores the private key.
+2. Derive one stable executor identity per workspace using a unique, namespaced seed. Do not reuse the same seed for multiple workspaces. The developer account is the deterministic wallet owner/controller if confirmed by OutLayer.
+3. Developer binds their dedicated named NEAR asset account to that executor through Personal Account Binding and signs the `UseGlobalContract` setup transaction.
+4. Developer configures the executor wallet's on-chain policy: strict per-transaction limit, recipient allowlist, `call` transaction type, `native` token, approval threshold where needed, and freeze controls. Verify the policy read-back before any agent is enabled.
+5. Encu obtains a narrowly scoped delegate API key for backend requests, if OutLayer confirms this is supported for deterministic wallets. Store only that key encrypted server-side. If delegation is not supported safely, the product needs an owner-signing or alternative credential architecture; do not ask the developer to paste a full-access private key.
+6. Encu retains its own atomic PostgreSQL reservations, agent allocations, replay protection, shared workspace cap and finality reconciliation. OutLayer policy is a second enforcement layer, not a replacement.
+
+### Important implications
+
+- Personal binding has no independent on-chain grant ceiling. Do not claim a grant plus policy. The policy must exist and be restrictive before binding is enabled.
+- OutLayer documents cumulative daily/hourly/monthly and transaction-count policy counters as best-effort under concurrency; Encu's atomic ledger remains the hard shared budget.
+- The policy owner/controller is critical. If the executor wallet is registered randomly under OutLayer's default master and only Encu holds its `wk_` key, the developer may not independently control its policy. A deterministic executor derived under the developer's account is the candidate route to developer policy ownership.
+- A deterministic wallet is not automatically an asset account. The executor still has its own implicit NEAR address and pays gas; the bound named account holds the developer's assets. Confirm gas funding and controller semantics.
+- The developer's named asset account and each workspace must be distinct if workspaces are to have separate balances. A deterministic executor seed alone does not segregate asset funds.
+- A `near:<sig>` credential requires full-access Ed25519 signing per request. Never collect or persist the private key in Encu. A delegated key is preferred only after its exact scope and revocation behavior are verified.
+
+### Revised decision gates
+
+1. Verify deterministic wallet registration challenge, identity derivation and controller ownership on Testnet.
+2. Verify deterministic wallet policy read/write/freeze permissions and whether the developer is the controller.
+3. Verify `PUT /wallet/v1/api-key` delegate-key semantics, scopes, one-time key retrieval, and DELETE revocation for deterministic wallets.
+4. Verify Personal Account Binding from that deterministic executor to a dedicated named developer asset account.
+5. Verify binding transfer response, request polling, idempotency and exact inner receipt evidence.
+6. Verify wallet connector support for the owner's `UseGlobalContract` setup transaction on mobile.
+7. Verify executor gas requirements and safe replenishment.
+
+No wallet was registered, no signature requested, no key generated, no binding or policy changed, and no funds moved during this research.
