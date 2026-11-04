@@ -6,7 +6,6 @@ type Props = { agentId: string; accessToken: string; onSaved?: () => void };
 type Config = {
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
-  recipients: Array<{ account_id: string; label: string | null; status: string; expires_at: string | null }>;
 };
 
 const SCALE = 10n ** 24n;
@@ -37,7 +36,7 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
   const [daily, setDaily] = useState("");
   const [weekly, setWeekly] = useState("");
   const [autoSpend, setAutoSpend] = useState("");
-remove recipient state  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -117,7 +116,6 @@ remove recipient state  const [busy, setBusy] = useState(false);
             <label>Maximum autonomous spend (NEAR)<input inputMode="decimal" value={autoSpend} onChange={e => setAutoSpend(e.target.value)} placeholder="Clear to disable autonomous spend" /></label>
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
-          </div>
         </> : <p>Loading configuration…</p>}
         {message && <p className="developer-message" role="status">{message}</p>}
         {error && <p className="developer-message developer-error" role="alert">{error}</p>}
