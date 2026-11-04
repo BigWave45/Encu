@@ -301,6 +301,22 @@ export default function DeveloperPortal() {
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <div><h2>Your agents</h2><p>Signed in as {session.user.email}</p></div>
+<div className="developer-workspace-summary" aria-label="Workspace spending summary">
+                {(() => {
+                  const totals = agents.reduce((sum, agent) => ({
+                    allocated: sum.allocated + BigInt(agent.allocation?.allocation_limit_yocto ?? "0"),
+                    spent: sum.spent + BigInt(agent.allocation?.spent_yocto ?? "0"),
+                    reserved: sum.reserved + BigInt(agent.allocation?.reserved_yocto ?? "0")
+                  }), { allocated: 0n, spent: 0n, reserved: 0n });
+                  const available = totals.allocated - totals.spent - totals.reserved;
+                  return <>
+                    <div><span>Allocated authority</span><strong>{near(totals.allocated.toString())}</strong></div>
+                    <div><span>Spent</span><strong>{near(totals.spent.toString())}</strong></div>
+                    <div><span>Reserved</span><strong>{near(totals.reserved.toString())}</strong></div>
+                    <div><span>Available across agents</span><strong>{near((available >= 0n ? available : 0n).toString())}</strong></div>
+                  </>;
+                })()}
+              </div>
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
