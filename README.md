@@ -22,6 +22,18 @@ The two source documents were reviewed on 2026-11-04:
 - `docs/developer-experience-v1.md`
 - `docs/dashboard-control-inventory.md`
 
+### Existing ENCU visual explainers — preserve and extend
+
+The product communication design already exists in code. It is not dependent on a separate Figma file or a generated illustration. Do not remove it, replace it with text-only cards, or treat it as optional decoration.
+
+- `app/developers/execution-explainer.tsx` is the actual explainer component, imported and mounted by `app/developers/page.tsx`.
+- `app/developers/dashboard-workflow.css` supplies its dark V1 presentation and responsive behavior.
+- It contains a six-stage execution path with a policy-rejection branch; a financial-authority model for allocated, reserved, spent and available funds; a policy-check explainer for identity, recipient permission and spending constraints; and a transaction lifecycle from request through NEAR finality reconciliation.
+- The flow changes from six columns to three at 900px and two at 560px. The authority/policy panels stack on narrower screens; the lifecycle also stacks vertically.
+- The dashboard separately presents workspace allocated, spent, reserved and available authority, including a ledger-mismatch state rather than silently treating negative headroom as available.
+- These diagrams and explainers are core product UI. Keep them visible and responsive as the dashboard is reorganized. Their language must match actual backend behavior, especially the distinction between provider submission and NEAR finality.
+
+
 They describe the intended layout and interactions, but several are not present in the current developer dashboard. The current implementation in `app/developers/page.tsx` is still largely one stacked workspace with agent cards and embedded tools. The admin control inventory is a separate administrator-console specification; **do not copy administrator-only controls into the developer dashboard**.
 
 ### Required developer-facing structure
