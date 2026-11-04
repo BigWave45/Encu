@@ -467,6 +467,8 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
   const [message, setMessage] = useState("");
   const requestVersion = useRef(0);
   const selectedAgent = agents.find(agent => agent.id === agentId) ?? agents[0] ?? null;
+  const selectedAgentIdRef = useRef<string | null>(selectedAgent?.id ?? null);
+  selectedAgentIdRef.current = selectedAgent?.id ?? null;
 
   const load = useCallback(async (id: string) => {
     const version = ++requestVersion.current;
@@ -514,13 +516,13 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient permission update failed.");
-      if (selectedAgent?.id !== targetAgentId) return false;
+      if (selectedAgentIdRef.current !== targetAgentId) return false;
       setMessage(payload.action === "authorize_recipient" ? "Recipient authorized." : "Recipient permission revoked.");
       await load(targetAgentId);
       onSaved();
       return true;
     } catch (e) {
-      if (selectedAgent?.id === targetAgentId) setError(e instanceof Error ? e.message : "Recipient permission update failed.");
+      if (selectedAgentIdRef.current === targetAgentId) setError(e instanceof Error ? e.message : "Recipient permission update failed.");
       return false;
     } finally { setBusy(false); }
   }
