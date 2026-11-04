@@ -1,3 +1,19 @@
+## ENCU UI decision and current reference — 2026-11-04
+
+**The accepted developer interface is the dark V1 interface, not the editorial-light redesign.** The light redesign was reviewed and rejected because it hid or removed important controls and reduced visibility of the working dashboard. Do not reintroduce that design or use it as the implementation target.
+
+- **Accepted visual/functional reference:** [ENCU developer workspace preview](https://agentguard-d34uz0iz4-resonances-projects-13e560cd.vercel.app/developers).
+- **Verified Vercel deployment:** `dpl_AduxhCzP2PyE8t6XJj9N46cAoRuG`.
+- **Deployment source:** `agentguard/build-v1`, commit `bd911d46796dd80b72e1200de2cb5f2d11ee2939`.
+- **UI direction:** retain the dark V1 styling and information density because the light version obscured or hid controls. Preserve the existing functional dashboard; improve it in place rather than replacing it with the rejected editorial-light page.
+- **Known defect to investigate:** the sign-in button on the accepted preview has been reported as non-functional. The served page bundle contains a Supabase password sign-in handler, but source inspection alone does not establish why the live interaction fails. Diagnose the actual browser/network/auth response and fix it without redesigning the page.
+- **Do not treat as accepted:** the editorial-light preview or `encu/submission-integration` branch. That branch contains the rejected light UI. PR #3 is open and unmerged; it must not be merged as the current UI.
+- **Audit log and payload builder:** do not claim these are complete on the accepted V1 preview until they are verified in the accepted interface and tested against its current backend. Any additions must preserve the dark design and existing controls.
+- **Safety:** no merge to `main`, Production deployment, database mutation, branch deletion or live transfer is authorized by this documentation update.
+
+This decision supersedes earlier README handoffs that incorrectly named the editorial-light integration as canonical. When continuing work, start from the accepted `agentguard/build-v1` source and compare every proposed change against the reference above.
+
+
 # ENCU — current product and implementation status (2026-11-03)
 
 > This block is authoritative. The remainder of this README contains historical V1 notes and may describe superseded approval workflows, operator setup or provider coupling. Do not treat those older passages as current behavior.
