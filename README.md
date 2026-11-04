@@ -12,6 +12,21 @@ ENCU is a developer-facing financial authorization and accounting layer for auto
 
 **Release boundaries:** V1 is NEAR Testnet and uses the configured OutLayer test wallet. It is not a production custody service, does not provide isolated customer treasuries or customer wallet provisioning, and is not mainnet-ready. No production deployment or mainnet transfer is authorized by this status note.
 
+## Current integration handoff — 2026-11-04 (latest)
+
+This section supersedes the older branch and preview pointers below.
+
+- **Canonical integration branch:** `encu/submission-integration`.
+- **Base:** `agentguard/build-v1` at `bd911d46796dd80b72e1200de2cb5f2d11ee2939`; the integration branch is a direct descendant, currently 9 commits ahead and 0 behind.
+- **Review:** [PR #3](https://github.com/BigWave45/agentguard/pull/3), targeting `agentguard/build-v1`. It is open and unmerged. Do not merge or retarget to `main` without explicit approval.
+- **Integrated UI:** editorial-light developer workspace, overview, execution explainer, existing V1 agent/configuration/recipient/credential controls, request payload builder and JSON copy, plus a developer-scoped audit/security event feed.
+- **Audit implementation:** `GET /api/developer/audit` authenticates the developer session, rate-limits reads and scopes events to the developer identity and owned agent IDs. Transaction activity remains a separate feed.
+- **Backend preservation:** existing V1 developer and agent execution routes are unchanged by the integration; the audit endpoint is additive.
+- **Preview under build:** `https://agentguard-edcjvvch8-resonances-projects-13e560cd.vercel.app/developers`, deployment `dpl_8uiXrmi4r3Gp3fLDUsGYbifYVK2U`, commit `21526faedbb28c8fd7908e74345bb7b6f734d613`. At this handoff it is BUILDING, not yet verified READY.
+- **Do not use as canonical:** `encu/developer-audit-log` has a dark V1 stylesheet and is not the editorial-light integration. It is not the target branch. Do not merge it or delete branches as cleanup until the final preview is verified.
+- **Verification boundary:** source-level branch and component checks are complete. Vercel build, authenticated browser interaction, audit data retrieval, account isolation and all control actions still require preview verification. No live transfer was run.
+- **Release boundary:** no merge, Production deployment, Production Supabase mutation, database migration or mainnet action is authorized by this handoff.
+
 ---
 # ENCU
 
