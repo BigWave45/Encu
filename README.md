@@ -1,3 +1,37 @@
+## RELEASE PUSH — AUTHORITATIVE STATUS (2026-11-04)
+
+**Priority: finish ENCU end-to-end verification and submit. Avoid expanding product scope.** This section supersedes older next-step lists below where they conflict.
+
+### Current verified state
+- Active implementation branch: `encu/dashboard-end-to-end`.
+- PR #5: [ENCU developer dashboard](https://github.com/BigWave45/agentguard/pull/5), targeting `agentguard/build-v1`; open and unmerged.
+- Latest branch head observed: `8eca8375a7548df4d8619ce6e820f4fa749d82c0`. Re-fetch before any write; this SHA is a checkpoint, not a guarantee of current head.
+- Branch comparison: feature branch is 70 commits ahead and 9 behind V1; merge base `f9ea90f56f2d29d5c464457434b1d4bc52dcce73`; V1 head at comparison `5222c5d535785d07a2761942b92c3107fa6e3588`.
+- PR reports `mergeable=false`. Four files are overlap/conflict candidates: `README.md`, `app/developers/page.tsx`, `app/developers/developers.css`, `app/developers/agent-configuration.tsx`. Overlap is not proof every file has textual conflict markers; inspect and reconcile actual changes.
+- Previous CI runs on the feature branch passed lint, TypeScript, production build, Agent API security/lifecycle tests, and NEAR finality reconciliation. These do **not** prove browser E2E.
+- Actual browser-level sign-in, developer onboarding, authenticated request submission, policy-denial, audit isolation and finality-refresh verification remain outstanding.
+- Vercel Preview has been rate-limited; no current-head READY Preview is verified. Attempts to create an isolated Vercel sandbox returned 400 errors (initially missing `projectId`; retry with known project/team IDs still returned generic bad request). No repository changes resulted from those attempts.
+- No merge, deployment, Supabase mutation, or Testnet transfer has been performed as part of this release push.
+
+### Execution order — keep scope tight
+1. **Unblock reliable test execution.** Inspect available GitHub/Vercel tooling and repository test configuration. Prefer existing CI and a working isolated checkout; do not repeatedly retry rate-limited Preview deployments. Identify any required environment variables without printing secret values.
+2. **Complete end-to-end checks.** Verify developer sign-in/session, setup checklist state, agent creation/configuration, recipient authorization and revocation/expiry, credential-to-agent association and page-memory clearing, API request construction, authenticated submission, policy blocks/approval path, transaction/audit refresh, and finality reconciliation. Use non-transfer tests first. A real Testnet transfer requires separate explicit user approval; never blindly retry an ambiguous submission.
+3. **Resolve PR #5 divergence.** Reconcile the nine V1 commits into the feature work while preserving both sides. Do not overwrite V1 wholesale, reset, rebase/force-push, or discard feature commits. Resolve only verified conflicts and retain the dark V1 UI and responsive execution explainers.
+4. **Validate the integrated feature branch** with CI and relevant tests; update this handoff with exact run IDs/results.
+5. **Merge PR #5 into `agentguard/build-v1` only after approval and passing checks.** Then re-fetch V1 and run V1 CI plus smoke tests.
+6. **Merge `agentguard/build-v1` into `main` only after approval and successful V1 validation.** Confirm `main` contains the intended release commits and CI passes.
+7. **Submission readiness:** verify public repository visibility, clean README/setup instructions, public demo URL and actual availability, accurate architecture/security claims, demo flow, hackathon track fit, and required X/demo submission post. Do not claim a demo works if deployment is unavailable.
+
+### Operating rules
+- User prioritizes submission efficiency: no unrelated features, visual redesigns, refactors or scope expansion. Fix only blockers to E2E, integration, release or submission.
+- Preserve the dark V1 interface and approved diagrams/explainers. Product UI name is ENCU; internal AgentGuard identifiers remain.
+- Do not merge, deploy Production, alter Supabase, delete branches, force-push, or initiate a Testnet transfer without explicit approval. Keep all work recoverable and report exact branch/commit/test evidence.
+- After each meaningful milestone, update this section first with current branch/head, completed checks, blockers, and one immediate next action.
+
+**Immediate next action:** inspect exact target-branch commits and conflict hunks for the four overlapping files, then choose a non-destructive reconciliation route. Do not start new feature work until PR #5 is integrated or a concrete blocker is documented.
+
+---
+
 # IMPORTANT HANDOFF — CURRENT ACTION / READ THIS FIRST (2026-11-04)
 
 This block is the authoritative continuation point if the ChatGPT conversation resets. It supersedes older branch, UI, deployment and next-step instructions elsewhere in this README when they conflict. Do not begin by following historical notes below.
