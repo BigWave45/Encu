@@ -55,7 +55,9 @@ export default function DeveloperPortal() {
   const [agentMessage, setAgentMessage] = useState("");
   const [agentError, setAgentError] = useState("");
   const [issuedToken, setIssuedToken] = useState("");
+  const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -180,6 +182,7 @@ export default function DeveloperPortal() {
     setAgents([]);
     setTransactions([]);
     setIssuedToken("");
+    setIssuedTokenAgentId("");
     setAuthMessage("Signed out.");
   }
 
@@ -199,6 +202,7 @@ export default function DeveloperPortal() {
       const body: AgentResponse = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Agent creation failed.");
       setIssuedToken(body.token ?? "");
+      setIssuedTokenAgentId(body.agent?.id ?? agentId.trim());
       setIssuedWarning(body.warning ?? "");
       setAgentMessage("Agent created. Copy its token now.");
       setAgentId("");
@@ -233,6 +237,7 @@ export default function DeveloperPortal() {
       if (!response.ok) throw new Error(body.error ?? "Agent update failed.");
       if (action === "rotate") {
         setIssuedToken(body.token ?? "");
+        setIssuedTokenAgentId(id);
         setIssuedWarning(body.warning ?? "");
         setAgentMessage(`Credential rotated for ${id}. Copy the replacement token now.`);
       } else {
@@ -348,8 +353,8 @@ export default function DeveloperPortal() {
                         <div><span>Spent / reserved</span><strong>{near(allocation?.spent_yocto)} / {near(allocation?.reserved_yocto)}</strong></div>
                       </div>
                       <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
-                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} />
-                      <AgentPlayground agentId={agent.id} onSubmitted={() => void loadTransactions(session.access_token)} />
+                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />
+                      <AgentPlayground agentId={agent.id} issuedToken={issuedTokenAgentId === agent.id ? issuedToken : ""} onSubmitted={() => { void loadTransactions(session.access_token); setAuditRefreshKey(value => value + 1); }} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
@@ -378,7 +383,7 @@ export default function DeveloperPortal() {
                   </article>)}
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
-                <DeveloperAuditLog accessToken={session.access_token} />
+                <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />
               </section>
             </section>
             <aside className="developer-panel">
