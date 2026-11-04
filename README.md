@@ -20,22 +20,23 @@ Encu inserts an independently enforced policy and accounting layer between agent
 
 ```mermaid
 flowchart LR
-    A["AI agent runtimes"] -->|"Agent-scoped bearer token + request"| B["Encu API"]
-    B --> C["Identity, validation and rate limits"]
-    C --> D["PostgreSQL policy + reservation transaction"]
+    A["AI agent runtimes"] -->|"Agent-scoped token + transfer request"| B["Encu transfer API"]
+    B --> C["Authenticate, validate, rate-limit"]
+    C --> D["Atomic policy evaluation + reservation"]
     D --> E["Agent allocation and rolling limits"]
     D --> F["Shared treasury ceiling"]
     D --> G["Exact recipient authorization"]
-    D --> H["Emergency stop and idempotency"]
+    D --> H["Emergency stop and replay controls"]
     D -->|"Authorized reservation"| I["OutLayer Testnet wallet"]
-    I -->|"Submission + transaction reference"| J["NEAR RPC"]
-    J -->|"Final transaction evidence"| K["Encu reconciliation"]
-    K --> L["Settled ledger + audit trail"]
+    I -->|"Transaction hash / provider reference"| J["Transfer lifecycle response"]
+    J -->|"Separate reconciliation request"| K["Encu reconciliation API"]
+    K <--> L["NEAR Testnet RPC"]
+    K -->|"Verified FINAL evidence"| M["Settled ledger + audit trail"]
 ```
 
-The database reservation is the control point: treasury and agent exposure are reserved atomically before a provider submission is allowed. The lock order for exposure paths is **treasury row → allocation row → reservation row**.
+The database reservation is the control point: treasury and agent exposure are reserved atomically before a provider submission is allowed. Reconciliation is a separate lifecycle step; provider acceptance alone does not settle the ledger. The lock order for exposure paths is **treasury row → allocation row → reservation row**.
 
-See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, trust boundaries and settlement rules.
+See [Architecture](docs/ARCHITECTURE.md) for the component model, request lifecycle, trust boundaries and settlement rules.
 
 ## Controls in V1
 
@@ -55,29 +56,30 @@ See [Architecture](docs/ARCHITECTURE.md) for the request lifecycle, trust bounda
 
 Encu V1 is a **NEAR Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated logical agents.
 
-Encu enforces agent identity, application policy, reservation accounting and reconciliation. OutLayer provides the configured custody, signing and submission path. Logical agent identities are not separate OutLayer principals.
+Developers can create accounts in the developer workspace and manage logical agent identities, credentials and configured policy. These are application-level identities and allocations. They are **not** separate OutLayer principals or isolated custody wallets. The configured OutLayer wallet supplies the shared custody, signing and submission path.
 
 V1 does **not** provide independent customer custody, isolated customer wallets, a native NEAR treasury contract, multiple implemented execution providers, mainnet support or independent transfer-bound TEE attestation verification. It has not undergone an independent formal security audit. See the [Security Model](docs/SECURITY_MODEL.md) for the full threat model and limitations.
 
 ## Run locally
 
-This is a developer setup outline. Use a dedicated disposable Supabase project and a dedicated OutLayer Testnet wallet. Never use production credentials or a wallet holding valuable assets.
+Use a dedicated disposable Supabase project and a dedicated OutLayer Testnet wallet. Never use production credentials or a wallet holding valuable assets.
 
-1. Install a supported Node.js release for the Next.js 15 application.
+1. Install Node.js compatible with the Next.js 15 application.
 2. Clone the repository and install dependencies:
    ```bash
    npm install
    ```
 3. Copy `.env.example` to `.env.local`.
-4. Configure the Supabase, OutLayer and NEAR Testnet variables documented in `.env.example`. Keep service-role, administrator, agent and provider credentials server-side.
-5. Initialize the disposable database using the repository's Supabase schema and migration files. Review the SQL before applying it; do not run test or setup SQL against a production database.
-6. Start the application:
+4. Configure the variables in `.env.example`. The developer workspace requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; server operations require `SUPABASE_URL`, a server-side Supabase service-role key, and the configured OutLayer/NEAR Testnet values. Keep all service-role, administrator, agent and provider credentials server-side.
+5. For a **brand-new, empty Supabase project only**, review and apply `supabase/setup.sql`. It is the consolidated fresh-install script. Do not also apply the dated upgrade scripts to that fresh database. Do not use the older `supabase/schema.sql` as the current V1 setup.
+6. For an existing database, do **not** rerun `supabase/setup.sql`. Use the applicable dated upgrade scripts only after reviewing the database's current migration state. Never apply every SQL file indiscriminately.
+7. Start the application:
    ```bash
    npm run dev
    ```
-7. Open `http://localhost:3000/developers` and authenticate using the credentials configured for the test environment.
+8. Open `http://localhost:3000/developers`. Create or sign in to a developer account using Supabase Auth. Account confirmation behavior depends on the Supabase project's email-auth settings. The workspace provisions logical agents; newly created agents start with zero allocation.
 
-The dashboard's Testnet request path can initiate a real Testnet transfer when policy permits it. Generating a payload is not a dry run of the submission endpoint, and submitting a request is not a harmless preview. Follow the [Demo Runbook](docs/DEMO_RUNBOOK.md).
+The Testnet request path can initiate a real Testnet transfer when policy permits it. Generating a payload does not submit a transfer. Explicit submission can move Testnet funds. Follow the [Developer Guide](docs/DEVELOPER_GUIDE.md) and [Demo Runbook](docs/DEMO_RUNBOOK.md).
 
 ## Verification
 
@@ -103,7 +105,7 @@ AGENTGUARD_TEST_DATABASE=true npm run test:reservation-concurrency
 
 | Document | Purpose |
 |---|---|
-| [Developer guide](docs/DEVELOPER_GUIDE.md) | Agent credentials, request format, integration example, response handling and safe retries |
+| [Developer guide](docs/DEVELOPER_GUIDE.md) | Developer workspace, agent credentials, request format, reconciliation and safe retries |
 | [Architecture](docs/ARCHITECTURE.md) | Components, trust boundaries, authorization and settlement sequence |
 | [Security model](docs/SECURITY_MODEL.md) | Assets, threats, mitigations, evidence and limitations |
 | [Demo runbook](docs/DEMO_RUNBOOK.md) | Judge walkthrough and safe Testnet demonstration |
