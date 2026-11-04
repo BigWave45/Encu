@@ -131,6 +131,9 @@ export default function DeveloperPortal() {
       } else {
         setAgents([]);
         setTransactions([]);
+        setIssuedToken("");
+        setIssuedTokenAgentId("");
+        setIssuedWarning("");
       }
     });
     return () => {
