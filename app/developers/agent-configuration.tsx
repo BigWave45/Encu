@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Props = { agentId: string; accessToken: string };
+type Props = { agentId: string; accessToken: string; onSaved?: () => void };
 type Config = {
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
@@ -30,7 +30,7 @@ function displayNear(value: string | null | undefined): string {
   return formatted ? `${formatted} NEAR` : "0 NEAR";
 }
 
-export default function AgentConfiguration({ agentId, accessToken }: Props) {
+export default function AgentConfiguration({ agentId, accessToken, onSaved }: Props) {
   const [config, setConfig] = useState<Config | null>(null);
   const [allocation, setAllocation] = useState("");
   const [maxTransfer, setMaxTransfer] = useState("");
@@ -77,6 +77,7 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
       if (!response.ok) throw new Error(body.reason ?? body.error ?? "Configuration update failed.");
       setMessage("Saved.");
       await load();
+      onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Configuration update failed.");
     } finally { setBusy(false); }
