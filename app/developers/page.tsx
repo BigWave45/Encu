@@ -53,7 +53,7 @@ export default function DeveloperPortal() {
   const [issuedToken, setIssuedToken] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"connect" | "overview" | "agents">("connect");
+  const [activeView, setActiveView] = useState<"connect" | "overview" | "agents" | "recipients">("connect");
   const [setupRecipientCount, setSetupRecipientCount] = useState<number | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -294,7 +294,7 @@ export default function DeveloperPortal() {
           <button type="button" className={activeView === "connect" ? "active" : ""} onClick={() => setActiveView("connect")}>Connect / Setup</button>
           <button type="button" className={activeView === "overview" ? "active" : ""} onClick={() => setActiveView("overview")}>Overview</button>
           <button type="button" className={activeView === "agents" ? "active" : ""} onClick={() => setActiveView("agents")}>Agents</button>
-          <span>Recipients, Integration, Transactions, Audit &amp; Security and Developer Tools follow in the next navigation slice.</span>
+          <button type="button" className={activeView === "recipients" ? "active" : ""} onClick={() => setActiveView("recipients")}>Recipients</button>
         </nav>}
 
         {session && activeView === "connect" && <section className="developer-workspace-panel">
@@ -312,7 +312,7 @@ export default function DeveloperPortal() {
             <div className="developer-setup-item complete"><span className="developer-setup-mark">✓</span><div><strong>Developer workspace active</strong><p>Authenticated as {session.user.email}</p></div><span className="developer-setup-state">Connected</span></div>
             <div className={agents.length ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.length ? "✓" : "2"}</span><div><strong>Create an agent identity</strong><p>{agents.length ? `${agents.length} agent identity ${agents.length === 1 ? "is" : "ies"} registered.` : "Create a logical agent with its own machine credential."}</p></div><button type="button" onClick={() => setActiveView("agents")}>{agents.length ? "Manage agents" : "Create agent"}</button></div>
             <div className={agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "✓" : "3"}</span><div><strong>Assign spending authority</strong><p>{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "At least one agent has a non-zero allocation." : "New agents start with zero allocation and cannot execute transfers."}</p></div><button type="button" onClick={() => setActiveView("agents")}>Configure allocation</button></div>
-            <div className={setupRecipientCount === null ? "developer-setup-item unavailable" : setupRecipientCount > 0 ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{setupRecipientCount === null ? "!" : setupRecipientCount > 0 ? "✓" : "4"}</span><div><strong>Authorize a recipient</strong><p>{setupRecipientCount === null ? "Recipient status could not be verified. Retry by reopening this page." : setupRecipientCount > 0 ? `${setupRecipientCount} active recipient authorization(s) found.` : "Transfers remain blocked until an exact recipient account is authorized."}</p></div><button type="button" onClick={() => setActiveView("agents")}>Manage recipients</button></div>
+            <div className={setupRecipientCount === null ? "developer-setup-item unavailable" : setupRecipientCount > 0 ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{setupRecipientCount === null ? "!" : setupRecipientCount > 0 ? "✓" : "4"}</span><div><strong>Authorize a recipient</strong><p>{setupRecipientCount === null ? "Recipient status could not be verified. Retry by reopening this page." : setupRecipientCount > 0 ? `${setupRecipientCount} active recipient authorization(s) found.` : "Transfers remain blocked until an exact recipient account is authorized."}</p></div><button type="button" onClick={() => setActiveView("recipients")}>Manage recipients</button></div>
           </div>
           <p className="developer-setup-note">Agent credentials are displayed once when created or rotated. ENCU cannot verify whether you have stored a token securely, so credential storage is deliberately not marked complete here.</p>
         </section>}
@@ -337,6 +337,9 @@ export default function DeveloperPortal() {
             <button className="developer-text-link" type="button" onClick={() => setActiveView("agents")}>Open agent management and full activity</button>
           </div>
         </section>}
+
+
+        {session && activeView === "recipients" && <RecipientManagement agents={agents} accessToken={session.access_token} />}
 
         {!session ? (
           <div className="developer-grid">
@@ -447,6 +450,117 @@ export default function DeveloperPortal() {
   );
 }
 
+
+
+type RecipientRecord = {
+  agentId: string;
+  account_id: string;
+  label: string | null;
+  status: string;
+  expires_at: string | null;
+};
+
+function RecipientManagement({ agents, accessToken }: { agents: DeveloperAgent[]; accessToken: string }) {
+  const [records, setRecords] = useState<RecipientRecord[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id ?? "");
+  const [accountId, setAccountId] = useState("");
+  const [label, setLabel] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const results = await Promise.all(agents.map(async agent => {
+        const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agent.id)}`, {
+          headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? `Could not load recipients for ${agent.id}.`);
+        return (body.recipients ?? []).map((recipient: Omit<RecipientRecord, "agentId">) => ({ ...recipient, agentId: agent.id }));
+      }));
+      setRecords(results.flat());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load recipient authorizations.");
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [agents, accessToken]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function save(agentId: string, payload: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/developer/agents/config", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ id: agentId, ...payload })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient update failed.");
+      setMessage(payload.action === "revoke_recipient" ? "Recipient authorization revoked." : "Recipient authorized.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Recipient update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addRecipient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedAgentId || !accountId.trim()) return;
+    void save(selectedAgentId, {
+      action: "authorize_recipient",
+      accountId: accountId.trim(),
+      label: label.trim() || undefined,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null
+    }).then(() => {
+      setAccountId("");
+      setLabel("");
+      setExpiresAt("");
+    });
+  }
+
+  return (
+    <section className="developer-workspace-panel">
+      <div className="developer-workspace-heading">
+        <div><span className="developer-section-kicker">ACCESS CONTROL</span><h2>Recipient authorizations</h2>
+          <p>Authorize exact NEAR account IDs for individual agents. An authorization for one agent does not grant access to another.</p></div>
+        <button className="developer-button secondary" type="button" disabled={loading || busy} onClick={() => void load()}>Refresh recipients</button>
+      </div>
+      {agents.length === 0 ? <p className="developer-empty">Create an agent before authorizing recipients.</p> : <>
+        <form className="developer-form developer-recipient-form" onSubmit={addRecipient}>
+          <label>Agent<select value={selectedAgentId} onChange={event => setSelectedAgentId(event.target.value)} required>
+            {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+          </select></label>
+          <label>NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required placeholder="recipient.near" autoCapitalize="none" autoCorrect="off" /></label>
+          <label>Label (optional)<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} /></label>
+          <label>Authorization expiry (optional)<input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} /></label>
+          <button className="developer-button" type="submit" disabled={busy || !selectedAgentId || !accountId.trim()}>{busy ? "Saving…" : "Authorize recipient"}</button>
+        </form>
+        {loading ? <p>Loading recipient authorizations…</p> : records.length === 0 ? <p className="developer-empty">No recipient authorizations were returned for this workspace.</p> : <div className="developer-recipient-list">
+          {records.map(recipient => <article className="developer-recipient" key={recipient.agentId + ":" + recipient.account_id}>
+            <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code>
+              <span>Agent: {recipient.agentId}</span>
+              <span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
+            {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void save(recipient.agentId, { action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
+          </article>)}
+        </div>}
+      </>}
+      {message && <p className="developer-message" role="status">{message}</p>}
+      {error && <p className="developer-message developer-error" role="alert">{error}</p>}
+    </section>
+  );
+}
 
 function AgentPlayground({ agentId }: { agentId: string }) {
   const [recipient, setRecipient] = useState("");
