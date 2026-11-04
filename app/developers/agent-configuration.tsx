@@ -84,7 +84,7 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
       await load(agentId);
       onSaved?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Configuration update failed.");
+      if (currentAgentId.current === agentId) setError(e instanceof Error ? e.message : "Configuration update failed.");
     } finally { setBusy(false); }
   }
 
