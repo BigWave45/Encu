@@ -81,7 +81,7 @@ A source implementation is not evidence of an end-to-end pass. Test with an auth
 
 **The accepted developer interface is the dark V1 interface, not the editorial-light redesign.** The light redesign was reviewed and rejected because it hid or removed important controls and reduced visibility of the working dashboard. Do not reintroduce that design or use it as the implementation target.
 
-- **Accepted visual/functional reference:** [ENCU developer workspace preview](https://agentguard-d34uz0iz4-resonances-projects-13e560cd.vercel.app/developers).
+- **Accepted visual/functional reference:** [Encu developer workspace preview](https://agentguard-d34uz0iz4-resonances-projects-13e560cd.vercel.app/developers).
 - **Verified Vercel deployment:** `dpl_AduxhCzP2PyE8t6XJj9N46cAoRuG`.
 - **Deployment source:** `agentguard/build-v1`, commit `bd911d46796dd80b72e1200de2cb5f2d11ee2939`.
 - **UI direction:** retain the dark V1 styling and information density because the light version obscured or hid controls. Preserve the existing functional dashboard; improve it in place rather than replacing it with the rejected editorial-light page.
@@ -97,7 +97,7 @@ This decision supersedes earlier README handoffs that incorrectly named the edit
 
 > This block is authoritative. The remainder of this README contains historical V1 notes and may describe superseded approval workflows, operator setup or provider coupling. Do not treat those older passages as current behavior.
 
-Encu is a developer-facing financial authorization and accounting layer for autonomous agents. Developers create their own workspace, provision logical agents, receive agent-scoped bearer credentials and configure allocations, transfer limits, rolling limits, autonomous allowances and exact recipient permissions. End users of a developer's application do not need ENCU accounts.
+Encu is a developer-facing financial authorization and accounting layer for autonomous agents. Developers create their own workspace, provision logical agents, receive agent-scoped bearer credentials and configure allocations, transfer limits, rolling limits, autonomous allowances and exact recipient permissions. End users of a developer's application do not need Encu accounts.
 
 **Execution model:** valid requests that satisfy current policy are automatically reserved and submitted. Requests that violate policy are rejected. Ambiguous provider outcomes and finality exceptions enter the `needs_review` state for reconciliation; this is not a human approval queue. Humans configure policy and can deactivate agents or invoke platform emergency controls, but do not approve every transaction.
 
@@ -120,11 +120,11 @@ This is the operational status for continuing work if the conversation context i
 
 ### Current state
 
-- Product name: **ENCU**. Repository and internal identifiers still use AgentGuard/agentguard.
+- Product name: **Encu**. Repository and internal identifiers still use AgentGuard/agentguard.
 - Active implementation branch: `agentguard/build-v1`.
 - Pull request: [#1](https://github.com/BigWave45/agentguard/pull/1), still open as a draft. Do not merge until the release gates are reviewed and the user explicitly approves.
-- Latest frontend commit: `193e264b2299de54745c57b8bccbc30460a0f96e` (`Finish ENCU overview and treasury console styling`).
-- Latest Vercel Preview: [Open ENCU Preview](https://agentguard-csga2b6ix-resonances-projects-13e560cd.vercel.app). Deployment `dpl_DdmqHrXusZYcUnEAcUR4dE6tcP5j` is **READY**, built from the commit above. The build completed successfully. The dashboard has not yet passed the user's visual review on mobile.
+- Latest frontend commit: `193e264b2299de54745c57b8bccbc30460a0f96e` (`Finish Encu overview and treasury console styling`).
+- Latest Vercel Preview: [Open Encu Preview](https://agentguard-csga2b6ix-resonances-projects-13e560cd.vercel.app). Deployment `dpl_DdmqHrXusZYcUnEAcUR4dE6tcP5j` is **READY**, built from the commit above. The build completed successfully. The dashboard has not yet passed the user's visual review on mobile.
 - Preview is a Testnet environment connected to the isolated `AgentGuard Test` Supabase project. Production Vercel and Production Supabase are out of scope.
 
 ### Immediate next steps
@@ -140,12 +140,12 @@ This is the operational status for continuing work if the conversation context i
 The first experience is operator-approved, not public self-service SaaS:
 
 1. Developer requests access / an operator creates or approves the developer workspace context.
-2. Operator configures the existing ENCU Testnet execution environment and treasury.
+2. Operator configures the existing Encu Testnet execution environment and treasury.
 3. Developer/operator creates a logical agent and assigns its allocation and spending/autonomy limits.
 4. Configure one or more exact NEAR recipient accounts for that agent; issue and securely store its agent-scoped bearer credential.
-5. Developer integrates the agent with the ENCU API and sends a transfer request with a stable idempotency/request ID.
-6. ENCU authenticates the agent, evaluates current policy, reserves shared treasury and agent allocation, then either submits within the configured autonomous allowance or queues for administrator approval.
-7. ENCU tracks the OutLayer request and independently reconciles the exact transaction against NEAR FINAL before settling the ledger.
+5. Developer integrates the agent with the Encu API and sends a transfer request with a stable idempotency/request ID.
+6. Encu authenticates the agent, evaluates current policy, reserves shared treasury and agent allocation, then either submits within the configured autonomous allowance or queues for administrator approval.
+7. Encu tracks the OutLayer request and independently reconciles the exact transaction against NEAR FINAL before settling the ledger.
 8. Dashboard exposes the request lifecycle, approvals, audit trail, provider reference, transaction hash and reconciliation result.
 
 The current V1 uses one configured OutLayer execution wallet/API credential shared by logical agents. This workflow must not imply isolated customer treasuries, customer-owned wallet provisioning, instant self-registration, deposits/withdrawals, billing or full multi-tenancy. Those remain deferred.
@@ -164,7 +164,7 @@ Keep the release focused on the OutLayer-backed NEAR Testnet product. Full multi
 
 **This section defines the current hackathon release boundary and supersedes conflicting historical status notes later in this file.**
 
-The current V1 is a **single-operator Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated ENCU agents. It is not yet a multi-customer managed SaaS product.
+The current V1 is a **single-operator Testnet prototype** using one configured OutLayer execution wallet and one server-side OutLayer API credential shared by multiple independently authenticated Encu agents. It is not yet a multi-customer managed SaaS product.
 
 The current implementation includes:
 
@@ -179,16 +179,16 @@ The current implementation includes:
 - OutLayer submission tracking and independent NEAR FINAL reconciliation before ledger settlement.
 - Administrator controls, transaction history, audit events and provider-policy inspection.
 
-**Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. ENCU does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and ENCU enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
+**Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. Encu does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and Encu enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
 
-**Current enforcement boundary:** ENCU independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current ENCU adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native ENCU treasury contract. Therefore V1 does not claim that Encu's policy is enforced by an ENCU smart contract on-chain.
+**Current enforcement boundary:** Encu independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current Encu adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native Encu treasury contract. Therefore V1 does not claim that Encu's policy is enforced by an Encu smart contract on-chain.
 
 ## Architecture
 
 ```text
 Logical AI agent
-  -> ENCU API authentication
-  -> ENCU policy evaluation
+  -> Encu API authentication
+  -> Encu policy evaluation
   -> atomic shared-treasury + per-agent reservation (Supabase)
   -> bounded autonomous authorization OR administrator approval
   -> OutLayer wallet transfer/signing and provider wallet policy
@@ -224,7 +224,7 @@ The following are outside this release and must not be represented as current ca
 
 The native NEAR treasury contract is a separate research/design workstream, not part of the current V1 release. The existing design document is a proposal, not implemented code: [native NEAR treasury contract design](docs/native-near-treasury-contract-design.md).
 
-OutLayer's published Agent Custody documentation lists a NEAR contract-call endpoint (`POST /wallet/v1/call`) in addition to native transfers. The current ENCU adapter in `lib/outlayer.ts` calls `POST /wallet/v1/transfer` only. The Preview wallet policy inspected on 2026-11-03 allows `transfer` transaction types only, so it does not currently authorize contract calls. Enabling `call` would be a deliberate provider-policy change requiring a new least-privilege review and test. There is also an identity-boundary problem: an OutLayer contract call is signed by the configured OutLayer wallet, so the contract would see that wallet as the caller, not the originating ENCU agent. Passing an `agent_id` argument from the server would not independently authenticate the agent. A native design therefore needs a contract-verifiable agent authorization mechanism (for example, agent-held signing keys and verifiable request signatures, or distinct restricted on-chain keys), plus replay protection and exact request binding. Contract-call API availability alone does not solve that problem or establish a safe treasury funding/withdrawal model. These are explicit feasibility gates, not V1 work. See [OutLayer Agent Custody documentation](https://app.outlayer.ai/docs/agent-custody).
+OutLayer's published Agent Custody documentation lists a NEAR contract-call endpoint (`POST /wallet/v1/call`) in addition to native transfers. The current Encu adapter in `lib/outlayer.ts` calls `POST /wallet/v1/transfer` only. The Preview wallet policy inspected on 2026-11-03 allows `transfer` transaction types only, so it does not currently authorize contract calls. Enabling `call` would be a deliberate provider-policy change requiring a new least-privilege review and test. There is also an identity-boundary problem: an OutLayer contract call is signed by the configured OutLayer wallet, so the contract would see that wallet as the caller, not the originating Encu agent. Passing an `agent_id` argument from the server would not independently authenticate the agent. A native design therefore needs a contract-verifiable agent authorization mechanism (for example, agent-held signing keys and verifiable request signatures, or distinct restricted on-chain keys), plus replay protection and exact request binding. Contract-call API availability alone does not solve that problem or establish a safe treasury funding/withdrawal model. These are explicit feasibility gates, not V1 work. See [OutLayer Agent Custody documentation](https://app.outlayer.ai/docs/agent-custody).
 
 The current V1 remains Testnet-only for the hackathon. Mainnet configuration options in the code are not a claim of mainnet readiness.
 
@@ -257,7 +257,7 @@ The repository has two different database paths. Keep them separate.
 
 Run `supabase/setup.sql` once in the Supabase SQL Editor. It creates the baseline multi-agent schema and privileged RPCs. Then apply the forward migrations listed below in timestamp order to bring that baseline to the current V1 schema. The setup script is not an upgrade mechanism and must not be run against an existing database.
 
-### Existing ENCU database
+### Existing Encu database
 
 Do not assume that a database is at a particular migration step because a previous README version said so. Inspect both its schema and `supabase_migrations.schema_migrations` before applying anything. The SQL files are forward changes; do not replay a migration that is already represented in the database or whose effects are already present.
 
@@ -290,7 +290,7 @@ Older installations may also require the earlier multi-agent, request-ID, reconc
 
 These earlier scripts are prerequisites only when their schema changes are absent. Establish the actual baseline before choosing an upgrade path. Do not apply the entire list blindly.
 
-### Connected ENCU database: observed state on 2026-11-02
+### Connected Encu database: observed state on 2026-11-02
 
 The connected Supabase project was inspected read-only. Its migration history contains these five entries:
 
@@ -429,7 +429,7 @@ Body:
 - Reuse the same request ID only when retrying the same logical request with the same agent, recipient, and amount.
 - A repeated request does not call OutLayer again. Reusing the key with different request details is rejected.
 - The request is checked against the global emergency stop, per-agent limits, recipient allowlist, rolling spend windows and shared budget in one database transaction.
-- ENCU atomically reserves both the shared treasury and the agent allocation, then revalidates current policy immediately before claiming provider submission.
+- Encu atomically reserves both the shared treasury and the agent allocation, then revalidates current policy immediately before claiming provider submission.
 - A request within the configured cumulative autonomous allowance can be submitted once by the server after authorization. A request outside that allowance enters `awaiting_approval` for administrator review. Both paths remain subject to the absolute allocation, shared treasury ceiling, transfer and rolling limits, emergency stop and active recipient registry.
 - An autonomous request whose policy becomes ineligible before submission is downgraded to `awaiting_approval`; it is not sent to OutLayer. Revoked or blocked recipients and a newly active emergency stop prevent submission.
 - Rejected or safely cancelled unsubmitted requests release both reservations. Submitted or ambiguous requests retain exposure until provider/NEAR evidence resolves them.
@@ -474,7 +474,7 @@ Body:
 }
 ```
 
-ENCU queries NEAR testnet RPC for final execution and verifies the signer, recipient, and exact single transfer action against the reservation. Only a matching FINAL transaction can settle the reservation as executed or failed.
+Encu queries NEAR testnet RPC for final execution and verifies the signer, recipient, and exact single transfer action against the reservation. Only a matching FINAL transaction can settle the reservation as executed or failed.
 
 A pending transaction, unavailable RPC, missing hash, or transaction mismatch leaves the reservation held for review. The route does not retry the transfer.
 
@@ -528,7 +528,7 @@ Create a local `.env.local` with the required environment variables. Do not comm
 
 The repository includes a backend test that sends two simultaneous 3 NEAR calls to the real `reserve_agent_spend` RPC. With a dedicated disposable database seeded with the standard 5 NEAR budget and two active agents, exactly one request must reserve 3 NEAR and the other must be blocked. It also checks the persisted ledger, same-payload replay, changed-payload idempotency conflict, and restores the original budget snapshot.
 
-**Never run this against the production ENCU database.** It temporarily writes reservation rows and budget counters. Use a dedicated disposable Supabase project with the same schema and seeded agents, no live app traffic, and a service-role key stored only in your local environment.
+**Never run this against the production Encu database.** It temporarily writes reservation rows and budget counters. Use a dedicated disposable Supabase project with the same schema and seeded agents, no live app traffic, and a service-role key stored only in your local environment.
 
 Run it with:
 
@@ -536,7 +536,7 @@ Run it with:
 AGENTGUARD_TEST_DATABASE=true SUPABASE_URL="https://YOUR-TEST-PROJECT.supabase.co" SUPABASE_SERVICE_ROLE_KEY="YOUR_TEST_SERVICE_ROLE_KEY" npm run test:reservation-concurrency
 ```
 
-The script refuses to run without the explicit isolation flag and refuses a database that is not empty with a 5 NEAR budget, zero spent/reserved, and both agents active. It never calls the ENCU transfer route or OutLayer.
+The script refuses to run without the explicit isolation flag and refuses a database that is not empty with a 5 NEAR budget, zero spent/reserved, and both agents active. It never calls the Encu transfer route or OutLayer.
 
 ## Known V1 limitations
 
@@ -558,11 +558,11 @@ A successful health check confirms service connectivity, not that a transfer lif
 
 ### Product direction
 
-Encu is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass ENCU to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that ENCU replaces.
+Encu is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass Encu to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that Encu replaces.
 
-The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so ENCU authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
+The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so Encu authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
 
-OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. ENCU independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
+OutLayer remains the execution provider in the current NEAR hackathon scope. OutLayer's TEE and wallet owner policy protect the custody/signing boundary. Encu independently owns logical agent identity, per-agent policy and allocation, shared-budget reservation, request authorization, execution gating, attribution, application audit and finality-based accounting. These controls complement OutLayer's wallet-wide policy. Multi-provider support is a future extension, not part of the current hackathon implementation.
 
 ### Agreed architecture decisions
 
@@ -668,9 +668,9 @@ These results are scoped to the tested commit and isolated environment. Re-check
 
 ### Execution architecture and provider independence
 
-OutLayer remains the only implemented execution provider. Encu's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates ENCU policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
+OutLayer remains the only implemented execution provider. Encu's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates Encu policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
 
-The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated ENCU treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
+The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated Encu treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
 This is an approved architectural direction, not implemented functionality. Before deployment, specify and test contract ownership, key rotation/recovery, deposit and withdrawal authority, asynchronous transfer promises/callbacks, pending/failed settlement, duplicate calls, contract upgrades and emergency recovery. Supabase remains the off-chain policy, workflow and audit store; the contract becomes the authoritative on-chain enforcement boundary for funds held by that contract. Reconciliation must compare contract state and NEAR FINAL outcomes with the off-chain ledger.
 
@@ -707,7 +707,7 @@ Production Supabase and Production Vercel remain out of scope unless the user ex
 
 ## Planned execution backends
 
-The developer-facing ENCU payment API is intended to remain provider-neutral. An administrator configures the execution backend for each treasury; an agent requests a payment against an authorized treasury and cannot choose a different backend in the request.
+The developer-facing Encu payment API is intended to remain provider-neutral. An administrator configures the execution backend for each treasury; an agent requests a payment against an authorized treasury and cannot choose a different backend in the request.
 
 Planned backend types are distinct:
 - **OutLayer wallet:** current V1, using OutLayer custody and its native NEAR transfer endpoint.
@@ -720,14 +720,14 @@ The first native contract release is scoped to native NEAR transfers. NEP-141 to
 
 ## NEAR Intents and other NEAR payment infrastructure
 
-OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. ENCU does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
+OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. Encu does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
 
-The planned native ENCU contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
+The planned native Encu contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
 
 
 ## Dashboard branch reconciliation handoff (2026-11-04)
 
-The dashboard navigation commits `f660fda` (destination navigation) and `9510b41` (navigation styling) are siblings of the earlier PR branch head, not ancestors of the current PR head. Do not cherry-pick or merge them blindly. Verification against current `encu/dashboard-end-to-end` confirms the navigation implementation is already present: `app/developers/page.tsx` contains Overview, Agents, Transactions, Audit & Security, and How ENCU works; `app/developers/developers.css` contains responsive navigation styling. The page file blob matches the file at `f660fda`; the current branch has its own stylesheet revision containing the navigation styles. The detached commits do not need importing to recover these changes.
+The dashboard navigation commits `f660fda` (destination navigation) and `9510b41` (navigation styling) are siblings of the earlier PR branch head, not ancestors of the current PR head. Do not cherry-pick or merge them blindly. Verification against current `encu/dashboard-end-to-end` confirms the navigation implementation is already present: `app/developers/page.tsx` contains Overview, Agents, Transactions, Audit & Security, and How Encu works; `app/developers/developers.css` contains responsive navigation styling. The page file blob matches the file at `f660fda`; the current branch has its own stylesheet revision containing the navigation styles. The detached commits do not need importing to recover these changes.
 
 Current PR #5 head: `fc70b4db13a941681d13d2e7db82893e76b733255` on `encu/dashboard-end-to-end`; base: `agentguard/build-v1`. PR #5 remains open and unmerged. The base branch has advanced independently; GitHub reports the PR as not mergeable. Do not merge, rebase, deploy, or change the base branch without explicit authorization.
 
@@ -766,7 +766,7 @@ Integration sample correction: the cURL body is now generated with `JSON.stringi
 
 ### Developer workspace audit follow-up (2026-11-04)
 
-The end-to-end review confirmed the existing execution explainer component is mounted on both Overview and How ENCU Works, with responsive diagram styles in `dashboard-workflow.css`. The Overview's right-hand explainer sidebar had retained a light/white treatment inconsistent with the approved dark V1 workspace. Restored its dark surface, border, heading, body and footnote contrast in `developers.css`. Commit: `aae105b2a1b17255909314961f2ec40a4243ef55`.
+The end-to-end review confirmed the existing execution explainer component is mounted on both Overview and How Encu Works, with responsive diagram styles in `dashboard-workflow.css`. The Overview's right-hand explainer sidebar had retained a light/white treatment inconsistent with the approved dark V1 workspace. Restored its dark surface, border, heading, body and footnote contrast in `developers.css`. Commit: `aae105b2a1b17255909314961f2ec40a4243ef55`.
 
 The auth-state listener previously cleared agents and transactions when the Supabase session became null, but did not clear a newly issued/rotated agent credential held in page memory. It now also clears `issuedToken`, `issuedTokenAgentId` and `issuedWarning` on any null auth-state transition, not only when the user presses Sign out. Commit: `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f`. GitHub re-fetch verified both changes. This closes the session-expiry/sign-out UI state leak; credentials are still not written to browser storage.
 
