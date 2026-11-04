@@ -28,7 +28,11 @@
 - Do not merge, deploy Production, alter Supabase, delete branches, force-push, or initiate a Testnet transfer without explicit approval. Keep all work recoverable and report exact branch/commit/test evidence.
 - After each meaningful milestone, update this section first with current branch/head, completed checks, blockers, and one immediate next action.
 
-**Immediate next action:** inspect exact target-branch commits and conflict hunks for the four overlapping files, then choose a non-destructive reconciliation route. Do not start new feature work until PR #5 is integrated or a concrete blocker is documented.
+**Reconciliation inspection update (2026-11-04):** Compared the exact nine commits on `agentguard/build-v1` since the merge base `f9ea90f56f2d29d5c464457434b1d4bc52dcce73`. They modify only the same four overlap candidates: README (20 additions), `agent-configuration.tsx` (19 deletions), `developers.css` (118 additions), and `page.tsx` (187 additions / 1 deletion). The PR's changes to these files are broader and include recipient-management extraction, dashboard destinations, Connect / Setup, and styling. The PR patch shows a semantic overlap: V1 removes recipient controls from agent configuration while the feature branch also removes them and mounts a dedicated Recipients destination. The target branch's newer page/CSS/README work must be retained and reconciled with the feature branch's additional flows; do not blindly copy either branch's whole file. This confirms the four files need semantic reconciliation, not that all contain Git conflict markers.
+
+**Sandbox blocker:** Vercel sandbox creation failed on both v3 and v2 endpoints with generic HTTP 400 responses even after supplying the known project ID, team ID, source revision and required region. No sandbox was created. Stop retrying these endpoints. Use another available isolated checkout/merge mechanism; do not attempt ad-hoc whole-file overwrites through GitHub Contents API.
+
+**Immediate next action:** obtain a working isolated Git checkout (or equivalent merge-capable environment) and reconcile the nine V1 commits into a candidate branch without modifying either existing branch. Then run conflict checks and CI. No new product features.
 
 ---
 
