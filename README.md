@@ -44,6 +44,8 @@ The developer dashboard information-architecture slice is in progress on `encu/d
 - `856a4a082c9dfb940e321a5fdb44537e492977e5` — recipient expiry validation and agent-switch state.
 - `92d4a11ee8b79e3d8fa1e5816519a07ad95103ac` — import request ref for recipient race protection.
 - `777332a42821b7f09cbca28929145fba869674f8` — configuration save/reload race protection.
+- `5913a508f202679a32168bf766e95773170174f4` — recipient update responses use the current selected agent, not a stale render closure.
+- `c0d634cd37e0dda10d73a79ab905b2d8f6e6c3f2` — stale configuration save errors are ignored after switching agents.
 
 ### Remaining work / next action
 1. Run lint, TypeScript, production build and relevant API/concurrency/reconciliation tests against the current branch. Record actual results; do not infer passing CI from source inspection.
