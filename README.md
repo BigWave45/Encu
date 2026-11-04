@@ -5,7 +5,7 @@
 ### Current branch and PR state
 - Feature branch: `encu/dashboard-end-to-end`, head `5c877b5d13e76e0de9d2894a07d3336b45844a8b`.
 - V1 branch: `agentguard/build-v1`, head `5222c5d535785d07a2761942b92c3107fa6e3588`.
-- Reconciliation candidate: `encu/release-reconciliation`, current head `5b3f1b4deaacc5a7f44314bd1fd065abb86cb0c1`; reconciliation merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
+- Reconciliation candidate: `encu/release-reconciliation`; reconciliation merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5`; latest README handoff commit `64898216da309214dfa041d467dcbc9ed5dc627f`. Re-fetch the branch ref before any subsequent write.
 - Release PR: [#6 — ENCU release reconciliation](https://github.com/BigWave45/agentguard/pull/6), targeting `agentguard/build-v1`; open, unmerged, GitHub reports mergeable.
 - Original PR #5 remains open and unmerged; PR #6 is the reconciled candidate and supersedes #5 for release integration. Do not merge #5.
 - Candidate merge commit has V1 as first parent and the feature branch as second parent. Both original branches remain unchanged.
@@ -26,7 +26,7 @@ The candidate adopts the feature branch's newer, broader implementations for tho
 This is semantic reconciliation, not a claim that all four files had literal conflict markers. The merge commit preserves both source histories.
 
 ### Verification status
-- **Candidate CI passed on both the reconciliation merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5` ([run 41801249027](https://github.com/BigWave45/agentguard/actions/runs/41801249027)) and the latest README handoff head `5b3f1b4deaacc5a7f44314bd1fd065abb86cb0c1` ([run 41801664594](https://github.com/BigWave45/agentguard/actions/runs/41801664594)). Both passed dependency install/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
+- **Candidate CI passed on the reconciliation merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5` ([run 41801249027](https://github.com/BigWave45/agentguard/actions/runs/41801249027)) and the subsequent README handoff commit `5b3f1b4deaacc5a7f44314bd1fd065abb86cb0c1` ([run 41801664594](https://github.com/BigWave45/agentguard/actions/runs/41801664594)). Both passed dependency install/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests. The newest README-only commit `64898216da309214dfa041d467dcbc9ed5dc627f` is awaiting its own PR check.
 - The Vercel status check remains failed with the known build-rate-limit message. This is separate from the passing GitHub Actions CI. No current READY Preview for the candidate is verified.
 - Existing manual test history on the isolated test environment included multi-agent identity separation, spending-limit/global-budget/emergency-stop blocks, recipient authorization/revocation, and a 0.001 NEAR request that was reconciled to execution. These tests predate the current candidate and are not a substitute for fresh browser verification.
 - The older Preview log records successful sign-in on commit `12cd3f8` but an unresolved Agent ID browser-validation discrepancy. See `docs/preview-test-log-2026-11-03.md`; do not claim the current candidate's browser flow is verified.
@@ -47,7 +47,7 @@ This is semantic reconciliation, not a claim that all four files had literal con
 - No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit approval.
 - Update this section after each milestone with exact branch/head, CI run IDs/results, blockers and one immediate next action.
 
-**Immediate next action:** merge PR #6 into V1 now that the latest candidate CI has passed; then re-fetch V1 and run its post-merge CI. If GitHub blocks the merge because the Vercel rate-limit status is required, do not bypass protection; record the exact blocker and proceed with the V1 → main conflict analysis only after the PR gate is resolved.
+**Immediate next action:** confirm CI on latest candidate README commit `64898216da309214dfa041d467dcbc9ed5dc627f`; if it passes, merge PR #6 into V1. Then re-fetch V1 and run post-merge CI. If GitHub blocks the merge because the Vercel rate-limit status is required, do not bypass protection; record the exact blocker.
 
 ---
 
