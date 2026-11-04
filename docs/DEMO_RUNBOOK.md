@@ -1,120 +1,175 @@
-# Encu Demo Runbook
+# Encu Demonstration Guide
 
-This runbook is designed for a judge who needs to understand what to do and what result to expect. It deliberately separates safe policy demonstrations from a real Testnet transfer.
+## 1. Demonstration objective
 
-## Demo objective
+This demonstration shows how Encu controls payment authority for multiple AI agents that use one shared NEAR execution wallet.
 
-Show that multiple independently authenticated logical agents share one treasury ceiling while retaining separate allocations and recipient permissions. Demonstrate that Encu makes the authorization decision before provider submission and does not settle accounting until NEAR finality is verified.
+The walkthrough establishes four observable properties:
 
-## Environment status
+1. Each logical agent is authenticated independently.
+2. Each agent is constrained by its own allocation and policy, while all agents remain subject to a shared treasury ceiling.
+3. Recipient authorization and spending rules are evaluated before a transfer can be submitted to the execution provider.
+4. A submitted transfer is not treated as settled until a separate reconciliation operation verifies the matching transaction at NEAR finality.
 
-The existing Vercel Preview documented in the README was built before merge commit `ec0b849043e7735ffb0e3e1b6a8043578d42708f`. The payload-builder fix is in `main`, but a Preview built from that commit is pending because Vercel rejected deployment requests under its daily deployment limit.
+The standard demonstration uses policy denials and payload generation. A live Testnet transfer is optional and requires explicit operator authorization.
 
-Do not present the older Preview as the current release candidate. Before recording the final demo, deploy the exact reviewed `main` commit to Preview, confirm the deployment SHA, and complete the browser checks below. Do not use Production for the hackathon demo.
+## 2. Scope and environment
 
-## Pre-demo checks
+The current release is a NEAR Testnet prototype. Multiple logical agents use one configured OutLayer wallet and one server-side provider credential. Agent identities and allocations are application-level controls; they are not separate custody wallets.
 
-- Confirm the deployed URL is a READY Preview built from the intended commit.
-- Confirm `/developers`, `/admin` and `/api/health` respond as expected.
-- Confirm the health response reports the intended Testnet environment and connected dependencies. Do not publish secret values from health or environment output.
-- Use only the dedicated Testnet Supabase project and configured Testnet OutLayer wallet.
-- Confirm the shared treasury ceiling, agent allocations, per-transfer limits, rolling limits, autonomous allowances and emergency-stop state.
-- Confirm the exact Testnet recipient account is authorized for the selected agent.
-- Keep agent bearer tokens and provider credentials out of screen recordings. If a token must be shown to demonstrate issuance, use a throwaway test agent and redact the value.
+Use a dedicated demo developer account, dedicated Testnet Supabase project, and configured OutLayer Testnet wallet. Do not use production credentials or a wallet holding valuable assets.
 
-## Suggested judge walkthrough
+The deployed application must be a READY Preview built from the exact commit selected for the demonstration. Verify the deployment commit before recording. A previously available Preview must not be represented as the latest release if it predates the selected commit.
 
-### 1. Explain the threat
+Required routes:
+- `/developers`: developer workspace and agent management.
+- `/admin`: operator controls and shared treasury configuration, available only to authorized administrators.
+- `/api/health`: dependency health information. Inspect privately and do not expose secrets or sensitive configuration in the recording.
 
-An agent needs to pay a recipient, but an agent credential should not grant unrestricted control over a shared wallet. Encu authenticates each logical agent and enforces both agent-level and treasury-level spending authority.
+## 3. Preparation
 
-### 2. Show the developer workspace
+Complete these checks before the recording:
 
-Open `/developers` and sign in with a demo developer account.
+- Sign in to the demo developer workspace and confirm it loads the intended developer-owned agents.
+- Confirm two prepared logical agents exist, for example Alpha and Beta.
+- Confirm both agents have distinct allocations and policy settings.
+- Confirm new-agent allocation behavior is understood: newly provisioned agents start with zero allocation.
+- Confirm one exact Testnet recipient is authorized for the selected demonstration agent.
+- Confirm the shared treasury ceiling, spent and reserved balances, per-transfer limits, rolling limits, autonomous allowances and emergency-stop state.
+- Confirm the selected blocked-request scenario will fail for the intended reason and will not reach provider submission.
+- Confirm the browser contains no visible credentials, private account information, environment variables or unrelated tabs.
+- Use fresh request IDs for each independent request test.
 
-Expected result: the authenticated workspace loads its own agents, allocations, transactions and audit information. Do not imply that the current V1 is open self-service multi-tenant SaaS or that each developer receives an independent custody wallet.
+Do not change treasury balances, allocations, recipient permissions or emergency-stop state during the recording unless the demonstration specifically requires that change and the operator has approved it.
 
-### 3. Show agent separation
+## 4. Demonstration procedure
 
-Show two logical agents with separate allocations and policy settings.
+### Step 1: Introduce the control problem
 
-Expected result: each agent has its own identity and spending authority, while both remain subject to the same shared treasury ceiling. New agents begin with zero allocation until an administrator assigns authority.
+**Action:** Open the Encu application.
 
-### 4. Show recipient authorization
+**Presenter explanation:** An agent credential should authorize a defined set of payment actions, not unrestricted use of a shared wallet. Encu provides an application-level authorization and accounting layer between agent runtimes and the configured execution provider.
 
-Open the Recipients view. Show an exact authorized Testnet account for one agent. If using a prepared demo fixture, show that another agent does not inherit that authorization automatically.
+**Evidence:** The product interface and the architecture diagram in the repository.
 
-Expected result: authorization is scoped to the configured agent and exact account ID. Revocation should prevent a later request from reaching provider submission.
+### Step 2: Establish the developer and agent identities
 
-### 5. Show a blocked request
+**Action:** Open `/developers` and sign in with the prepared demo developer account. Open the agent list.
 
-Use a request that violates one configured rule, such as an unlisted recipient, per-transfer limit, agent allocation, rolling limit or emergency stop. Use a fresh request ID for each independent test.
+**Expected result:** The workspace displays agents owned by the authenticated developer account. Each logical agent has its own identity and policy configuration.
 
-Expected result: the API returns a blocked response with a policy reason and no provider submission. Use the audit/security view to show the recorded event.
+**Presenter explanation:** The developer account is used to manage logical agents. An agent bearer token authenticates one logical agent at the API boundary. Neither identity creates an independent custody wallet in V1.
 
-### 6. Show payload generation without payment
+### Step 3: Compare agent authority
 
-Open Live Testnet Tools. Select the prepared demo agent, enter the exact authorized Testnet recipient and a small valid NEAR amount, then click **Generate payload** only.
+**Action:** Display Alpha and Beta. Show their allocations and configured per-transfer and rolling limits.
 
-Expected result: a JSON payload appears with:
+**Expected result:** The agents have distinct application-level allocations and policy settings. Their combined exposure remains bounded by the shared treasury ceiling.
+
+**Presenter explanation:** A request must satisfy both the agent's own authority and the global treasury constraints. Creating an agent does not grant it spending authority; its allocation begins at zero until configured.
+
+### Step 4: Demonstrate recipient authorization
+
+**Action:** Open the recipient authorization view. Display the exact Testnet account authorized for Alpha. If the prepared fixture includes a second agent without that recipient, compare the two agent configurations.
+
+**Expected result:** Recipient authorization is scoped to the configured logical agent. A recipient permission granted to one agent is not automatically inherited by another.
+
+**Presenter explanation:** Authorization is based on the exact NEAR account ID, not a free-form label or an agent's assertion in the request body.
+
+### Step 5: Demonstrate a policy denial
+
+**Action:** Submit or invoke a prepared request that violates exactly one known rule. Prefer an unauthorized recipient or an amount above the selected agent's allocation. Use a fresh request ID.
+
+**Expected result:** The request is denied with a policy reason. The corresponding audit or security event is visible. A policy denial must occur before provider submission.
+
+**Evidence to capture:** The request result and its matching audit/security event. Do not infer a denial reason from a generic error message; capture the actual returned reason.
+
+**Presenter explanation:** The policy decision is made by Encu before the provider is called. The provider is not responsible for enforcing Encu's per-agent allocation ledger.
+
+### Step 6: Generate a transfer payload without submitting it
+
+**Action:** Open Live Testnet Tools. Select the prepared agent, enter its exact authorized Testnet recipient, enter `0.001` NEAR, and select **Generate payload**. Do not select Submit.
+
+**Expected result:** The builder displays a JSON request containing:
 - `requestId`
 - `to`
 - `amountYocto`
 - `expectedAgentId`
 
-For 0.001 NEAR, the exact yocto amount is `1000000000000000000000`.
+For 0.001 NEAR, `amountYocto` must equal `1000000000000000000000`.
 
-Payload generation is local request construction. It does not submit a transfer.
+**Presenter explanation:** Payload generation constructs request data in the browser. It does not authenticate an agent request, reserve treasury funds, call OutLayer or initiate a transfer.
 
-### 7. Explain the submission and settlement boundary
+### Step 7: Explain submission and settlement
 
-Show the Integration instructions for `POST /api/agent/transfer`. Explain that the agent bearer token is sent server-side in the Authorization header, while the OutLayer API key is never given to the agent.
+**Action:** Display the developer integration instructions and the separate transfer and reconciliation endpoints.
 
-Explain the lifecycle:
-1. Authenticate and validate.
-2. Reserve shared treasury and agent exposure atomically.
-3. Revalidate policy and recipient before provider submission.
-4. Submit through OutLayer.
-5. Verify the transaction at NEAR FINAL.
-6. Settle the Encu ledger exactly once.
+**Presenter explanation:** An agent sends its bearer token to `POST /api/agent/transfer`. Encu authenticates the token, checks policy and atomically reserves exposure before allowing provider submission. The provider response is not treated as proof of payment. The agent or operator then calls `POST /api/agent/reconcile` with the same request ID. Encu checks NEAR transaction evidence, including finality, signer, receiver, transfer action and exact amount, before settling the ledger.
 
-A provider acceptance response is not proof of payment finality.
+**Evidence:** The API contract in the Developer Guide and the lifecycle sequence in the Architecture document.
 
-## Optional live Testnet transfer
+## 5. Optional live Testnet transfer
 
-A live transfer is optional for the recording. The interface explicitly warns that submission can initiate a real Testnet transfer; it is not a dry run.
+A live transfer is not required for the standard demonstration. The interface warns that submission can initiate a real Testnet transfer; it is not a dry run.
 
-Only proceed when the operator has separately approved the exact:
-- agent identity,
-- recipient account ID,
-- amount,
-- current allocation and autonomous allowance,
-- shared treasury headroom,
-- recipient authorization,
-- emergency-stop state,
-- provider wallet and network.
+Proceed only after the operator explicitly approves the exact agent, recipient account ID, amount and intended Testnet execution. Immediately before submission, verify:
 
-Before clicking **Submit through ENCU**, reconfirm that the request is intended to move Testnet funds. Never blindly retry after a timeout or ambiguous provider response. Check the request and provider/NEAR status first. If the outcome is uncertain, leave the reservation for reconciliation.
+- the selected agent identity and active credential;
+- the exact recipient account ID and its authorization;
+- the amount and its yoctoNEAR conversion;
+- the agent allocation and remaining autonomous allowance;
+- the shared treasury's available headroom;
+- per-transfer and rolling limits;
+- emergency-stop state;
+- the configured OutLayer wallet and Testnet network.
 
-## Recording structure
+After submission, record the request ID and any provider reference or transaction hash. Reconcile using the same request ID. Confirm NEAR finality and the exact signer, receiver and amount before describing the payment as executed.
 
-Target a concise 2–3 minute recording:
-1. Problem and product in 15–20 seconds.
-2. Agent separation and shared treasury policy in 30–40 seconds.
-3. Recipient authorization and one blocked request in 30–40 seconds.
-4. Payload generation in 20–30 seconds.
-5. Execution/finality architecture and limitations in 20–30 seconds.
+If the provider response is ambiguous, a timeout occurs, or no transaction hash is available, do not submit a new request as a retry. Inspect the existing request and provider status, then use the reconciliation workflow. Preserve unresolved reservations for investigation.
 
-Record the actual deployed application, not a static mockup. Capture the relevant response or audit evidence. Avoid showing credentials, environment variables, personal data or unrelated browser tabs.
+## 6. Recording guidance
 
-## Claims to avoid
+A concise recording can follow this sequence:
+
+| Segment | Suggested duration | Evidence |
+|---|---:|---|
+| Problem and Encu's role | 15–20 seconds | Application overview |
+| Agent identities and allocations | 30–40 seconds | Two logical agents and shared ceiling |
+| Recipient authorization and denial | 30–40 seconds | Exact recipient rule and actual denial |
+| Payload generation | 20–30 seconds | Generated JSON, with no submission |
+| Submission and finality model | 20–30 seconds | Separate API endpoints and lifecycle diagram |
+
+Record the actual application and actual responses. Do not substitute a static mockup for a working feature. Do not display credentials, tokens, environment variables, private user data or unrelated browser content.
+
+## 7. Troubleshooting
+
+| Symptom | Response |
+|---|---|
+| Developer workspace does not load | Stop the recording. Verify Preview deployment, Supabase Auth configuration and browser network errors. Do not expose service credentials while diagnosing. |
+| Agent list is empty | Confirm the signed-in developer account owns the prepared agents. Do not create or reassign production data during the recording. |
+| Request is denied for an unexpected reason | Stop and inspect the agent policy, recipient permission, allocation, rolling limits, treasury headroom and emergency-stop state. Do not repeatedly submit requests with new IDs to search for a passing configuration. |
+| Payload builder does not generate JSON | Stop the recording and verify the deployed commit includes the payload-builder fix. Do not imply payload generation succeeded if no payload is displayed. |
+| Transfer returns `awaiting_approval` | Treat it as an approval-gated request. It is not an executed transfer. Use the authorized approval workflow. |
+| Transfer returns `needs_review` | Preserve the request ID and reservation. Inspect provider status and use reconciliation. Do not blindly resubmit. |
+| Reconciliation remains pending | Keep the reservation unresolved until valid NEAR evidence is available. A provider request ID alone is not finality evidence. |
+
+## 8. Accurate product claims
+
+The demonstration may claim that V1 provides agent-scoped authentication, application-level allocations, a shared treasury ceiling, recipient authorization, atomic reservations, replay protection, emergency stop, approval handling, audit events and NEAR finality reconciliation, subject to the evidence captured for the selected build.
 
 Do not claim:
 - mainnet support or production custody;
-- independent wallets or isolated customer treasuries per developer;
-- that OutLayer is absent from the custody/signing path;
-- that OutLayer enforces Encu's per-agent allocations;
-- that a provider response alone proves final settlement;
-- that TEE attestation is independently verified by Encu;
-- that native NEAR contract execution or NEAR Intents are implemented;
-- that every hosted end-to-end workflow has passed when the current merged code has not yet been verified in a fresh Preview.
+- a separate custody wallet for each developer or logical agent;
+- multiple implemented execution providers;
+- a native NEAR treasury contract or NEAR Intents integration;
+- that Encu independently verifies transfer-bound TEE attestations;
+- that OutLayer's provider policy is the source of Encu's per-agent allocations;
+- that provider acceptance alone proves payment finality;
+- that a hosted workflow passed unless it was tested against the exact deployed commit.
+
+## 9. Related technical documentation
+
+- [Developer Guide](DEVELOPER_GUIDE.md): workspace setup, credentials, transfer API and reconciliation.
+- [Architecture](ARCHITECTURE.md): current implementation, lifecycle and target integration boundaries.
+- [Security Model](SECURITY_MODEL.md): assets, threats, mitigations and limitations.
+- [Product Roadmap](ROADMAP.md): implemented V1, planned integrations and longer-term direction.
