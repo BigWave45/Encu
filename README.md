@@ -1,3 +1,13 @@
+## RELEASE STATUS — PAYLOAD BUILDER FIX IN REVIEW (2026-11-04)
+
+**A browser-compatibility fix for Request Payload Builder generation is committed on `fix/payload-builder-request-id`. It has not been merged or deployed.** The reported Preview behavior was that the Generate payload button did nothing despite populated fields. Source inspection found a direct call to `crypto.randomUUID()` with no fallback or local error handling. The fix now uses `crypto.randomUUID()` when available, falls back to `crypto.getRandomValues()`, and has a last-resort unique identifier fallback; unexpected generation errors now produce a visible status message.
+
+- Fix commit: `29a197f29e7513d8010a867f67eac81e32a9be06`.
+- Changed component: `app/developers/agent-playground.tsx`.
+- The payload schema, NEAR-to-yocto integer conversion, and separate explicit transfer submission action are unchanged.
+- No transfer was submitted and no Supabase data was changed.
+- Next: review PR/CI, then decide whether to update the existing Preview. Do not create an additional deployment or deploy Production without explicit approval.
+
 ## RELEASE STATUS — PREVIEW LIVE, LOGIN-PAGE SMOKE TEST REPORTED (2026-11-04)
 
 **The intended Encu V1 and developer-dashboard code is merged into `main`. A READY Vercel Preview is available, and the user reports opening its login page and observing the buttons working. This is a manual smoke-test report, not evidence that every authenticated workflow or transfer path has passed end-to-end testing.**
