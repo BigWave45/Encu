@@ -6,7 +6,6 @@ type Props = { agentId: string; accessToken: string };
 type Config = {
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
-  recipients: Array<{ account_id: string; label: string | null; status: string; expires_at: string | null }>;
 };
 
 const SCALE = 10n ** 24n;
@@ -37,9 +36,6 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
   const [daily, setDaily] = useState("");
   const [weekly, setWeekly] = useState("");
   const [autoSpend, setAutoSpend] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [label, setLabel] = useState("");
-  const [recipientExpires, setRecipientExpires] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -119,21 +115,6 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
             <label>Maximum autonomous spend (NEAR)<input inputMode="decimal" value={autoSpend} onChange={e => setAutoSpend(e.target.value)} placeholder="Clear to disable autonomous spend" /></label>
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
-          <form className="developer-form" onSubmit={e => { e.preventDefault(); void save({ action: "authorize_recipient", accountId: accountId.trim(), label: label.trim() || undefined, expiresAt: recipientExpires ? new Date(recipientExpires).toISOString() : null }); setAccountId(""); setLabel(""); setRecipientExpires(""); }}>
-            <h4>Authorize recipient</h4>
-            <label>NEAR account ID<input value={accountId} onChange={e => setAccountId(e.target.value)} required placeholder="recipient.near" /></label>
-            <label>Label (optional)<input value={label} onChange={e => setLabel(e.target.value)} maxLength={80} /></label>
-            <label>Authorization expiry (optional)<input type="datetime-local" value={recipientExpires} onChange={e => setRecipientExpires(e.target.value)} /></label>
-            <button className="developer-button" disabled={busy || !accountId.trim()}>Add recipient</button>
-          </form>
-          <div className="developer-recipient-list">
-            <h4>Recipient allowlist</h4>
-            {!config.recipients.length && <p>No recipients authorized. Transfers to all recipients remain blocked.</p>}
-            {config.recipients.map(recipient => <div className="developer-recipient" key={recipient.account_id}>
-              <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
-              {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void save({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
-            </div>)}
-          </div>
         </> : <p>Loading configuration…</p>}
         {message && <p className="developer-message" role="status">{message}</p>}
         {error && <p className="developer-message developer-error" role="alert">{error}</p>}
