@@ -409,3 +409,53 @@ No Testnet account, executor wallet, API key, delegate key, binding, policy, tra
 ### Implementation decision
 
 Do not add Personal Account Binding to the existing V1 adapter or alter the release branch yet. First complete the isolated provider proof above. If policy-controller authority or delegate permissions cannot be proven, stop this path rather than weakening the custody claim. If the proof passes, design a new workspace-scoped treasury migration and binding-aware provider/reconciler as one coordinated feature branch. Keep the existing global operator treasury as an explicitly separate legacy backend until all old reservations and writers are safely accounted for.
+
+
+## Official OutLayer documentation clarification — policy and credentials (2026-11-04)
+
+The current official Personal Account Binding and Agent Custody documentation resolves several previously open questions. This is documentation evidence, not an independently executed integration test.
+
+### Policy authority is the developer's account
+
+OutLayer's Personal Account Binding documentation states that the developer's own named account, its keys and its policy remain under the developer's control. The binding adds the executor to the account's extension set; it does not transfer ownership. The policy is the only spending limit for `personal_account`. Unlike `hos_lease`, Personal Account Binding has no separate on-chain spend grant. An account with no policy can therefore be spent without policy limits. **A missing, unreadable or unverified restrictive policy must be a hard fail before Encu enables funding or execution.**
+
+For native transfers through the binding, the policy must explicitly account for the binding call shape:
+- `transaction_types` must include `call`;
+- if using an address whitelist, the bound asset account itself must be included as well as permitted payees, or the call is refused;
+- `allowed_tokens` must include `native` or `*`;
+- the outer attached NEAR amount is also measured against native limits, apart from the 1-yocto marker.
+
+These requirements must be tested against the exact policy read back from OutLayer, not merely shown in Encu's UI. A restrictive policy must be configured before the owner signs the setup transaction.
+
+### Owner revocation is on-chain
+
+The documented owner action is to remove the executor from the account's extension set. OutLayer says a previously cached allow decision may remain valid for up to five seconds. `DELETE /wallet/v1/binding` cleans up the provider-side binding and pending approvals, but it is not the on-chain revocation action. Encu must stop new submissions immediately when it detects revocation or an unreadable binding; the provider's documented cache window must be included in the residual-risk disclosure and tested.
+
+### Credential finding: delegate key is not demonstrated as a narrow permission scope
+
+The Agent Custody docs describe `PUT /wallet/v1/api-key` as registering a derived `wk_` credential for a sub-agent wallet and `DELETE /wallet/v1/api-key/{key_hash}` as revocation. They document wallet identity fields in the response and a 409 refusal when attempting to revoke the last active key. They do **not** document granular endpoint scopes or a read-only/transfer-only permission model for that credential.
+
+Do not describe this as a narrowly scoped least-privilege token. Treat any `wk_` credential as a wallet-level bearer credential unless OutLayer confirms and demonstrates otherwise. The deterministic-wallet path can authenticate with `Bearer near:<sig>`, but that requires signing with a full-access NEAR key on each request; Encu must never collect or persist the developer's private key. Whether a delegated `wk_` credential can safely operate the same deterministic executor identity and binding, without creating a distinct executor wallet, remains unproven.
+
+### Wallet compatibility and setup UX
+
+The owner must sign a three-action setup transaction that includes NEP-591 `UseGlobalContract`. OutLayer currently documents Intear Wallet and near-cli as supported signing paths; broad NEAR wallet compatibility must not be claimed. The account must not already run contract code; OutLayer deliberately refuses setup for such accounts, including common multisig/2FA contract-wallet cases. The owner-facing flow must explain this before setup and fail closed on the provider's refusal.
+
+### Updated feasibility gate
+
+Before an implementation decision, the disposable Testnet spike must now prove:
+1. The developer can set and independently read back a restrictive policy before binding.
+2. The policy allows only the intended binding-call shape, native asset and exact recipients; no broad wildcard is silently introduced.
+3. The bound executor is the one authorized in the developer account's extension set.
+4. The exact credential used by Encu is identified; its full API surface and ability to change policy, freeze, delete, create other keys or spend are tested or confirmed by OutLayer.
+5. On-chain extension removal stops new submissions after the documented cache window, and provider-side DELETE is tested only as cleanup.
+6. A binding transfer can be reconciled from final receipt effects to exact asset-account debit and recipient credit.
+
+### Revised credential decision
+
+Do not make "restricted delegate key" a prerequisite claim in product copy: current public docs do not establish that it is restricted. The acceptable candidate is a workspace-dedicated executor identity whose policy is independently controlled by the developer and whose on-chain extension can be revoked by that developer. Before adopting it, prove that Encu's server credential cannot silently widen policy or defeat the owner's on-chain controls. If that cannot be proven, reject Personal Account Binding for this release rather than store a developer full-access key.
+
+Official references:
+- https://app.outlayer.ai/docs/account-binding
+- https://app.outlayer.ai/docs/binding-api
+- https://app.outlayer.ai/docs/agent-custody
