@@ -58,7 +58,7 @@ export default function DeveloperPortal() {
   const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
-  const [activeView, setActiveView] = useState<"overview" | "agents" | "recipients" | "transactions" | "audit" | "execution">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution">("overview");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -305,7 +305,7 @@ export default function DeveloperPortal() {
         ) : (
           <>
           <nav className="developer-nav" aria-label="Developer workspace sections">
-            {([["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["transactions","Transactions"],["audit","Audit & Security"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
+            {([["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["integration","Integration"],["transactions","Transactions"],["audit","Audit & Security"],["tools","Developer tools"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
           </nav>
           <div className="developer-grid">
             <section className="developer-panel">
@@ -360,7 +360,6 @@ export default function DeveloperPortal() {
                       </div>
                       <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
                       <AgentConfiguration agentId={agent.id} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />
-                      <AgentPlayground agentId={agent.id} issuedToken={issuedTokenAgentId === agent.id ? issuedToken : ""} onSubmitted={() => { void loadTransactions(session.access_token); setAuditRefreshKey(value => value + 1); }} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
@@ -403,6 +402,8 @@ export default function DeveloperPortal() {
             </aside>}
           </div>
           {activeView === "recipients" && <RecipientManagement agents={agents} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />}
+          {activeView === "integration" && <IntegrationGuide issuedToken={issuedToken} issuedWarning={issuedWarning} />}
+          {activeView === "tools" && <section className="developer-panel developer-tools-workspace"><span className="developer-section-kicker">LIVE TESTNET TOOLS</span><h2>Request payload builder</h2><p>Submitting a request can initiate a real Testnet transfer when the agent policy permits it. This is not a dry run.</p>{agents.length === 0 ? <div className="developer-empty"><strong>Create an agent first</strong><span>The payload builder is scoped to an existing agent identity.</span></div> : agents.map(agent => <article className="developer-agent" key={agent.id}><div className="developer-agent-head"><div><h3>{agent.name}</h3><code>{agent.id}</code></div><span>{agent.active ? "Active" : "Disabled"}</span></div><AgentPlayground agentId={agent.id} issuedToken={issuedTokenAgentId === agent.id ? issuedToken : ""} onSubmitted={() => { void loadTransactions(session.access_token); setAuditRefreshKey(value => value + 1); }} /></article>)}</section>}
           {activeView === "overview" && <ExecutionExplainer />}
           {activeView === "execution" && <ExecutionExplainer />}
           </>
@@ -503,6 +504,49 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
       </>}
       {message && <p className="developer-message" role="status">{message}</p>}
       {error && <p className="developer-message developer-error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
+function IntegrationGuide({ issuedToken, issuedWarning }: { issuedToken: string; issuedWarning: string }) {
+  const [copied, setCopied] = useState(false);
+  const request = "curl --request POST \"$ENCU_BASE_URL/api/agent/transfer\" \\\n" +
+    "  --header \"Authorization: Bearer $ENCU_AGENT_TOKEN\" \\\n" +
+    "  --header \"Content-Type: application/json\" \\\n" +
+    "  --data '{\n" +
+    "    \"requestId\": \"invoice-payment-20261104-001\",\n" +
+    "    \"to\": \"recipient.near\",\n" +
+    "    \"amountYocto\": \"1000000000000000000000000\"\n" +
+    "  }'";
+  async function copyRequest() {
+    try { await navigator.clipboard.writeText(request); setCopied(true); }
+    catch { setCopied(false); }
+  }
+  return (
+    <section className="developer-panel developer-integration-workspace">
+      <span className="developer-section-kicker">API INTEGRATION</span>
+      <h2>Connect your backend to ENCU</h2>
+      <p>Call ENCU from your server using the bearer token assigned to the specific agent. Never expose the agent token in a browser, mobile app or public client.</p>
+      <div className="developer-integration-env">
+        <strong>Backend environment</strong>
+        <code>ENCU_BASE_URL=https://your-encu-host</code>
+        <code>ENCU_AGENT_TOKEN=your-agent-scoped-token</code>
+      </div>
+      <div className="developer-integration-code-heading"><h3>Submit a native NEAR transfer request</h3><button className="developer-button secondary" type="button" onClick={() => void copyRequest()}>{copied ? "Copied" : "Copy request"}</button></div>
+      <pre className="developer-integration-code"><code>{request}</code></pre>
+      <p>Use a unique request ID for each logical payment. Reuse that same ID only when retrying the exact same payload. The amount is an integer string denominated in yoctoNEAR (10²⁴ yoctoNEAR = 1 NEAR). Recipient authorization and spending limits are checked by ENCU.</p>
+      {issuedToken && <div className="developer-token"><strong>Credential issued in this session</strong><code>{issuedToken}</code><p>{issuedWarning || "Copy this one-time token and store it in your backend secret manager. It is not persisted by ENCU in browser storage."}</p></div>}
+      <div className="developer-integration-responses">
+        <h3>Response states</h3>
+        <ul>
+          <li><strong>202 · needs_review:</strong> provider submission or execution outcome is not yet reconciled. It is not proof of payment.</li>
+          <li><strong>403 · blocked:</strong> current policy, allocation, recipient permission or transfer cap denied the request.</li>
+          <li><strong>409:</strong> identity mismatch, idempotency conflict, replay or an already-processing request.</li>
+          <li><strong>429:</strong> request rate limit reached. Respect the <code>Retry-After</code> header.</li>
+          <li><strong>401 / 503:</strong> agent authentication or service/provider availability problem.</li>
+        </ul>
+        <p>ENCU only settles the reservation after matching execution evidence is reconciled against NEAR finality. A provider request ID or transaction hash alone is not finality.</p>
+      </div>
     </section>
   );
 }
