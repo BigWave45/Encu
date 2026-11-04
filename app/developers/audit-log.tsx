@@ -8,7 +8,7 @@ type AuditEvent = {
   details: Record<string, unknown>; createdAt: string;
 };
 
-export default function DeveloperAuditLog({ accessToken }: { accessToken: string }) {
+export default function DeveloperAuditLog({ accessToken, refreshKey = 0 }: { accessToken: string; refreshKey?: number }) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -27,7 +27,7 @@ export default function DeveloperAuditLog({ accessToken }: { accessToken: string
     } finally { setBusy(false); }
   }, [accessToken]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
   return (
     <section className="developer-audit" aria-label="Security and audit log">
