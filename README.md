@@ -8,7 +8,7 @@
 - Connect / Setup checks authenticated workspace, whether any agents exist, whether any agent has non-zero allocation, and active recipient authorizations fetched from the existing per-agent config route. Credential storage is intentionally not marked complete because the server cannot verify that a one-time token was safely stored.
 - Overview uses the existing agent and transaction data: agent count, summed allocations, spent and reserved amounts, loaded request count, and latest requests. These are agent-allocation totals, not a new authoritative treasury-wide balance endpoint.
 - Existing agent creation, rotation, activate/deactivate, configuration, recipient allowlist, request payload builder, and transaction activity remain in the existing Agents view. No API, schema, migration or database changes were made.
-- GitHub Actions CI run `41789507656` was still running at handoff; dependency installation had not yet completed, so lint, type-check, build and security/reconciliation tests were not yet verified.
+- GitHub Actions CI run `41789507656` is running. Dependency installation, dependency audit report and lint have passed; type-check is in progress. Production build and API security/lifecycle plus NEAR finality reconciliation tests remain pending. Do not claim the slice is fully verified until the run completes.
 - Vercel status check reported failure with the existing build-rate-limit message. No deployment was manually initiated. Do not treat the branch as visually verified in a new preview yet.
 - No merge to `main`, production deployment, database mutation, branch deletion or live transfer was performed or authorized.
 
