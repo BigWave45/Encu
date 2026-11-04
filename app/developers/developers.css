@@ -250,3 +250,18 @@
   .developer-nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
   .developer-nav button { padding:0 8px; font-size:10px; }
 }
+
+
+.developer-recipient-workspace { display:grid; gap:18px; }
+.developer-recipient-agent { display:grid; gap:8px; max-width:560px; color:#b9c8ce; font-size:11px; font-weight:750; }
+.developer-recipient-agent select {
+  width:100%; min-height:42px; padding:0 12px; border:1px solid #354854; border-radius:7px;
+  background:#0b131a; color:var(--dev-text); font:inherit; font-size:12px;
+}
+.developer-recipient-workspace .developer-form {
+  max-width:720px; padding:17px; border:1px solid #2c3c47; border-radius:9px; background:#101a21;
+}
+.developer-recipient-workspace .developer-form h3,
+.developer-recipient-list h3 { margin:0; color:#eaf1f2; font-size:14px; }
+.developer-recipient-list { display:grid; gap:10px; }
+.developer-recipient-list .developer-activity-head { align-items:center; }
