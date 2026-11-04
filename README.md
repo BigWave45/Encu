@@ -818,3 +818,12 @@ OutLayer documentation describes per-wallet custody accounts via `POST /register
 This changes the architecture decision: evaluate per-workspace OutLayer custody wallets on Testnet as the shortest route, and compare against Personal Account Binding before committing to a native Encu treasury contract. OutLayer Intents deposit/withdraw features are mainnet-only, so the first Testnet funding path should be direct native NEAR deposits. These are documentation findings only; no wallet was registered, no provider API key was created, no funds moved, and no runtime code or database changed.
 
 Next: prepare a disposable Testnet compatibility spike plan and define the custody disclosure, API-key storage, deposit finality, wallet policy and recovery requirements. Do not provision a wallet until explicitly approved.
+
+
+### Developer-controlled NEAR account binding — selected direction (2026-11-04)
+
+The product owner selected OutLayer Personal Account Binding. The developer retains their named NEAR account and keys, signs a setup transaction authorizing an OutLayer executor extension, and can revoke that extension on chain. Binding transfers must use OutLayer binding endpoints, not the current plain executor-wallet transfer. The binding starts pending and is spendable only when OutLayer reports active. The executor account pays gas separately from the developer asset account.
+
+Current app has one global OutLayer credential/address and no NEAR wallet connector. Current reconciliation assumes a direct transfer from that signer and is incompatible with binding contract calls. Each separately funded workspace needs a distinct asset account; multiple workspaces bound to the same account share funds. Owner revocation may take up to the documented five-second cached-allow window. Keep executor credentials server-side; do not place long-lived keys in hosted connect URLs. Detailed setup, policy, revocation, isolation, transfer and receipt requirements are in docs/developer-treasury-dependency-audit.md and docs/developer-funded-workspace-treasuries.md.
+
+Status: research/specification only. No wallet, binding, policy, API credential, migration or transfer was created. Next: resolve OutLayer questions about executor binding cardinality, credential lifecycle, wallet support, inner receipt proof and gas funding, then prepare a disposable Testnet spike for explicit approval.
