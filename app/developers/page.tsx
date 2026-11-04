@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import "./developers.css";
+import "./dashboard-workflow.css";
 import AgentConfiguration from "./agent-configuration";
+import AgentPlayground from "./agent-playground";
+import ExecutionExplainer from "./execution-explainer";
+import DeveloperAuditLog from "./audit-log";
 
 type DeveloperAgent = {
   id: string;
@@ -13,6 +17,7 @@ type DeveloperAgent = {
   createdAt: string;
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
+  activeRecipientCount: number;
 };
 
 type AgentResponse = { status?: string; agent?: { id: string; name: string }; token?: string; warning?: string; error?: string };
@@ -51,10 +56,13 @@ export default function DeveloperPortal() {
   const [agentMessage, setAgentMessage] = useState("");
   const [agentError, setAgentError] = useState("");
   const [issuedToken, setIssuedToken] = useState("");
+  const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
+  const [activeView, setActiveView] = useState<"setup" | "overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution">("setup");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"connect" | "overview" | "agents" | "recipients">("connect");
-  const [setupRecipientCount, setSetupRecipientCount] = useState<number | null>(null);
+  const [credentialStorageConfirmed, setCredentialStorageConfirmed] = useState(false);
+  const [integrationConfirmed, setIntegrationConfirmed] = useState(false);
 
   const loadAgents = useCallback(async (accessToken: string) => {
     setAgentsBusy(true);
@@ -98,28 +106,6 @@ export default function DeveloperPortal() {
   }, []);
 
   useEffect(() => {
-    if (!session || agents.length === 0) {
-      setSetupRecipientCount(0);
-      return;
-    }
-    let active = true;
-    Promise.all(agents.map(async agent => {
-      const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agent.id)}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-        cache: "no-store"
-      });
-      if (!response.ok) throw new Error("Could not verify recipient setup.");
-      const body = await response.json();
-      return (body.recipients ?? []).filter((recipient: { status: string }) => recipient.status === "active").length;
-    })).then(counts => {
-      if (active) setSetupRecipientCount(counts.reduce((total, count) => total + count, 0));
-    }).catch(() => {
-      if (active) setSetupRecipientCount(null);
-    });
-    return () => { active = false; };
-  }, [session, agents]);
-
-  useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) {
@@ -148,6 +134,11 @@ export default function DeveloperPortal() {
       } else {
         setAgents([]);
         setTransactions([]);
+        setIssuedToken("");
+        setIssuedTokenAgentId("");
+        setIssuedWarning("");
+        setCredentialStorageConfirmed(false);
+        setIntegrationConfirmed(false);
       }
     });
     return () => {
@@ -200,6 +191,9 @@ export default function DeveloperPortal() {
     setAgents([]);
     setTransactions([]);
     setIssuedToken("");
+    setIssuedTokenAgentId("");
+    setCredentialStorageConfirmed(false);
+    setIntegrationConfirmed(false);
     setAuthMessage("Signed out.");
   }
 
@@ -210,6 +204,7 @@ export default function DeveloperPortal() {
     setAgentMessage("");
     setAgentError("");
     setIssuedToken("");
+    setCredentialStorageConfirmed(false);
     try {
       const response = await fetch("/api/developer/agents", {
         method: "POST",
@@ -219,6 +214,7 @@ export default function DeveloperPortal() {
       const body: AgentResponse = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Agent creation failed.");
       setIssuedToken(body.token ?? "");
+      setIssuedTokenAgentId(body.agent?.id ?? agentId.trim());
       setIssuedWarning(body.warning ?? "");
       setAgentMessage("Agent created. Copy its token now.");
       setAgentId("");
@@ -237,6 +233,7 @@ export default function DeveloperPortal() {
     setAgentError("");
     setAgentMessage("");
     setIssuedToken("");
+    setCredentialStorageConfirmed(false);
     try {
       const response = action === "rotate"
         ? await fetch("/api/developer/agents/rotate", {
@@ -253,6 +250,7 @@ export default function DeveloperPortal() {
       if (!response.ok) throw new Error(body.error ?? "Agent update failed.");
       if (action === "rotate") {
         setIssuedToken(body.token ?? "");
+        setIssuedTokenAgentId(id);
         setIssuedWarning(body.warning ?? "");
         setAgentMessage(`Credential rotated for ${id}. Copy the replacement token now.`);
       } else {
@@ -290,57 +288,6 @@ export default function DeveloperPortal() {
           Provision independent agent identities, assign spending authority and manage execution permissions from one workspace.
         </p>
 
-        {session && <nav className="developer-navigation" aria-label="Developer workspace navigation">
-          <button type="button" className={activeView === "connect" ? "active" : ""} onClick={() => setActiveView("connect")}>Connect / Setup</button>
-          <button type="button" className={activeView === "overview" ? "active" : ""} onClick={() => setActiveView("overview")}>Overview</button>
-          <button type="button" className={activeView === "agents" ? "active" : ""} onClick={() => setActiveView("agents")}>Agents</button>
-          <button type="button" className={activeView === "recipients" ? "active" : ""} onClick={() => setActiveView("recipients")}>Recipients</button>
-        </nav>}
-
-        {session && activeView === "connect" && <section className="developer-workspace-panel">
-          <div className="developer-workspace-heading">
-            <div><span className="developer-section-kicker">WORKSPACE SETUP</span><h2>Connect your first agent</h2>
-              <p>Each item reflects data ENCU can verify from your current workspace.</p></div>
-            <span className="developer-setup-count">{[
-              true,
-              agents.length > 0,
-              agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n),
-              setupRecipientCount !== null && setupRecipientCount > 0
-            ].filter(Boolean).length}/4 complete</span>
-          </div>
-          <div className="developer-setup-list">
-            <div className="developer-setup-item complete"><span className="developer-setup-mark">✓</span><div><strong>Developer workspace active</strong><p>Authenticated as {session.user.email}</p></div><span className="developer-setup-state">Connected</span></div>
-            <div className={agents.length ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.length ? "✓" : "2"}</span><div><strong>Create an agent identity</strong><p>{agents.length ? `${agents.length} agent identity ${agents.length === 1 ? "is" : "ies"} registered.` : "Create a logical agent with its own machine credential."}</p></div><button type="button" onClick={() => setActiveView("agents")}>{agents.length ? "Manage agents" : "Create agent"}</button></div>
-            <div className={agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "✓" : "3"}</span><div><strong>Assign spending authority</strong><p>{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "At least one agent has a non-zero allocation." : "New agents start with zero allocation and cannot execute transfers."}</p></div><button type="button" onClick={() => setActiveView("agents")}>Configure allocation</button></div>
-            <div className={setupRecipientCount === null ? "developer-setup-item unavailable" : setupRecipientCount > 0 ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{setupRecipientCount === null ? "!" : setupRecipientCount > 0 ? "✓" : "4"}</span><div><strong>Authorize a recipient</strong><p>{setupRecipientCount === null ? "Recipient status could not be verified. Retry by reopening this page." : setupRecipientCount > 0 ? `${setupRecipientCount} active recipient authorization(s) found.` : "Transfers remain blocked until an exact recipient account is authorized."}</p></div><button type="button" onClick={() => setActiveView("recipients")}>Manage recipients</button></div>
-          </div>
-          <p className="developer-setup-note">Agent credentials are displayed once when created or rotated. ENCU cannot verify whether you have stored a token securely, so credential storage is deliberately not marked complete here.</p>
-        </section>}
-
-        {session && activeView === "overview" && <section className="developer-workspace-panel">
-          <div className="developer-workspace-heading"><div><span className="developer-section-kicker">WORKSPACE OVERVIEW</span><h2>Spending and execution activity</h2><p>Live values from the developer agents and transaction endpoints.</p></div>
-            <button className="developer-button secondary" type="button" disabled={agentsBusy || transactionsBusy} onClick={() => { void loadAgents(session.access_token); void loadTransactions(session.access_token); }}>Refresh overview</button>
-          </div>
-          <div className="developer-overview-metrics">
-            <div><span>Registered agents</span><strong>{agents.length}</strong></div>
-            <div><span>Allocated authority</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.allocation_limit_yocto ?? "0"), 0n).toString())}</strong></div>
-            <div><span>Spent</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.spent_yocto ?? "0"), 0n).toString())}</strong></div>
-            <div><span>Reserved</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.reserved_yocto ?? "0"), 0n).toString())}</strong></div>
-            <div><span>Requests loaded</span><strong>{transactions.length}</strong></div>
-          </div>
-          <div className="developer-overview-activity">
-            <div><h3>Recent execution requests</h3><button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh activity"}</button></div>
-            {transactionsError && <p className="developer-error" role="alert">{transactionsError}</p>}
-            {transactions.length === 0 && !transactionsBusy ? <p className="developer-empty">No transaction requests have been returned for this workspace.</p> : transactions.slice(0, 8).map(item => <article className="developer-overview-transaction" key={item.requestId}>
-              <div><strong>{near(item.amountYocto)}</strong><span>{item.agentId} · {item.recipient}</span></div><span className={`developer-status status-${item.status.replace(/[^a-z0-9_-]/g, "-")}`}>{item.status.replace(/_/g, " ")}</span>
-            </article>)}
-            <button className="developer-text-link" type="button" onClick={() => setActiveView("agents")}>Open agent management and full activity</button>
-          </div>
-        </section>}
-
-
-        {session && activeView === "recipients" && <RecipientManagement agents={agents} accessToken={session.access_token} />}
-
         {!session ? (
           <div className="developer-grid">
             <section className="developer-panel">
@@ -368,13 +315,111 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
-          <div className={`developer-grid ${activeView === "agents" ? "" : "developer-view-hidden"}`}>
+          <>
+          <nav className="developer-nav" aria-label="Developer workspace sections">
+            {([["setup","Connect / Setup"],["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["integration","Integration"],["transactions","Transactions"],["audit","Audit & Security"],["tools","Developer tools"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
+          </nav>
+          <div className="developer-grid">
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <div><h2>Your agents</h2><p>Signed in as {session.user.email}</p></div>
+                <div><h2>{activeView === "setup" ? "Connect / Setup" : activeView === "overview" ? "Workspace overview" : activeView === "agents" ? "Your agents" : activeView === "recipients" ? "Recipient permissions" : activeView === "integration" ? "Integration" : activeView === "transactions" ? "Transactions" : activeView === "audit" ? "Audit & Security" : activeView === "tools" ? "Developer tools" : "How ENCU works"}</h2><p>Signed in as {session.user.email}</p></div>
+{activeView === "overview" && <div className="developer-workspace-summary" aria-label="Workspace spending summary">
+                {(() => {
+                  const totals = agents.reduce((sum, agent) => ({
+                    allocated: sum.allocated + BigInt(agent.allocation?.allocation_limit_yocto ?? "0"),
+                    spent: sum.spent + BigInt(agent.allocation?.spent_yocto ?? "0"),
+                    reserved: sum.reserved + BigInt(agent.allocation?.reserved_yocto ?? "0")
+                  }), { allocated: 0n, spent: 0n, reserved: 0n });
+                  const available = totals.allocated - totals.spent - totals.reserved;
+                  return <>
+                    <div><span>Allocated authority</span><strong>{near(totals.allocated.toString())}</strong></div>
+                    <div><span>Spent</span><strong>{near(totals.spent.toString())}</strong></div>
+                    <div><span>Reserved</span><strong>{near(totals.reserved.toString())}</strong></div>
+                    <div><span>Available across agents</span><strong>{available >= 0n ? near(available.toString()) : "Ledger mismatch"}</strong></div>
+                  </>;
+                })()}
+              </div>}
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
+              {activeView === "setup" && (() => {
+                const loaded = !agentsBusy && !transactionsBusy && !agentError && !transactionsError;
+                const activeAgents = agents.filter(agent => agent.active);
+                const allocatedAgents = activeAgents.filter(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
+                const policyConfiguredAgents = activeAgents.filter(agent => !!agent.policy && !!(agent.policy.max_transfer_yocto || agent.policy.daily_limit_yocto || agent.policy.weekly_limit_yocto));
+                const autonomousAgents = activeAgents.filter(agent => !!agent.policy?.auto_spend_limit_yocto && BigInt(agent.policy.auto_spend_limit_yocto) > 0n);
+                const authorizedAgents = activeAgents.filter(agent => agent.activeRecipientCount > 0);
+                const hasIssuedCredential = !!issuedToken && !!issuedTokenAgentId;
+                const hasRequests = transactions.length > 0;
+                const items: { title: string; detail: string; count?: number; total?: number; done: boolean; action: "setup" | "overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution"; actionLabel: string; optional?: boolean; manual?: boolean }[] = [
+                  { title: "Create an agent identity", detail: "Provision a separate machine identity for each agent.", count: agents.length, done: agents.length > 0, action: "agents" as const, actionLabel: "Manage agents" },
+                  { title: "Assign spending authority", detail: "Active agents need a positive allocation within the shared Testnet pool.", count: allocatedAgents.length, total: activeAgents.length, done: activeAgents.length > 0 && allocatedAgents.length === activeAgents.length, action: "agents" as const, actionLabel: "Configure allocation" },
+                  { title: "Set spending limits", detail: "Configure at least one per-transfer, daily or weekly cap.", count: policyConfiguredAgents.length, total: activeAgents.length, done: activeAgents.length > 0 && policyConfiguredAgents.length === activeAgents.length, action: "agents" as const, actionLabel: "Set limits" },
+                  { title: "Authorize exact recipients", detail: "Each agent needs at least one active, unexpired account authorization.", count: authorizedAgents.length, total: activeAgents.length, done: activeAgents.length > 0 && authorizedAgents.length === activeAgents.length, action: "recipients" as const, actionLabel: "Manage recipients" },
+                  { title: "Configure autonomous allowance", detail: "Optional. Enables autonomous submission within the configured cumulative allowance.", count: autonomousAgents.length, total: activeAgents.length, done: autonomousAgents.length > 0, action: "agents" as const, actionLabel: "Configure allowance", optional: true },
+                  { title: "Issue an agent credential", detail: "A one-time credential is available only immediately after creation or rotation.", count: hasIssuedCredential ? 1 : 0, done: hasIssuedCredential, action: "agents" as const, actionLabel: "Create or rotate token" },
+                  { title: "Confirm secure credential storage", detail: "Store the token in your backend secret manager. This confirmation is your attestation; ENCU cannot inspect external storage.", done: credentialStorageConfirmed, action: "integration" as const, actionLabel: credentialStorageConfirmed ? "Review integration" : "Open integration", manual: true },
+                  { title: "Confirm backend integration", detail: "Implement the request contract in your backend. This confirmation is manual and is not independently verified by ENCU.", done: integrationConfirmed, action: "integration" as const, actionLabel: integrationConfirmed ? "Review quickstart" : "Open quickstart", manual: true },
+                  { title: "Send the first request", detail: "A persisted request proves the API received a request. It does not by itself prove payment or NEAR finality.", count: transactions.length, done: hasRequests, action: "transactions" as const, actionLabel: "View requests" }
+                ];
+                const completed = items.filter(item => item.done && !item.optional).length;
+                return <section className="developer-setup-workspace" aria-label="Connect and setup checklist">
+                  <div className="developer-setup-intro">
+                    <div><span className="developer-section-kicker">ONBOARDING</span><h2>Bring an agent online</h2><p>Configure bounded authority, authorize destinations, connect your backend and inspect the first request. Status below is derived from the workspace records ENCU can currently verify.</p></div>
+                    <div className="developer-setup-progress"><strong>{loaded ? completed : "—"}<span> / {items.filter(item => !item.optional).length}</span></strong><small>Verified setup steps</small></div>
+                  </div>
+                  {!loaded && <p className="developer-setup-loading">Loading workspace records before evaluating setup…</p>}
+                  {(agentError || transactionsError) && <p className="developer-error" role="alert">{agentError || transactionsError}</p>}
+                  {agents.length === 0 && loaded && <div className="developer-setup-empty"><strong>No agent identities yet</strong><span>Create your first agent to begin. New agents start with zero spending authority.</span><button className="developer-button" type="button" onClick={() => setActiveView("agents")}>Create an agent</button></div>}
+                  <div className="developer-setup-list">
+                    {items.map((item,index) => <article className="developer-setup-step" key={item.title}>
+                      <div className={item.done ? "developer-setup-state is-complete" : "developer-setup-state"}>{loaded && item.done ? "✓" : String(index+1).padStart(2,"0")}</div>
+                      <div className="developer-setup-copy"><div className="developer-setup-title"><h3>{item.title}</h3>{item.optional && <span>Optional</span>}{item.manual && <span>Manual confirmation</span>}</div><p>{item.detail}</p>{item.count !== undefined && <small>{item.count}{item.total !== undefined ? ` of ${item.total} active agents` : item.title === "Create an agent identity" ? " agent identities" : " matching records"}</small>}</div>
+                      <button className="developer-button secondary" type="button" onClick={() => setActiveView(item.action)}>{item.actionLabel}</button>
+                    </article>)}
+                  </div>
+                  <div className="developer-setup-confirmations"><div><strong>Credential storage attestation</strong><p>Only confirm after saving the one-time token in a server-side secret manager.</p><button className="developer-button secondary" type="button" disabled={!hasIssuedCredential && !credentialStorageConfirmed} onClick={() => setCredentialStorageConfirmed(value => !value)}>{credentialStorageConfirmed ? "Undo storage confirmation" : "I stored the credential securely"}</button></div><div><strong>Backend integration attestation</strong><p>Only confirm after your backend can construct the ENCU transfer request with its agent credential.</p><button className="developer-button secondary" type="button" onClick={() => setIntegrationConfirmed(value => !value)}>{integrationConfirmed ? "Undo integration confirmation" : "My backend integration is complete"}</button></div></div>
+                  <div className="developer-setup-footnote"><strong>Credential and payment evidence</strong><p>Manual confirmations are developer attestations, not evidence independently verified by ENCU. An API request does not prove a transfer settled.</p></div>
+                  <div className="developer-setup-shortcuts"><button type="button" onClick={() => setActiveView("overview")}>Workspace overview</button><button type="button" onClick={() => setActiveView("execution")}>Understand execution controls</button></div>
+                </section>;
+              })()}
+              {activeView === "overview" && (() => {
+                const activeAgents = agents.filter(agent => agent.active);
+                const configuredAgents = agents.filter(agent => agent.active && BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
+                const inactiveAgents = agents.filter(agent => !agent.active);
+                const unallocatedAgents = agents.filter(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") === 0n);
+                const pendingTransactions = transactions.filter(item => ["pending", "submitted", "processing", "needs_review", "awaiting_approval"].includes(item.status));
+                const failedTransactions = transactions.filter(item => ["failed", "rejected", "cancelled", "expired", "blocked"].includes(item.status));
+                const recentTransactions = transactions.slice(0, 5);
+                return <section className="developer-overview-detail" aria-label="Developer workspace status">
+                  <div className="developer-overview-heading"><span className="developer-section-kicker">WORKSPACE STATUS</span><span>{agentsBusy || transactionsBusy ? "Updating live records…" : "Based on your current workspace records"}</span></div>
+                  <div className="developer-overview-metrics">
+                    <article><span>Agents</span><strong>{agents.length}</strong><small>{activeAgents.length} active · {inactiveAgents.length} inactive</small></article>
+                    <article><span>Allocated agents</span><strong>{configuredAgents.length}</strong><small>{unallocatedAgents.length} with zero allocation</small></article>
+                    <article><span>In-flight requests</span><strong>{pendingTransactions.length}</strong><small>Across the latest 50 requests</small></article>
+                    <article><span>Blocked or failed</span><strong>{failedTransactions.length}</strong><small>Across the latest 50 requests</small></article>
+                  </div>
+                  <div className="developer-overview-columns">
+                    <div className="developer-overview-panel">
+                      <div className="developer-activity-head"><h3>Agent readiness</h3><button className="developer-button secondary" type="button" disabled={agentsBusy || !session} onClick={() => session && void loadAgents(session.access_token)}>Refresh</button></div>
+                      {agentError && <p className="developer-error" role="alert">{agentError}</p>}
+                      {agents.length === 0 ? <p className="developer-overview-empty">No agents yet. Create an agent to begin configuring bounded execution.</p> : agents.slice(0, 6).map(agent => {
+                        const allocation = BigInt(agent.allocation?.allocation_limit_yocto ?? "0");
+                        const ready = agent.active && allocation > 0n;
+                        return <div className="developer-overview-agent" key={agent.id}><div><strong>{agent.name}</strong><code>{agent.id}</code></div><span className={ready ? "is-ready" : "is-attention"}>{!agent.active ? "Inactive" : allocation === 0n ? "No allocation" : "Allocated"}</span></div>;
+                      })}
+                      {agents.length > 6 && <p className="developer-overview-empty">Showing 6 of {agents.length} agents. Open Agents to manage the full list.</p>}
+                    </div>
+                    <div className="developer-overview-panel">
+                      <div className="developer-activity-head"><h3>Recent requests</h3><button className="developer-button secondary" type="button" disabled={transactionsBusy || !session} onClick={() => session && void loadTransactions(session.access_token)}>Refresh</button></div>
+                      {transactionsError && <p className="developer-error" role="alert">{transactionsError}</p>}
+                      {transactions.length === 0 ? <p className="developer-overview-empty">{transactionsBusy ? "Loading requests…" : "No transaction requests recorded yet."}</p> : recentTransactions.map(item => <div className="developer-overview-request" key={item.requestId}><div><strong>{near(item.amountYocto)}</strong><span>{item.agentId} → {item.recipient}</span></div><span className={failedTransactions.includes(item) ? "is-attention" : pendingTransactions.includes(item) ? "is-pending" : "is-ready"}>{item.status.replace(/_/g, " ")}</span></div>)}
+                      <button className="developer-overview-link" type="button" onClick={() => setActiveView("transactions")}>View transaction history</button>
+                    </div>
+                  </div>
+                </section>;
+              })()}
+              {activeView === "agents" && <>
               <form className="developer-form" onSubmit={createAgent}>
                 <label>Agent ID<input required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" value={agentId} onChange={event => setAgentId(event.target.value)} placeholder="e.g. research-agent" /></label>
                 <label>Agent name<input required minLength={2} maxLength={80} value={agentName} onChange={event => setAgentName(event.target.value)} placeholder="e.g. Research Agent" /></label>
@@ -403,8 +448,7 @@ export default function DeveloperPortal() {
                         <div><span>Spent / reserved</span><strong>{near(allocation?.spent_yocto)} / {near(allocation?.reserved_yocto)}</strong></div>
                       </div>
                       <p>{ready ? "Allocation exists. Set transfer limits, autonomous allowance and authorized recipients." : "This agent has zero allocation and cannot spend until you configure its authority."}</p>
-                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} />
-                      <AgentPlayground agentId={agent.id} />
+                      <AgentConfiguration agentId={agent.id} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />
                       <div className="developer-actions">
                         <button type="button" disabled={!!actionBusy || !agent.active} onClick={() => agentAction(agent.id,"rotate")}>Rotate token</button>
                         <button type="button" disabled={!!actionBusy} onClick={() => agentAction(agent.id,agent.active ? "deactivate" : "activate")}>{agent.active ? "Deactivate" : "Reactivate"}</button>
@@ -413,7 +457,8 @@ export default function DeveloperPortal() {
                   );
                 })}
               </div>
-              <section className="developer-activity" aria-label="Recent transaction activity">
+              </>}
+              {activeView === "transactions" && <section className="developer-activity" aria-label="Recent transaction activity">
                 <div className="developer-activity-head">
                   <div><span className="developer-section-kicker">ACTIVITY</span><h2>Recent transactions</h2></div>
                   <button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => session && void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh"}</button>
@@ -433,17 +478,24 @@ export default function DeveloperPortal() {
                   </article>)}
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
-              </section>
+              </section>}
+              {activeView === "audit" && <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />}
             </section>
-            <aside className="developer-panel">
+            {activeView === "overview" && <aside className="developer-panel">
               <h2>Configure bounded execution</h2>
               <p>1. Create your agent and securely store its bearer token.</p>
               <p>2. You assign an allocation from the shared Testnet treasury, subject to ENCU’s platform-wide ceiling.</p>
               <p>3. You set transfer limits, autonomous allowance and exact authorized NEAR recipients.</p>
               <p>4. Your backend sends requests using the agent token. ENCU enforces the current policy before execution by the configured backend.</p>
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
-            </aside>
+            </aside>}
           </div>
+          {activeView === "recipients" && <RecipientManagement agents={agents} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />}
+          {activeView === "integration" && <IntegrationGuide issuedToken={issuedToken} issuedWarning={issuedWarning} />}
+          {activeView === "tools" && <section className="developer-panel developer-tools-workspace"><span className="developer-section-kicker">LIVE TESTNET TOOLS</span><h2>Request payload builder</h2><p>Submitting a request can initiate a real Testnet transfer when the agent policy permits it. This is not a dry run.</p>{agents.length === 0 ? <div className="developer-empty"><strong>Create an agent first</strong><span>The payload builder is scoped to an existing agent identity.</span></div> : agents.map(agent => <article className="developer-agent" key={agent.id}><div className="developer-agent-head"><div><h3>{agent.name}</h3><code>{agent.id}</code></div><span>{agent.active ? "Active" : "Disabled"}</span></div><AgentPlayground agentId={agent.id} issuedToken={issuedTokenAgentId === agent.id ? issuedToken : ""} onSubmitted={() => { void loadTransactions(session.access_token); setAuditRefreshKey(value => value + 1); }} /></article>)}</section>}
+          {activeView === "overview" && <ExecutionExplainer />}
+          {activeView === "execution" && <ExecutionExplainer />}
+          </>
         )}
       </div>
     </main>
@@ -451,110 +503,135 @@ export default function DeveloperPortal() {
 }
 
 
+type RecipientRecord = { account_id: string; label: string | null; status: string; expires_at: string | null };
 
-type RecipientRecord = {
-  agentId: string;
-  account_id: string;
-  label: string | null;
-  status: string;
-  expires_at: string | null;
-};
-
-function RecipientManagement({ agents, accessToken }: { agents: DeveloperAgent[]; accessToken: string }) {
-  const [records, setRecords] = useState<RecipientRecord[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id ?? "");
+function RecipientManagement({ agents, accessToken, onSaved }: { agents: DeveloperAgent[]; accessToken: string; onSaved: () => void }) {
+  const [agentId, setAgentId] = useState("");
+  const [recipients, setRecipients] = useState<RecipientRecord[]>([]);
   const [accountId, setAccountId] = useState("");
   const [label, setLabel] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const requestVersion = useRef(0);
+  const selectedAgent = agents.find(agent => agent.id === agentId) ?? agents[0] ?? null;
+  const selectedAgentId = selectedAgent?.id ?? null;
+  const selectedAgentIdRef = useRef<string | null>(selectedAgent?.id ?? null);
+  selectedAgentIdRef.current = selectedAgent?.id ?? null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (id: string) => {
+    const version = ++requestVersion.current;
+    if (!id) { setRecipients([]); setLoading(false); return; }
+    setRecipients([]);
+    setLoading(true); setError("");
     try {
-      const results = await Promise.all(agents.map(async agent => {
-        const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agent.id)}`, {
-          headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
-        });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error ?? `Could not load recipients for ${agent.id}.`);
-        return (body.recipients ?? []).map((recipient: Omit<RecipientRecord, "agentId">) => ({ ...recipient, agentId: agent.id }));
-      }));
-      setRecords(results.flat());
+      const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(id)}`, {
+        headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not load recipient permissions.");
+      if (version !== requestVersion.current) return;
+      setRecipients(Array.isArray(body.recipients) ? body.recipients : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load recipient authorizations.");
-      setRecords([]);
+      if (version === requestVersion.current) setError(e instanceof Error ? e.message : "Could not load recipient permissions.");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [agents, accessToken]);
+  }, [accessToken]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!agents.some(agent => agent.id === agentId) && agents[0]) setAgentId(agents[0].id);
+    if (!agents.length) { setAgentId(""); setRecipients([]); }
+  }, [agents, agentId]);
 
-  async function save(agentId: string, payload: Record<string, unknown>) {
-    setBusy(true);
-    setError("");
-    setMessage("");
+  useEffect(() => {
+    setRecipients([]);
+    setAccountId(""); setLabel(""); setExpiresAt("");
+    setError(""); setMessage("");
+    if (selectedAgentId) void load(selectedAgentId);
+    else { requestVersion.current += 1; setLoading(false); }
+    return () => { requestVersion.current += 1; };
+  }, [selectedAgentId, load]);
+
+  async function update(payload: Record<string, unknown>): Promise<boolean> {
+    const targetAgentId = selectedAgent?.id;
+    if (!targetAgentId) return false;
+    setBusy(true); setError(""); setMessage("");
     try {
       const response = await fetch("/api/developer/agents/config", {
         method: "PATCH",
         headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-        body: JSON.stringify({ id: agentId, ...payload })
+        body: JSON.stringify({ id: targetAgentId, ...payload })
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient update failed.");
-      setMessage(payload.action === "revoke_recipient" ? "Recipient authorization revoked." : "Recipient authorized.");
-      await load();
+      if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient permission update failed.");
+      if (selectedAgentIdRef.current !== targetAgentId) return false;
+      setMessage(payload.action === "authorize_recipient" ? "Recipient authorized." : "Recipient permission revoked.");
+      await load(targetAgentId);
+      onSaved();
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Recipient update failed.");
-    } finally {
-      setBusy(false);
-    }
+      if (selectedAgentIdRef.current === targetAgentId) setError(e instanceof Error ? e.message : "Recipient permission update failed.");
+      return false;
+    } finally { setBusy(false); }
   }
 
-  function addRecipient(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedAgentId || !accountId.trim()) return;
-    void save(selectedAgentId, {
-      action: "authorize_recipient",
-      accountId: accountId.trim(),
-      label: label.trim() || undefined,
-      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null
-    }).then(() => {
-      setAccountId("");
-      setLabel("");
-      setExpiresAt("");
-    });
-  }
+  const recipientStatus = (recipient: RecipientRecord) => {
+    if (recipient.status !== "active") return recipient.status;
+    if (recipient.expires_at && new Date(recipient.expires_at).getTime() <= Date.now()) return "expired";
+    return "active";
+  };
 
   return (
-    <section className="developer-workspace-panel">
+    <section className="developer-panel developer-recipient-workspace">
       <div className="developer-workspace-heading">
-        <div><span className="developer-section-kicker">ACCESS CONTROL</span><h2>Recipient authorizations</h2>
-          <p>Authorize exact NEAR account IDs for individual agents. An authorization for one agent does not grant access to another.</p></div>
-        <button className="developer-button secondary" type="button" disabled={loading || busy} onClick={() => void load()}>Refresh recipients</button>
+        <div><span className="developer-section-kicker">RECIPIENT ACCESS</span><h2>Authorized NEAR accounts</h2><p>Transfers are restricted to exact account IDs explicitly authorized for each agent. Permissions do not carry over between agents.</p></div>
       </div>
-      {agents.length === 0 ? <p className="developer-empty">Create an agent before authorizing recipients.</p> : <>
-        <form className="developer-form developer-recipient-form" onSubmit={addRecipient}>
-          <label>Agent<select value={selectedAgentId} onChange={event => setSelectedAgentId(event.target.value)} required>
-            {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
-          </select></label>
-          <label>NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required placeholder="recipient.near" autoCapitalize="none" autoCorrect="off" /></label>
-          <label>Label (optional)<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} /></label>
-          <label>Authorization expiry (optional)<input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} /></label>
-          <button className="developer-button" type="submit" disabled={busy || !selectedAgentId || !accountId.trim()}>{busy ? "Saving…" : "Authorize recipient"}</button>
+      {agents.length === 0 ? <div className="developer-empty"><strong>Create an agent first</strong><span>Recipient permissions are assigned to an individual agent identity.</span></div> : <>
+        <label className="developer-recipient-agent">Agent identity
+          <select value={selectedAgent?.id ?? ""} onChange={event => setAgentId(event.target.value)}>
+            {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+          </select>
+        </label>
+        <form className="developer-form" onSubmit={async event => {
+          event.preventDefault();
+          const normalizedAccountId = accountId.trim().toLowerCase();
+          if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(normalizedAccountId) || normalizedAccountId.length < 2 || normalizedAccountId.length > 64) {
+            setError("Enter a valid NEAR account ID using lowercase letters, numbers, dots, hyphens or underscores.");
+            return;
+          }
+          let expiry: string | null = null;
+          if (expiresAt) {
+            const localDate = new Date(expiresAt);
+            if (!Number.isFinite(localDate.getTime()) || localDate.getTime() <= Date.now()) {
+              setError("Expiry must be a valid future date and time.");
+              return;
+            }
+            expiry = localDate.toISOString();
+          }
+          const saved = await update({ action: "authorize_recipient", accountId: normalizedAccountId, label: label.trim() || undefined, expiresAt: expiry });
+          if (saved) { setAccountId(""); setLabel(""); setExpiresAt(""); }
+        }}>
+          <h3>Authorize a recipient</h3>
+          <label>Exact NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required maxLength={64} placeholder="recipient.near" /></label>
+          <label>Label (optional)<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} placeholder="Vendor or service name" /></label>
+          <label>Expiry (optional)<input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} /></label>
+          <button className="developer-button" type="submit" disabled={busy || !accountId.trim()}>{busy ? "Saving…" : "Authorize recipient"}</button>
         </form>
-        {loading ? <p>Loading recipient authorizations…</p> : records.length === 0 ? <p className="developer-empty">No recipient authorizations were returned for this workspace.</p> : <div className="developer-recipient-list">
-          {records.map(recipient => <article className="developer-recipient" key={recipient.agentId + ":" + recipient.account_id}>
-            <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code>
-              <span>Agent: {recipient.agentId}</span>
-              <span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
-            {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void save(recipient.agentId, { action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
-          </article>)}
-        </div>}
+        <div className="developer-recipient-list">
+          <div className="developer-activity-head"><h3>Agent allowlist</h3><button className="developer-button secondary" type="button" disabled={loading || busy} onClick={() => selectedAgent && void load(selectedAgent.id)}>Refresh</button></div>
+          {loading && <p>Loading recipient permissions…</p>}
+          {!loading && recipients.length === 0 && <p>No recipients authorized. Transfers to all recipients remain blocked.</p>}
+          {recipients.map(recipient => {
+            const status = recipientStatus(recipient);
+            return <div className="developer-recipient" key={recipient.account_id}>
+              <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
+              {status === "active" && <button type="button" disabled={busy} onClick={() => void update({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
+            </div>;
+          })}
+        </div>
       </>}
       {message && <p className="developer-message" role="status">{message}</p>}
       {error && <p className="developer-message developer-error" role="alert">{error}</p>}
@@ -562,59 +639,54 @@ function RecipientManagement({ agents, accessToken }: { agents: DeveloperAgent[]
   );
 }
 
-function AgentPlayground({ agentId }: { agentId: string }) {
-  const [recipient, setRecipient] = useState("");
-  const [amount, setAmount] = useState("");
-  const [payload, setPayload] = useState("");
-  const [message, setMessage] = useState("");
-
-  function generatePayload() {
-    setMessage("");
-    setPayload("");
-    const value = amount.trim();
-    if (!/^(0|[1-9][0-9]*)(\\.[0-9]{1,24})?$/.test(value)) {
-      setMessage("Enter a positive NEAR amount with no more than 24 decimal places.");
-      return;
-    }
-    const [whole, fraction = ""] = value.split(".");
-    const amountYocto = (BigInt(whole) * 10n ** 24n + BigInt((fraction + "0".repeat(24)).slice(0, 24))).toString();
-    if (amountYocto === "0") {
-      setMessage("Amount must be greater than zero.");
-      return;
-    }
-    const to = recipient.trim();
-    if (to.length > 64 || !/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(to)) {
-      setMessage("Enter a valid lowercase NEAR account ID (maximum 64 characters).");
-      return;
-    }
-    setPayload(JSON.stringify({ requestId: "encu-" + crypto.randomUUID(), to, amountYocto, expectedAgentId: agentId }, null, 2));
+function IntegrationGuide({ issuedToken, issuedWarning }: { issuedToken: string; issuedWarning: string }) {
+  const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const payload = JSON.stringify({
+    requestId: "invoice-payment-20261104-001",
+    to: "recipient.near",
+    amountYocto: "1000000000000000000000000",
+    expectedAgentId: "your-agent-id"
+  });
+  const request = `curl --request POST "$ENCU_BASE_URL/api/agent/transfer" --header "Authorization: Bearer $ENCU_AGENT_TOKEN" --header "Content-Type: application/json" --data '${payload}'`;
+  async function copyRequest() {
+    try { await navigator.clipboard.writeText(request); setCopied(true); }
+    catch { setCopied(false); }
   }
-
-  async function copyPayload() {
-    try {
-      await navigator.clipboard.writeText(payload);
-      setMessage("JSON payload copied.");
-    } catch {
-      setMessage("Clipboard unavailable. Select and copy the JSON manually.");
-    }
-  }
-
   return (
-    <section className="developer-playground" aria-label="Request Payload Builder">
-      <span className="developer-section-kicker">DEVELOPER TOOL</span>
-      <h4>Request Payload Builder</h4>
-      <p>Prepare a request body for this agent. This tool does not submit a request or execute a transfer.</p>
-      <div className="developer-playground-fields">
-        <label>Recipient NEAR account<input value={recipient} onChange={event => setRecipient(event.target.value)} placeholder="recipient.near" autoCapitalize="none" autoCorrect="off" /></label>
-        <label>Amount (NEAR)<input value={amount} onChange={event => setAmount(event.target.value)} placeholder="0.001" inputMode="decimal" /></label>
+    <section className="developer-panel developer-integration-workspace">
+      <span className="developer-section-kicker">API INTEGRATION</span>
+      <h2>Connect your backend to ENCU</h2>
+      <p>Integrate from a trusted server environment. Each request is authenticated as one agent identity, then evaluated against that agent’s allocation, transfer policy and recipient permissions.</p>
+      <div className="developer-integration-steps">
+        <article><span>01</span><div><strong>Set your server environment</strong><p>Configure the base URL for the ENCU deployment you use and store the agent token in your server-side secret manager.</p></div></article>
+        <article><span>02</span><div><strong>Send the agent-scoped request</strong><p>Use the exact agent token and a unique request ID. Set <code>expectedAgentId</code> to catch accidental token-to-agent mismatches.</p></div></article>
+        <article><span>03</span><div><strong>Reconcile the outcome</strong><p>A successful HTTP response is not proof of payment. Read the returned status and monitor the transaction record until NEAR finality is reconciled.</p></div></article>
       </div>
-      <div className="developer-playground-controls">
-        <button className="developer-button" type="button" onClick={generatePayload}>Generate payload</button>
-        {payload && <button className="developer-button secondary" type="button" onClick={() => void copyPayload()}>Copy JSON</button>}
+      <div className="developer-integration-env">
+        <strong>Server environment variables</strong>
+        <code>ENCU_BASE_URL=https://your-encu-deployment</code>
+        <code>ENCU_AGENT_TOKEN=your-agent-scoped-token</code>
+        <small>Do not prefix the token with NEXT_PUBLIC_, embed it in frontend code, or commit it to source control.</small>
       </div>
-      {message && <p className="developer-playground-warning" role="status">{message}</p>}
-      {payload && <pre className="developer-playground-payload">{payload}</pre>}
-      <p className="developer-playground-warning">A generated payload is not an authorization decision. Your backend must authenticate the agent and enforce current allocation, limits and recipient permissions before execution.</p>
+      <div className="developer-integration-code-heading"><h3>Native NEAR transfer request</h3><button className="developer-button secondary" type="button" onClick={() => void copyRequest()}>{copied ? "Copied" : "Copy cURL"}</button></div>
+      <pre className="developer-integration-code"><code>{request}</code></pre>
+      <div className="developer-integration-field-notes">
+        <div><strong><code>requestId</code></strong><span>8–128 characters. Keep it stable only when retrying the exact same logical payload. A conflicting replay returns 409.</span></div>
+        <div><strong><code>to</code></strong><span>Exact NEAR account ID. It must be authorized for this agent before execution.</span></div>
+        <div><strong><code>amountYocto</code></strong><span>Positive integer string in yoctoNEAR. 1 NEAR = 10²⁴ yoctoNEAR. No decimal point or exponent notation.</span></div>
+        <div><strong><code>expectedAgentId</code></strong><span>Optional identity assertion. ENCU returns 409 if it differs from the authenticated agent.</span></div>
+      </div>
+      {issuedToken && <div className="developer-token"><strong>Credential issued in this browser session</strong><button className="developer-button secondary" type="button" onClick={() => setShowToken(value => !value)}>{showToken ? "Hide token" : "Reveal token"}</button>{showToken && <code>{issuedToken}</code>}<p>{issuedWarning || "Copy this one-time token and store it in your backend secret manager. It is held in page memory only and is not persisted by ENCU in browser storage."}</p></div>}
+      <div className="developer-integration-responses">
+        <h3>Interpret the API response</h3>
+        <div><strong>202 · needs_review</strong><p>ENCU has accepted the request for follow-up, but the transfer is not confirmed as paid. This includes provider submission awaiting on-chain confirmation and uncertain provider outcomes.</p></div>
+        <div><strong>403 · blocked</strong><p>Policy denied the request, such as a recipient not being authorized, an allocation or transfer limit being exceeded, or the global execution policy blocking submission.</p></div>
+        <div><strong>409 · conflict or already processing</strong><p>Identity assertion mismatch, idempotency conflict, replay, or a request already being processed. Do not generate a new ID to bypass a conflict.</p></div>
+        <div><strong>429 · rate limited</strong><p>Read the <code>Retry-After</code> response header before retrying. The current route applies a per-agent request limit.</p></div>
+        <div><strong>400 / 401 / 503 / 500</strong><p>Invalid payload, missing or invalid agent credential, authentication/provider/rate-limit infrastructure unavailable, or reservation failure. Inspect the returned error field and retry only when safe.</p></div>
+      </div>
+      <div className="developer-integration-warning"><strong>Testnet execution warning</strong><p>This endpoint is not a dry run. Once the request passes policy checks, ENCU can submit a real Testnet transfer automatically. Use a controlled test recipient and small amount. A provider request ID or transaction hash alone is not finality; ENCU settles the reservation only after matching execution evidence is reconciled against NEAR finality.</p></div>
     </section>
   );
 }

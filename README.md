@@ -1,22 +1,153 @@
-## Dashboard navigation implementation handoff — 2026-11-04
+## RELEASE PUSH — AUTHORITATIVE HANDOFF (2026-11-04)
 
-**Current action:** the first dashboard reorganization slice and dedicated Recipients destination are committed on `agentguard/build-v1`. This is the current source of truth for the developer workspace navigation work.
+**Priority: finish end-to-end verification, integrate into V1, then submit. No new feature scope.**
 
-- Frontend commit: `1fac5db9eaea43ada1e3e7978f08b30327e3f527` — adds Connect / Setup, Overview and Agents navigation, a data-backed setup checklist, and workspace overview metrics/activity.
-- Styling commit: `c9b51076cb53ba5d202d64e3a2310787545ba22f` — adds responsive dark-theme navigation, checklist and overview styling.
-- Files changed: `app/developers/page.tsx`, `app/developers/developers.css`.
-- Connect / Setup checks authenticated workspace, whether any agents exist, whether any agent has non-zero allocation, and active recipient authorizations fetched from the existing per-agent config route. Credential storage is intentionally not marked complete because the server cannot verify that a one-time token was safely stored.
-- Overview uses the existing agent and transaction data: agent count, summed allocations, spent and reserved amounts, loaded request count, and latest requests. These are agent-allocation totals, not a new authoritative treasury-wide balance endpoint.
-- Existing agent creation, rotation, activate/deactivate, allocation and policy configuration, request payload builder, and transaction activity remain in the Agents view. Recipient authorization and revocation now live in a dedicated Recipients destination and continue using the existing per-agent configuration API. No API, schema, migration or database changes were made.
-- GitHub Actions CI run `41789507656` completed successfully: dependency installation, dependency audit report, lint, type-check, production build, API security/lifecycle tests and NEAR finality reconciliation tests all passed.
-- Vercel status check reported failure with the existing build-rate-limit message. No deployment was manually initiated. Do not treat the branch as visually verified in a new preview yet.
-- No merge to `main`, production deployment, database mutation, branch deletion or live transfer was performed or authorized.
+### Current branch state
+- Active feature branch: `encu/dashboard-end-to-end`, head `5c877b5d13e76e0de9d2894a07d3336b45844a8b`.
+- V1 branch: `agentguard/build-v1`, head `5222c5d535785d07a2761942b92c3107fa6e3588`.
+- PR #5 remains open and unmerged. It is the original feature PR; its branch divergence is handled by the reconciliation candidate below.
+- Reconciliation candidate: `encu/release-reconciliation`, based on the V1 head above. The candidate merge commit uses V1 as first parent and the feature branch as second parent, so both histories remain reachable and neither original branch is rewritten.
+- Common ancestor: `f9ea90f56f2d29d5c464457434b1d4bc52dcce73`. At the last comparison the feature branch had 72 commits beyond the merge base and V1 had 9.
+- No production deployment, Supabase mutation, branch deletion, force-push, or Testnet transfer has been performed.
 
-**Next implementation slice:** add Integration (quickstart and one-time credential handoff), Transactions (request inspection within fields actually returned), Audit & Security (existing audit endpoint), and Developer Tools (retain the payload builder and execution explainer). Preserve the dark V1 interface and existing behavior. Before adding transaction signer/action/finality details, investigate the actual API and persisted evidence; do not fabricate fields absent from the endpoint.
+### Reconciliation decision
+The nine V1 commits since the common ancestor changed four files also changed by the feature branch: `README.md`, `app/developers/page.tsx`, `app/developers/developers.css`, and `app/developers/agent-configuration.tsx`.
 
-This section supersedes any older README handoff that describes the developer workspace as a single undifferentiated Agents page or names the rejected editorial-light interface as canonical.
+The candidate tree adopts the feature branch's newer, broader implementations for those overlapping files, after checking that the target branch's dashboard work is represented:
+- V1's Connect / Setup, Overview, Agents and Recipients destinations are present in the feature workspace and expanded with Integration, Transactions, Audit & Security, Developer tools and How ENCU works.
+- Recipient authorization remains a dedicated destination; it is not reintroduced into Agent Configuration.
+- The feature Agent Configuration retains asynchronous-load race protection and the saved-configuration refresh callback.
+- V1's responsive navigation/setup/overview CSS is superseded by the feature workspace's responsive navigation, setup, overview, integration and tools styling across `developers.css` and `dashboard-workflow.css`.
+- V1's useful handoff details are retained here: its setup checklist is data-backed, recipient status is exposed through the existing agents API, overview figures are per-agent allocation totals rather than a treasury-wide balance, and credential storage is not falsely represented as server-verifiable.
+- The feature tree also retains the audit endpoint/log, execution explainer, request builder, and the wider workspace destinations.
+
+This is a deliberate semantic reconciliation, not a claim that all four files had literal Git conflict markers. Both source branches remain unchanged. Candidate CI and functional tests are still required before it can replace PR #5 as the release PR.
+
+### Verification status
+- Previous feature-branch CI passed lint, TypeScript, production build, Agent API security/lifecycle tests, and NEAR finality reconciliation tests. Those runs predate the reconciliation candidate and do not validate its merge commit.
+- Browser-level developer sign-in, authenticated request submission, policy-denial behavior, audit isolation and finality refresh remain unverified.
+- Vercel Preview has been rate-limited. The Vercel sandbox API returned HTTP 400 on repeated attempts; stop retrying it. Do not treat a Preview as visually verified unless a current READY deployment is available.
+- Start with non-transfer E2E checks. A real Testnet transfer requires separate explicit user approval and must never be blindly retried after an ambiguous response.
+
+### Release sequence
+1. Run CI on `encu/release-reconciliation`; resolve only concrete failures.
+2. Complete the available non-transfer end-to-end checks and document any remaining Preview-dependent checks.
+3. Open/refresh the release PR from `encu/release-reconciliation` into `agentguard/build-v1`; merge only after checks pass and user approval.
+4. Re-fetch V1, run V1 CI and smoke tests.
+5. Merge `agentguard/build-v1` into `main` only after V1 validation and user approval.
+6. Verify public demo availability, README/setup accuracy, repository visibility, architecture/security claims, and required hackathon submission materials. Do not claim an unavailable demo is live.
+
+### Operating rules
+- Optimize for submission: no unrelated features, redesigns or refactors. Fix only E2E, integration, release or submission blockers.
+- Preserve the accepted dark V1 UI and responsive diagrams/explainers. UI name is ENCU; internal AgentGuard identifiers remain.
+- Do not merge, deploy Production, alter Supabase, delete branches, force-push, or initiate a Testnet transfer without explicit approval.
+- After each meaningful milestone, update this handoff with exact branch/head, test run IDs/results, blockers and one immediate next action.
+
+**Immediate next action:** verify the candidate merge commit and trigger/inspect its CI. Then use its actual CI results to decide whether the release PR is ready.
 
 ---
+
+# IMPORTANT HANDOFF — CURRENT ACTION / READ THIS FIRST (2026-11-04)
+
+This block is the authoritative continuation point if the ChatGPT conversation resets. It supersedes older branch, UI, deployment and next-step instructions elsewhere in this README when they conflict. Do not begin by following historical notes below.
+
+## Repository state now
+
+- Repository: `BigWave45/agentguard`.
+- Product name: **ENCU**. Internal code and repository identifiers may still say AgentGuard.
+- Current implementation branch: `encu/dashboard-end-to-end`.
+- Current PR: [#5 — ENCU developer dashboard: payload submission, configuration and audit flow](https://github.com/BigWave45/agentguard/pull/5).
+- PR base: `agentguard/build-v1`. PR head: re-fetch PR #5 and the branch head before continuing; do not rely on a copied SHA in this handoff.
+- PR #5 is open and unmerged. Do not merge it, merge to `main`, deploy Production, change either Supabase project, delete branches, or initiate a Testnet transfer without the user's explicit approval.
+- The accepted interface is the **dark V1 design**. The editorial-light redesign was rejected because it hid important controls. Do not revive it.
+- Vercel Preview is currently blocked by a build-rate-limit failure. No READY Preview has been verified for the current PR head. Continue source work and CI; do not waste attempts repeatedly deploying while rate-limited.
+- Do not claim browser-level verification until a READY Preview is available and the user-visible flows have actually been tested.
+
+## CURRENT IMPLEMENTATION STATE — 2026-11-04
+
+The developer dashboard information-architecture slice is in progress on `encu/dashboard-end-to-end`. The accepted interface is the dark V1 UI. Existing execution diagrams and explainers are core product UI and must remain mounted and responsive.
+
+### Completed in source
+- Eight destinations are wired in the developer workspace: Overview, Agents, Recipients, Integration, Transactions, Audit & Security, Developer tools and How ENCU works.
+- Overview authority totals/activity, dedicated recipient management, integration quickstart and response explanations, developer tools payload builder, and execution explainers are present.
+- Newly issued/rotated credentials are scoped to their matching agent playground in page memory and cleared on sign-out.
+- Agent configuration saves refresh parent agent/workspace state. Successful request submission refreshes transaction activity and audit activity.
+- Overview explainer sidebar was restored to the dark V1 palette.
+- Agent configuration now exposes a retry action after a failed initial load.
+- Recipient management has been audited and hardened:
+  - Recipient records are loaded per selected agent; stale in-flight responses cannot overwrite the newly selected agent's list.
+  - Changing agent clears the previous recipient list and unsaved form state.
+  - Account IDs are normalized to lowercase and validated against the backend's exact account-ID format before submission.
+  - Optional expiry must parse as a future local date/time before conversion to ISO UTC.
+  - Form values are cleared only after a successful authorization response.
+  - Expired active records are displayed as expired, and only effectively active records expose the revoke action.
+  - The backend reserve function requires an active recipient with no expiry or an expiry later than database time. The pre-submission claim/revalidation function repeats that check, so expiration/revocation between reservation and provider submission is blocked.
+- Agent configuration now clears prior-agent values on agent changes and guards load/save responses against stale agent state.
+
+### Connect / Setup landing destination — current slice
+
+- The signed-in developer workspace now opens at **Connect / Setup**. Overview remains a separate destination; the existing execution explainer remains available in Overview and How ENCU works.
+- The agent-list API now includes an `activeRecipientCount`, computed from each owned agent's active and unexpired recipient records. It does not expose recipient data from agents the developer does not own.
+- The checklist evaluates agent creation, positive allocation, configured transfer limits and recipient authorization against loaded API records. Allocation, limits and recipient checks require coverage for every active agent, not merely one configured agent.
+- Autonomous allowance is shown as optional. A configured allowance is not represented as extra allocation.
+- One-time credential issuance is distinguished from secure storage. The dashboard cannot inspect an external secret manager. The user can make a clearly labelled manual attestation for credential storage and backend integration; those attestations are page-session state, not persisted verification.
+- A persisted request marks the first-request step complete, but the UI explicitly states that request receipt is not proof of payment or NEAR finality.
+- The setup UI uses the existing dark V1 styling and responsive layout. No Figma replacement, light redesign, new provider, schema migration or live transfer was introduced.
+
+- CI trigger correction: `.github/workflows/ci.yml` now includes `agentguard/build-v1` as a `pull_request` target and `encu/dashboard-end-to-end` as a `push` target. The push trigger ensures validation runs on this implementation branch even if GitHub evaluates the pull-request workflow definition from the base branch. Wait for a new run on the updated PR head before reporting validation results.
+
+### Latest commits for this slice
+- `aae105b2a1b17255909314961f2ec40a4243ef55` — dark V1 explainer sidebar.
+- `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f` — clear in-memory credentials on auth-session loss.
+- `b6974bd152e45532dc140eadb46e38643f0a05b8` — agent configuration retry state.
+- `3b411573f64f40dd58de8663642d701545b6dba1` — README handoff at that stage.
+- `4555a75b61178bd38ce84b5779fdf2575b8ead18` — configuration stale-load protection.
+- `856a4a082c9dfb940e321a5fdb44537e492977e5` — recipient expiry validation and agent-switch state.
+- `92d4a11ee8b79e3d8fa1e5816519a07ad95103ac` — import request ref for recipient race protection.
+- `777332a42821b7f09cbca28929145fba869674f8` — configuration save/reload race protection.
+- `5913a508f202679a32168bf766e95773170174f4` — recipient update responses use the current selected agent, not a stale render closure.
+- `c0d634cd37e0dda10d73a79ab905b2d8f6e6c3f2` — stale configuration save errors are ignored after switching agents.
+
+### Remaining work / next action
+1. Run lint, TypeScript, production build and relevant API/concurrency/reconciliation tests against the current branch. Record actual results; do not infer passing CI from source inspection.
+2. Continue the documented Connect / Setup initial landing state, with checklist status derived from real agent, allocation/policy, recipient, credential and transaction state. Do not claim a credential is securely stored because it was merely displayed.
+3. Complete transaction search and request inspection using persisted evidence only. Mark missing signer/action/recipient verification and NEAR finality evidence unavailable.
+4. Reconcile `docs/developer-experience-v1.md` with the current developer-owned account model and keep administrator-only controls out of the developer workspace.
+5. Browser/mobile verification remains blocked until Vercel produces a READY Preview. The last known Vercel blocker is the build-rate-limit failure.
+
+### Release boundary
+PR #5 is open against `agentguard/build-v1`, unmerged, and currently reports `mergeable=false`. Re-fetch the PR and branch head before each continuation. Do not merge, deploy, alter Supabase projects, delete branches or initiate a Testnet transfer without the user's explicit approval. Do not claim browser verification until a READY Preview has been tested.
+
+---
+
+## Dashboard end-to-end work — 2026-11-04
+
+**Latest source update:** `encu/dashboard-end-to-end` now also displays account-scoped allocated, spent, reserved and available authority across the developer's owned agents. Negative computed headroom is shown as a ledger mismatch, not silently clamped. The integration PR is [PR #5](https://github.com/BigWave45/agentguard/pull/5), open against `agentguard/build-v1` and unmerged.
+
+**Preview blocker:** Vercel currently reports the `agentguard` Preview check as failed with a build-rate-limit upgrade target. Recent deployments for this branch were canceled; there is no READY Preview for the current head. Do not treat source changes as browser-tested until Vercel can produce a READY Preview.
+
+
+The active implementation branch for the next developer-dashboard slice is `encu/dashboard-end-to-end`, based directly on `agentguard/build-v1`. This is a separate, unmerged work branch. The accepted UI remains the dark V1 developer workspace; the editorial-light redesign is rejected because it hid important controls.
+
+**Implemented in source on this branch**
+- The payload builder is extracted into `app/developers/agent-playground.tsx`.
+- NEAR decimal parsing uses a correctly escaped decimal-point regex and converts NEAR to yoctoNEAR using integer arithmetic.
+- Payload generation and JSON copying remain separate from submission.
+- An explicit, separately confirmed testnet submission action posts the generated payload to `POST /api/agent/transfer` with the selected agent bearer token. The UI warns that a permitted request can initiate a real NEAR testnet transfer. It does not use the developer's Supabase session token as the agent credential.
+- The agent token is held in component state only; it is not persisted by this component.
+- The developer-scoped audit endpoint/feed and execution-flow explainer are mounted in the existing V1 workspace, with dark V1 styling in `dashboard-workflow.css`.
+- After a successful submission response, the dashboard refreshes transaction activity.
+
+**Not yet verified**
+- Vercel Preview build and browser-level interaction.
+- Supabase sign-in on the actual preview, agent-token submission, policy-denial cases, provider response handling and subsequent NEAR finality reconciliation.
+- Audit feed results and cross-developer isolation under authenticated browser sessions.
+- Full responsive layout and every existing configuration action.
+
+A source implementation is not evidence of an end-to-end pass. Test with an authorized test agent and a deliberately small amount only after confirming its allocation, autonomous allowance, recipient authorization and the configured testnet wallet. Never blindly retry an ambiguous transfer response.
+
+**Release boundary:** do not merge to `agentguard/build-v1` or `main`, deploy Production, change either Supabase project, delete branches or initiate a live transfer without explicit user authorization. PR review and Preview validation only.
+
 
 ## ENCU UI decision and current reference — 2026-11-04
 
@@ -664,3 +795,60 @@ The first native contract release is scoped to native NEAR transfers. NEP-141 to
 OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. ENCU does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
 
 The planned native ENCU contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
+
+
+## Dashboard branch reconciliation handoff (2026-11-04)
+
+The dashboard navigation commits `f660fda` (destination navigation) and `9510b41` (navigation styling) are siblings of the earlier PR branch head, not ancestors of the current PR head. Do not cherry-pick or merge them blindly. Verification against current `encu/dashboard-end-to-end` confirms the navigation implementation is already present: `app/developers/page.tsx` contains Overview, Agents, Transactions, Audit & Security, and How ENCU works; `app/developers/developers.css` contains responsive navigation styling. The page file blob matches the file at `f660fda`; the current branch has its own stylesheet revision containing the navigation styles. The detached commits do not need importing to recover these changes.
+
+Current PR #5 head: `fc70b4db13a941681d13d2e7db82893e76b733255` on `encu/dashboard-end-to-end`; base: `agentguard/build-v1`. PR #5 remains open and unmerged. The base branch has advanced independently; GitHub reports the PR as not mergeable. Do not merge, rebase, deploy, or change the base branch without explicit authorization.
+
+The five destinations are not the complete dashboard information architecture. Recipient permissions remain inside agent configuration rather than a dedicated destination; Overview remains a developer allocation summary, not the full treasury operator overview. Keep the execution explainer and responsive diagrams mounted. Next implementation slice: inspect the recipient API contract and agent configuration component, then add a dedicated Recipients destination on this PR branch without duplicating or weakening authorization controls. No schema change or live transfer is needed.
+
+
+### Recipient destination verification (2026-11-04)
+
+The current PR branch contains the dedicated Recipients destination in `app/developers/page.tsx` and responsive styling in `app/developers/developers.css`. It reads each selected agent's recipient records through the existing authenticated `GET /api/developer/agents/config?id=...` route and performs authorization/revocation through existing authenticated PATCH actions. No API or schema change was made. The destination is wired into the six-item developer navigation and preserves the execution explainer diagrams.
+
+A source cleanup in `app/developers/agent-configuration.tsx` removed a stale malformed recipient-state fragment and unused recipient type field left after recipient controls were moved out of agent configuration. Commit: `601d4612c0bea4c6b9fdf90708ee0bf8a3af7837`. GitHub re-fetch confirms the cleanup, balanced JSX div tags, Recipients navigation/component wiring, and responsive recipient styles. No GitHub Actions workflow run is exposed for this commit. The Vercel status check currently reports success, but that does not substitute for independently verifying the preview or a full CI run. No deployment was initiated from this task.
+
+Next: audit remaining dashboard destinations against the documented information architecture. The developer workspace is not the administrator treasury console: do not add admin-only treasury ceiling, emergency-stop or system-health controls to the developer UI. Improve the developer Overview only with data returned to the authenticated developer, and keep its explanatory diagrams intact. Recheck PR mergeability and CI before release; do not merge or deploy without explicit approval.
+
+
+### Developer Overview implementation (2026-11-04)
+
+The developer Overview now supplements allocated/spent/reserved/available authority totals with live, authenticated-workspace indicators: total/active/inactive agents, agents with a positive allocation, zero-allocation agents, in-flight requests, blocked/failed requests, per-agent readiness, and the five most recent transaction requests. It uses the existing `/api/developer/agents` and `/api/developer/transactions` responses already loaded by the page; no new API route, database migration, or administrator permission was introduced. Refresh controls call the existing authenticated loaders. The responsive panels are styled in `app/developers/developers.css` and collapse to one column on narrow screens. Execution explainer diagrams remain mounted on Overview.
+
+Commits: page implementation `35a418be4a3e95ba09e39b03e37b2ad5d5732cde`; responsive styling `6794a8c9ee8bdd3983e6a9021d91b315b2f0f291`. GitHub re-fetch verified both files and the Overview wiring. No GitHub Actions workflow run is exposed for the current head; the Vercel status check reports success, but no preview was independently opened and no deployment was initiated. PR #5 remains open and GitHub reports it as not mergeable. Do not merge, rebase, or deploy without explicit approval.
+
+Next: inspect and implement the Integration destination as an actual guided integration experience, including request authentication, payload structure, safe testnet warning, response/status interpretation, and the already-built request builder handoff. Verify every displayed instruction against the real API contract and keep credentials out of persisted browser storage. Do not alter live transfer behavior or backend schema for this UI slice.
+
+
+### Integration destination implementation (2026-11-04)
+
+Rebuilt `IntegrationGuide` as a guided API integration experience using the actual `app/api/agent/transfer/route.ts` contract. It explains server-side bearer-token handling, the optional `expectedAgentId` assertion, unique request IDs/idempotent retries, exact recipient account IDs, integer yoctoNEAR amounts, and the distinction between HTTP acceptance and NEAR finality. The copyable cURL sample targets the verified `POST /api/agent/transfer` route and includes the optional identity assertion. Response guidance covers the route's 202, 403, 409, 429, 400, 401, 503 and 500 paths; the Testnet warning explicitly states that the endpoint is not a dry run and can submit a real transfer. Newly issued credentials are hidden until explicitly revealed in the Integration view and remain page-memory only. Responsive layout styles are in `app/developers/developers.css`.
+
+Commits: guided Integration component `e8e16801409e1ce7eeb6c822633432aa370e369e`; styles `11333bf4ecb8c84e35b2bc0eba828948c4482aeb`; cURL example correction `a95cc59fbd15feac0d82df407ceb586fcc279e55`. Re-fetched source confirms the route path, identity assertion, warning, and responsive styles. No API or database changes and no live transfer were made. GitHub Actions does not expose a workflow run for this head. The Vercel status is failing due the known build-rate-limit blocker; preview is not verified. PR #5 remains open and unmergeable. Do not deploy or merge without explicit authorization.
+
+Next: review the developer workspace end-to-end for UI consistency and functional completeness, especially navigation persistence, mobile behavior, loading/empty/error states, token visibility/expiry, and the dashboard explainer placement. Fix any concrete issues found, then rerun available checks before considering release.
+
+
+Integration sample correction: the cURL body is now generated with `JSON.stringify` and embedded as a shell single-quoted JSON argument, avoiding escaped-quote corruption when copied. Commit: `cc2cf992e0f516407f5cc3799553027b3896fed9`. Re-fetched source confirms the request payload keys match the live transfer route schema.
+
+
+### Developer workspace audit follow-up (2026-11-04)
+
+The end-to-end review confirmed the existing execution explainer component is mounted on both Overview and How ENCU Works, with responsive diagram styles in `dashboard-workflow.css`. The Overview's right-hand explainer sidebar had retained a light/white treatment inconsistent with the approved dark V1 workspace. Restored its dark surface, border, heading, body and footnote contrast in `developers.css`. Commit: `aae105b2a1b17255909314961f2ec40a4243ef55`.
+
+The auth-state listener previously cleared agents and transactions when the Supabase session became null, but did not clear a newly issued/rotated agent credential held in page memory. It now also clears `issuedToken`, `issuedTokenAgentId` and `issuedWarning` on any null auth-state transition, not only when the user presses Sign out. Commit: `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f`. GitHub re-fetch verified both changes. This closes the session-expiry/sign-out UI state leak; credentials are still not written to browser storage.
+
+PR #5 remains open and GitHub currently reports `mergeable=false`. No merge or deployment was attempted. Build/preview and runtime browser checks remain unverified due the existing Vercel build-rate-limit blocker. Next: continue the screen-by-screen audit of navigation history/mobile overflow, agent configuration validation, recipient expiry edge cases, transaction status presentation and audit refresh behavior. Fix only defects confirmed against the live API/UI code; then request an available CI run before any release action.
+
+
+Agent configuration load-state fix: when the authenticated configuration GET fails, the component previously remained on a permanent “Loading configuration…” placeholder even though an error was shown below. Added a retry action to re-fetch the selected agent's configuration without changing any values or backend behavior. Commit: `b6974bd152e45532dc140eadb46e38643f0a05b8`. GitHub re-fetch confirms the retry control is present.
+
+### CI lint and type-check remediation (2026-11-04)
+
+The first CI run after adding Connect / Setup failed in lint. The job log identified a missing closing JSX expression brace in the Audit view, two unescaped apostrophes in the agent request builder, and a missing `agentId` effect dependency. These were corrected on `encu/dashboard-end-to-end`. The next run passed lint but exposed a TypeScript inference issue in the setup checklist action type (the state initializer had been inferred too narrowly in that run) and a recipient-effect dependency warning. The checklist now declares its full workspace-view union explicitly, and the recipient effect uses a stable selected-agent ID dependency. Latest remediation commit: `e4e9846a8d8cee9f32a100a001fb1560c5d4a71b`. CI run `41799008076` is currently in progress; do not mark the branch validated until lint, type-check, production build, and both test suites complete successfully. Vercel preview remains blocked by the existing build-rate-limit issue. No merge, deployment, database change, or live transfer was performed.
+
+Next: inspect the result of CI run `41799008076`; fix any remaining concrete failures and rerun. Once checks pass, continue the developer workspace audit and update this handoff. Do not merge or deploy without explicit approval.

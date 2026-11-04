@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-type Props = { agentId: string; accessToken: string };
+type Props = { agentId: string; accessToken: string; onSaved?: () => void };
 type Config = {
   allocation: { allocation_limit_yocto: string; spent_yocto: string; reserved_yocto: string } | null;
   policy: { max_transfer_yocto: string | null; daily_limit_yocto: string | null; weekly_limit_yocto: string | null; auto_spend_limit_yocto: string | null } | null;
@@ -29,7 +29,7 @@ function displayNear(value: string | null | undefined): string {
   return formatted ? `${formatted} NEAR` : "0 NEAR";
 }
 
-export default function AgentConfiguration({ agentId, accessToken }: Props) {
+export default function AgentConfiguration({ agentId, accessToken, onSaved }: Props) {
   const [config, setConfig] = useState<Config | null>(null);
   const [allocation, setAllocation] = useState("");
   const [maxTransfer, setMaxTransfer] = useState("");
@@ -39,13 +39,18 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const loadVersion = useRef(0);
+  const currentAgentId = useRef(agentId);
+  currentAgentId.current = agentId;
 
-  const load = useCallback(async () => {
-    const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agentId)}`, {
+  const load = useCallback(async (requestedAgentId = agentId) => {
+    const version = ++loadVersion.current;
+    const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(requestedAgentId)}`, {
       headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Could not load configuration.");
+    if (version !== loadVersion.current) return;
     const data = body as Config;
     setConfig(data);
     setAllocation(formatNear(data.allocation?.allocation_limit_yocto));
@@ -56,10 +61,13 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
   }, [agentId, accessToken]);
 
   useEffect(() => {
-    let active = true;
-    load().catch(e => { if (active) setError(e instanceof Error ? e.message : "Configuration unavailable."); });
-    return () => { active = false; };
-  }, [load]);
+    setConfig(null);
+    setAllocation(""); setMaxTransfer(""); setDaily(""); setWeekly(""); setAutoSpend("");
+    setError(""); setMessage("");
+    const version = loadVersion.current + 1;
+    load(agentId).catch(e => { if (loadVersion.current === version) setError(e instanceof Error ? e.message : "Configuration unavailable."); });
+    return () => { loadVersion.current += 1; };
+  }, [load, agentId]);
 
   async function save(payload: Record<string, unknown>) {
     setBusy(true); setError(""); setMessage("");
@@ -71,10 +79,12 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.reason ?? body.error ?? "Configuration update failed.");
+      if (currentAgentId.current !== agentId) return;
       setMessage("Saved.");
-      await load();
+      await load(agentId);
+      onSaved?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Configuration update failed.");
+      if (currentAgentId.current === agentId) setError(e instanceof Error ? e.message : "Configuration update failed.");
     } finally { setBusy(false); }
   }
 
@@ -115,7 +125,9 @@ export default function AgentConfiguration({ agentId, accessToken }: Props) {
             <label>Maximum autonomous spend (NEAR)<input inputMode="decimal" value={autoSpend} onChange={e => setAutoSpend(e.target.value)} placeholder="Clear to disable autonomous spend" /></label>
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
-        </> : <p>Loading configuration…</p>}
+        </> : <div className="developer-config-load-state">
+          {error ? <button className="developer-button secondary" type="button" onClick={() => { setError(""); const version = loadVersion.current + 1; void load(agentId).catch(e => { if (loadVersion.current === version) setError(e instanceof Error ? e.message : "Configuration unavailable."); }); }}>Retry loading configuration</button> : <p>Loading configuration…</p>}
+        </div>}
         {message && <p className="developer-message" role="status">{message}</p>}
         {error && <p className="developer-message developer-error" role="alert">{error}</p>}
       </div>
