@@ -61,6 +61,8 @@ export default function DeveloperPortal() {
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
   const [activeView, setActiveView] = useState<"setup" | "overview" | "agents" | "recipients" | "integration" | "transactions" | "audit" | "tools" | "execution">("setup");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [credentialStorageConfirmed, setCredentialStorageConfirmed] = useState(false);
+  const [integrationConfirmed, setIntegrationConfirmed] = useState(false);
 
   const loadAgents = useCallback(async (accessToken: string) => {
     setAgentsBusy(true);
@@ -135,6 +137,8 @@ export default function DeveloperPortal() {
         setIssuedToken("");
         setIssuedTokenAgentId("");
         setIssuedWarning("");
+        setCredentialStorageConfirmed(false);
+        setIntegrationConfirmed(false);
       }
     });
     return () => {
@@ -188,6 +192,8 @@ export default function DeveloperPortal() {
     setTransactions([]);
     setIssuedToken("");
     setIssuedTokenAgentId("");
+    setCredentialStorageConfirmed(false);
+    setIntegrationConfirmed(false);
     setAuthMessage("Signed out.");
   }
 
@@ -198,6 +204,7 @@ export default function DeveloperPortal() {
     setAgentMessage("");
     setAgentError("");
     setIssuedToken("");
+    setCredentialStorageConfirmed(false);
     try {
       const response = await fetch("/api/developer/agents", {
         method: "POST",
@@ -226,6 +233,7 @@ export default function DeveloperPortal() {
     setAgentError("");
     setAgentMessage("");
     setIssuedToken("");
+    setCredentialStorageConfirmed(false);
     try {
       const response = action === "rotate"
         ? await fetch("/api/developer/agents/rotate", {
@@ -335,7 +343,7 @@ export default function DeveloperPortal() {
               </div>
 
               {activeView === "setup" && (() => {
-                const loaded = !agentsBusy && !transactionsBusy;
+                const loaded = !agentsBusy && !transactionsBusy && !agentError && !transactionsError;
                 const activeAgents = agents.filter(agent => agent.active);
                 const allocatedAgents = activeAgents.filter(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
                 const policyConfiguredAgents = activeAgents.filter(agent => !!agent.policy && !!(agent.policy.max_transfer_yocto || agent.policy.daily_limit_yocto || agent.policy.weekly_limit_yocto));
@@ -349,8 +357,9 @@ export default function DeveloperPortal() {
                   { title: "Set spending limits", detail: "Configure at least one per-transfer, daily or weekly cap.", count: policyConfiguredAgents.length, total: activeAgents.length, done: policyConfiguredAgents.length > 0, action: "agents" as const, actionLabel: "Set limits" },
                   { title: "Authorize exact recipients", detail: "Each agent needs at least one active, unexpired account authorization.", count: authorizedAgents.length, total: activeAgents.length, done: authorizedAgents.length > 0, action: "recipients" as const, actionLabel: "Manage recipients" },
                   { title: "Configure autonomous allowance", detail: "Optional. Enables autonomous submission within the configured cumulative allowance.", count: autonomousAgents.length, total: activeAgents.length, done: autonomousAgents.length > 0, action: "agents" as const, actionLabel: "Configure allowance", optional: true },
-                  { title: "Copy and securely store an agent token", detail: "ENCU cannot verify storage in your own secret manager. Tokens are shown once and held only in this page session.", count: hasIssuedCredential ? 1 : 0, done: hasIssuedCredential, action: "integration" as const, actionLabel: hasIssuedCredential ? "View one-time token" : "Open integration", manual: true },
-                  { title: "Integrate your backend", detail: "Add the agent bearer token to your server-side secret manager and implement the request contract.", done: false, action: "integration" as const, actionLabel: "Open quickstart", manual: true },
+                  { title: "Issue an agent credential", detail: "A one-time credential is available only immediately after creation or rotation.", count: hasIssuedCredential ? 1 : 0, done: hasIssuedCredential, action: "agents" as const, actionLabel: "Create or rotate token" },
+                  { title: "Confirm secure credential storage", detail: "Store the token in your backend secret manager. This confirmation is your attestation; ENCU cannot inspect external storage.", done: credentialStorageConfirmed, action: "integration" as const, actionLabel: credentialStorageConfirmed ? "Review integration" : "Open integration", manual: true },
+                  { title: "Confirm backend integration", detail: "Implement the request contract in your backend. This confirmation is manual and is not independently verified by ENCU.", done: integrationConfirmed, action: "integration" as const, actionLabel: integrationConfirmed ? "Review quickstart" : "Open quickstart", manual: true },
                   { title: "Send the first request", detail: "A persisted request proves the API received a request. It does not by itself prove payment or NEAR finality.", count: transactions.length, done: hasRequests, action: "transactions" as const, actionLabel: "View requests" }
                 ];
                 const completed = items.filter(item => item.done && !item.optional).length;
@@ -369,7 +378,8 @@ export default function DeveloperPortal() {
                       <button className="developer-button secondary" type="button" onClick={() => setActiveView(item.action)}>{item.actionLabel}</button>
                     </article>)}
                   </div>
-                  <div className="developer-setup-footnote"><strong>Credential and payment evidence</strong><p>Copying a token does not prove it was stored securely. An API request does not prove a transfer settled. ENCU keeps those claims separate from the checks it can verify.</p></div>
+                  <div className="developer-setup-confirmations"><div><strong>Credential storage attestation</strong><p>Only confirm after saving the one-time token in a server-side secret manager.</p><button className="developer-button secondary" type="button" disabled={!hasIssuedCredential && !credentialStorageConfirmed} onClick={() => setCredentialStorageConfirmed(value => !value)}>{credentialStorageConfirmed ? "Undo storage confirmation" : "I stored the credential securely"}</button></div><div><strong>Backend integration attestation</strong><p>Only confirm after your backend can construct the ENCU transfer request with its agent credential.</p><button className="developer-button secondary" type="button" onClick={() => setIntegrationConfirmed(value => !value)}>{integrationConfirmed ? "Undo integration confirmation" : "My backend integration is complete"}</button></div></div>
+                  <div className="developer-setup-footnote"><strong>Credential and payment evidence</strong><p>Manual confirmations are developer attestations, not evidence independently verified by ENCU. An API request does not prove a transfer settled.</p></div>
                   <div className="developer-setup-shortcuts"><button type="button" onClick={() => setActiveView("overview")}>Workspace overview</button><button type="button" onClick={() => setActiveView("execution")}>Understand execution controls</button></div>
                 </section>;
               })()}
