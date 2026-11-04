@@ -1,3 +1,82 @@
+# IMPORTANT HANDOFF — CURRENT ACTION / READ THIS FIRST (2026-11-04)
+
+This block is the authoritative continuation point if the ChatGPT conversation resets. It supersedes older branch, UI, deployment and next-step instructions elsewhere in this README when they conflict. Do not begin by following historical notes below.
+
+## Repository state now
+
+- Repository: `BigWave45/agentguard`.
+- Product name: **ENCU**. Internal code and repository identifiers may still say AgentGuard.
+- Current implementation branch: `encu/dashboard-end-to-end`.
+- Current PR: [#5 — ENCU developer dashboard: payload submission, configuration and audit flow](https://github.com/BigWave45/agentguard/pull/5).
+- PR base: `agentguard/build-v1`. PR head at this handoff: `cd4182fa53b06c52614bc6993542d73dfb52c925`.
+- PR #5 is open and unmerged. Do not merge it, merge to `main`, deploy Production, change either Supabase project, delete branches, or initiate a Testnet transfer without the user's explicit approval.
+- The accepted interface is the **dark V1 design**. The editorial-light redesign was rejected because it hid important controls. Do not revive it.
+- Vercel Preview is currently blocked by a build-rate-limit failure. No READY Preview has been verified for the current PR head. Continue source work and CI; do not waste attempts repeatedly deploying while rate-limited.
+- Do not claim browser-level verification until a READY Preview is available and the user-visible flows have actually been tested.
+
+## CURRENT ACTION TO COMPLETE — DEVELOPER DASHBOARD INFORMATION ARCHITECTURE
+
+The immediate task is **not another feature audit and not a visual redesign**. It is to bring the developer dashboard's actual layout into line with the already documented ENCU experience, while preserving the accepted dark V1 design and all working controls.
+
+The two source documents were reviewed on 2026-11-04:
+- `docs/developer-experience-v1.md`
+- `docs/dashboard-control-inventory.md`
+
+They describe the intended layout and interactions, but several are not present in the current developer dashboard. The current implementation in `app/developers/page.tsx` is still largely one stacked workspace with agent cards and embedded tools. The admin control inventory is a separate administrator-console specification; **do not copy administrator-only controls into the developer dashboard**.
+
+### Required developer-facing structure
+
+Implement these as clearly navigable destinations or distinct page sections, not merely more cards stacked into one long page:
+
+1. **Connect / Setup — initial signed-in landing state.** A compact checklist showing the developer's progress: create an agent, configure allocation and limits, authorize exact recipients, securely save the one-time agent credential, integrate the API and make the first request. Show completion from actual loaded state; do not invent readiness.
+2. **Overview.** Developer-scoped allocated, spent, reserved and available authority; recent activity; agent readiness. Do not expose global treasury ceiling or platform emergency-stop controls as developer-editable settings.
+3. **Agents.** Agent identity/status, allocation, spent, reserved, available, per-transfer cap, daily/weekly limits and autonomous allowance. Keep create, rotate, activate/deactivate and configuration actions.
+4. **Recipients.** A clear destination for exact recipient account permissions, labels, expiry and revoke state. Keep recipient actions agent-scoped and reflect the actual API/schema. Do not add deny-rule controls unless backend enforcement exists.
+5. **Integration.** One-time credential presentation, secure-storage guidance, copyable API quickstart, request schema, idempotency explanation and response-state explanations. Never expose admin/provider secrets. Never persist agent tokens in browser storage.
+6. **Transactions / Payments.** Searchable activity and a request detail view. Detail should show only fields actually returned by persisted backend records: request ID, agent, recipient, amount, reservation/ledger state, provider reference/status, transaction hash, signer/recipient/action verification and NEAR finality where available. Explicitly label missing evidence. Provider acceptance is not payment settlement.
+7. **Audit & Security.** Developer-scoped audit and security events with refresh and appropriate request/agent context.
+8. **Developer tools.** Keep the payload builder and explicit Testnet submission separate from setup. State clearly that submission is live and can initiate a real Testnet transfer if policy permits; it is not a dry run.
+
+Use compact navigation appropriate to the existing dark design (desktop rail or compact navigation; mobile-friendly top/tab treatment). Use focused detail panels for editing one agent or inspecting one request. Preserve readable labels, existing actions and mobile access. Do not turn the initial screen into a giant form.
+
+### Known implementation gaps already identified in source
+
+- No Connect / Setup checklist or clear destination navigation.
+- Overview metrics exist, but are embedded in the agent workspace rather than a distinct Overview destination.
+- Recipients are embedded inside each agent's configuration panel rather than presented as a clear destination.
+- Integration is partial: payload builder exists, but a complete quickstart and response guidance are not surfaced as a dedicated experience.
+- Transactions are a recent-activity summary; no sufficiently detailed request inspection view exists.
+- Audit feed exists but is not a distinct navigable destination.
+- The issued one-time token is not wired directly to the matching agent's playground; the playground asks for manual token paste.
+- Saving agent configuration does not reliably refresh parent workspace totals/list; successful request submission refreshes transactions but not the audit feed.
+- Browser verification remains outstanding due to the Vercel rate limit.
+
+### Specification conflicts that must be resolved, not copied blindly
+
+The older `docs/developer-experience-v1.md` still describes an operator-approved developer workflow with no separate developer identity and no public self-service registration. The current authoritative README product model describes developer-owned workspaces/accounts and the developer dashboard at `/developers`, with operator/admin controls isolated at `/admin`. Follow the current implemented developer-account model unless the user explicitly changes it. Update the stale specification language after confirming route/auth boundaries; do not silently revert the product to operator-provisioned developer access.
+
+The docs also describe administrator approvals and a developer-facing experience. Keep the boundary exact: developer users configure their own agents and agent-level policies; global treasury settings, platform emergency stop and administrator-only approval/reconciliation controls remain in the admin console unless an explicit product decision changes that boundary.
+
+## NEXT WORK SEQUENCE
+
+Complete these in order on `encu/dashboard-end-to-end`, re-fetching the branch head before each write:
+
+1. **Map before coding:** inspect the current developer page, its CSS, all developer API response shapes and auth ownership. Produce a component/route map for the eight destinations above. Identify which data is already available and which detail fields need an API extension. Do not build controls without an enforcing API.
+2. **Build the navigation and Connect / Setup landing state.** Make destinations actually switch/scroll to distinct sections. Keep Overview separate. Setup checklist state must be derived from current agent/configuration/recipient data.
+3. **Re-home existing controls without deleting them.** Move or compose current agent configuration, recipient management, payload builder, execution explainer and audit feed into the correct destinations. Preserve the dark V1 styling and all working behavior.
+4. **Fix state propagation and credential handoff.** Associate a just-issued/rotated token only with its matching agent playground while it remains in page memory; clear it on sign-out and do not persist it. Add parent refresh callbacks after config/recipient saves and refresh audit + transaction activity after a successful request.
+5. **Add transaction details from real persisted data.** Inspect `/api/developer/transactions` and its database query first. Extend the route only for evidence fields that exist or can be securely queried. Show finality/verification as unknown when unavailable; never infer success from HTTP/provider status.
+6. **Complete the integration quickstart and status explanations.** Ensure the example uses the agent bearer token, stable request ID, exact recipient and integer yoctoNEAR amount. Do not invent a dry-run endpoint.
+7. **Test and document:** run lint, TypeScript, build and relevant API/UI tests or add missing tests. Test mobile layout at the first available READY Preview. Record exactly what passed and what remains unverified.
+8. **Reconcile docs:** update `docs/developer-experience-v1.md` so it matches the current developer-account model and implemented destinations; keep `docs/dashboard-control-inventory.md` clearly scoped to the admin console. Update this handoff after each major completed slice.
+9. **Release only after evidence:** review PR diff, CI and Preview. Ask the user before merge or Production deployment. PR #5 currently targets `agentguard/build-v1`; do not change its base or merge without approval.
+
+### Out of scope for this action
+
+Do not introduce a light redesign, public customer/tenant management, customer wallet provisioning, billing, deposits/withdrawals, native NEAR treasury contract UI, another execution provider, mainnet, new global admin controls in the developer workspace, or a fake approval queue. Do not alter Supabase project selection or production settings.
+
+---
+
 ## Dashboard end-to-end work — 2026-11-04
 
 **Latest source update:** `encu/dashboard-end-to-end` now also displays account-scoped allocated, spent, reserved and available authority across the developer's owned agents. Negative computed headroom is shown as a ledger mismatch, not silently clamped. The integration PR is [PR #5](https://github.com/BigWave45/agentguard/pull/5), open against `agentguard/build-v1` and unmerged.
