@@ -42,6 +42,18 @@
 - No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit user approval.
 - For further code changes, branch from the latest `main`, verify changes in CI and Preview, then merge by reviewed PR. Do not assume `agentguard/build-v1` and `main` are identical.
 
+## Developer-funded treasury architecture work — 2026-11-04
+
+A separate architecture workstream has started on branch `encu/developer-funded-treasuries`, created from `main`. It does not change the live Preview, Production, current OutLayer configuration or Supabase data.
+
+- Architecture proposal: [Developer-funded workspace treasuries](docs/developer-funded-workspace-treasuries.md).
+- Current V1 remains a single operator-configured OutLayer treasury. Developer accounts and agent ownership exist, but developers do not yet have independently funded workspace treasuries.
+- The proposed direction is a dedicated NEAR treasury contract/account per developer workspace, with finalized on-chain deposits, workspace-scoped accounting, zero-start agent allocations, policy-controlled spending and separately authorized withdrawals.
+- Existing V1 policy enforcement, approvals, replay protection and finality reconciliation should be preserved and extended, not replaced.
+- The existing `default` treasury and its reservation history must remain a separate legacy operator treasury. No silent conversion, fund sweep, shared-wallet crediting or dual-provider execution.
+- The proposal is documentation only. No runtime code, schema migration, wallet, contract, Supabase project or deployment has been changed.
+- Before implementation: finish the RPC/schema inventory, settle custody/controller-key recovery and withdrawal authority, then implement additive schema and contract work behind isolated tests and a feature flag.
+
 ---
 
 # Historical implementation notes
