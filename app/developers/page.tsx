@@ -6,6 +6,7 @@ import Link from "next/link";
 import "./developers.css";
 import AgentConfiguration from "./agent-configuration";
 import ExecutionExplainer from "./execution-explainer";
+import DeveloperAuditLog from "./audit-log";
 
 type DeveloperAgent = {
   id: string;
@@ -456,6 +457,7 @@ export default function DeveloperPortal() {
                   </article>)}
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
+                {session && <DeveloperAuditLog accessToken={session.access_token} />}
               </section>
             </section>
             <aside className="developer-panel">
