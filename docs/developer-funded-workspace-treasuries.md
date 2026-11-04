@@ -168,3 +168,16 @@ The policy for native binding transfers must allow `call`, include the bound ass
 OutLayer documents Intear Wallet and near-cli for NEP-591 `UseGlobalContract`; generic wallet compatibility is not available. Browser/mobile wallet support and return-to-app behavior must be tested. Do not use a long-lived `wk_` key in the hosted connect URL. Prefer server-side setup retrieval and a wallet connector; request a short-lived one-time handoff if using hosted flow.
 
 The general OutLayer API describes request polling and `needs_review` semantics, but the binding docs do not fully specify all transfer response variants or the inner-receipt proof contract. Confirm exact response/receipt fields before writing the reconciler. No implementation is authorized until these gates are resolved.
+
+
+## Deterministic executor ownership candidate (research update, 2026-11-04)
+
+Important correction: OutLayer Personal Account Binding has no separate on-chain spend grant. The bound account's only spending limit is the OutLayer wallet policy; no policy means unrestricted spending. The separate on-chain grant belongs to leased `hos_lease` accounts only.
+
+A promising route to developer policy ownership is an OutLayer deterministic wallet derived from `(developer NEAR account, unique workspace seed, vault scope)`. OutLayer documents raw Ed25519 full-access-key signatures on every request (`near:<base64url>`) and says no auth credential is stored; removing the NEAR key revokes access within 60 seconds. This may make the developer the executor wallet controller, but this exact controller/policy relationship for a personal binding must be proven.
+
+OutLayer also documents `PUT /wallet/v1/api-key` and `DELETE /wallet/v1/api-key/{key_hash}` for delegate keys. We need to verify whether a deterministic wallet can issue a narrowly scoped backend key and how it is revoked. Encu must never ask for or store the developer's full-access private key. A delegate key stored encrypted server-side is acceptable only if scope and revocation are confirmed.
+
+Candidate flow: developer signs deterministic-wallet registration; one unique executor identity per workspace; developer binds a dedicated named asset account; developer sets and verifies strict OutLayer policy; Encu receives a restricted delegate key; Encu still enforces atomic workspace budgets and reconciles binding-call inner receipts. The executor and asset account are different: the asset account holds funds; the executor pays gas. One asset account cannot represent multiple separately funded workspaces.
+
+This is a research direction only. No wallet or key was created. Test deterministic wallet controller/policy ownership, delegate-key lifecycle, personal binding, mobile wallet signing and receipt proof before implementation.
