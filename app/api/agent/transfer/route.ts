@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
-import { transferNear } from "@/lib/outlayer";
+import { getExecutionProvider } from "@/lib/execution-provider";
 import { authenticateAgent } from "@/lib/agent-auth";
+import { recordSecurityEvent } from "@/lib/security-audit";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +12,8 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   requestId: z.string().min(8).max(128),
   to: z.string().min(2).max(64).regex(/^[a-z0-9]+([._-][a-z0-9]+)*$/),
-  amountYocto: z.string().regex(/^[1-9][0-9]*$/)
+  amountYocto: z.string().max(78).regex(/^[1-9][0-9]*$/),
+  expectedAgentId: z.string().min(2).max(48).regex(/^[a-z0-9_-]+$/).optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -18,100 +21,204 @@ export async function POST(request: NextRequest) {
   try {
     identity = await authenticateAgent(request.headers.get("authorization"));
   } catch {
+    await recordSecurityEvent({ eventType: "transfer_authentication_unavailable" });
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
-  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const parsed = schema.safeParse(await request.json().catch(()=>null));
-  if (!parsed.success) {
-    return NextResponse.json({error:"invalid_request",details:parsed.error.flatten()},{status:400});
+  if (!identity) {
+    await recordSecurityEvent({ eventType: "transfer_unauthorized" });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const {requestId,to,amountYocto} = parsed.data;
+  const parsed = schema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_invalid_request" });
+    return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  if (parsed.data.expectedAgentId && parsed.data.expectedAgentId !== identity.agentId) {
+    return NextResponse.json({ status: "blocked", created: false, reason: "agent_identity_mismatch", expectedAgentId: parsed.data.expectedAgentId, authenticatedAgentId: identity.agentId }, { status: 409 });
+  }
+
+  let rateLimit: Awaited<ReturnType<typeof consumeRateLimit>>;
+  try {
+    rateLimit = await consumeRateLimit(`agent:${identity.agentId}`, "transfer_prepare", 20, 60);
+  } catch {
+    rateLimit = null;
+  }
+  if (!rateLimit) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
+  if (!rateLimit.allowed) {
+    const recorded = await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_rate_limited" });
+    if (!recorded) return NextResponse.json({ error: "security_event_unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: "rate_limit_exceeded", retryAfterSeconds: rateLimit.retryAfterSeconds },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
+  }
+
+  // Reject malformed provider/network configuration before reserving funds.
+  // Provider submission is automatic only after the database authorizes the reservation.
+  let executionProvider: ReturnType<typeof getExecutionProvider>;
+  try {
+    executionProvider = getExecutionProvider();
+    executionProvider.assertConfigured();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "execution_provider_configuration_invalid";
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_provider_configuration_blocked" });
+    return NextResponse.json({ error: reason }, { status: 503 });
+  }
+
+  const { requestId, to, amountYocto } = parsed.data;
   const amount = BigInt(amountYocto);
   const cap = BigInt(process.env.AGENTGUARD_MAX_TRANSFER_YOCTO ?? "0");
   if (cap <= 0n || amount > cap) {
-    return NextResponse.json({status:"blocked",reason:"per_transaction_limit"},{status:403});
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_per_transaction_limit_blocked", requestId });
+    return NextResponse.json({ status: "blocked", reason: "per_transaction_limit", agentId: identity.agentId, created: false }, { status: 403 });
   }
 
   const db = getSupabase();
-  const {data: reservation,error} = await db.rpc("reserve_agent_spend",{
-    p_request_id:requestId,p_amount_yocto:amountYocto,p_recipient:to,p_agent_id:identity.agentId
+  const { data: reservation, error } = await db.rpc("reserve_agent_spend", {
+    p_request_id: requestId,
+    p_amount_yocto: amountYocto,
+    p_recipient: to,
+    p_agent_id: identity.agentId
   });
   if (error) {
     const conflict = error.message.includes("idempotency_key_conflict");
-    return NextResponse.json({error:conflict?"idempotency_key_conflict":"reservation_failed"},
-      {status:conflict?409:500});
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: conflict ? "transfer_idempotency_conflict" : "transfer_reservation_error",
+      requestId
+    });
+    return NextResponse.json(
+      { error: conflict ? "idempotency_key_conflict" : "reservation_failed" },
+      { status: conflict ? 409 : 500 }
+    );
   }
-  if (reservation?.status==="blocked") return NextResponse.json(reservation,{status:403});
 
-  // A replay must never call OutLayer. Only the insert winner gets created=true.
-  if (reservation?.created !== true) {
-    return NextResponse.json({status:reservation?.status ?? "already_processed",requestId},{status:409});
+  if (reservation?.status === "blocked") {
+    await recordSecurityEvent({
+      actorAgentId: identity.agentId,
+      eventType: "transfer_policy_blocked",
+      requestId,
+      details: { reason: reservation.reason ?? "policy_denied" }
+    });
+    return NextResponse.json({ ...reservation, agentId: identity.agentId }, { status: 403 });
   }
 
-  let outcome:"executed"|"failed"|"needs_review" = "needs_review";
-  let txHash:string|null = null;
-  let providerRequestId:string|null = null;
-  let reason = "outlayer_response_unknown";
+  // Only a newly-created, policy-authorized reservation can reach the provider.
+  // Idempotent replays never submit a second provider request.
+  if (reservation?.created !== true || reservation.status !== "reserved" || reservation.auto_approved !== true) {
+    await recordSecurityEvent({ actorAgentId: identity.agentId, eventType: "transfer_replay_rejected", requestId });
+    return NextResponse.json({
+      status: reservation?.status ?? "already_processed",
+      agentId: identity.agentId,
+      requestId
+    }, { status: 409 });
+  }
 
   try {
-    const result = await transferNear(to,amountYocto);
-    txHash = typeof result.body.tx_hash==="string" ? result.body.tx_hash : null;
-    providerRequestId = typeof result.body.request_id==="string"
-      ? result.body.request_id
-      : typeof result.body.requestId==="string"
-        ? result.body.requestId
-        : null;
+    await executionProvider.verifyExecutionAccount();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "execution_signer_unavailable";
+    await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null, p_error: reason
+    });
+    return NextResponse.json({ status: "needs_review", requestId, reason }, { status: 202 });
+  }
 
-    if (providerRequestId) {
-      const { error: referenceError } = await db
-        .from("spend_reservations")
-        .update({ outlayer_request_id: providerRequestId })
-        .eq("request_id", requestId);
-      if (referenceError) {
-        reason = "provider_request_reference_persistence_failed";
+  // Claim the provider submission only after signer validation. The database
+  // RPC serializes this claim against recipient revocation.
+  const { data: submissionClaim, error: claimError } = await db.rpc("claim_agent_auto_submission", {
+    p_request_id: requestId,
+    p_agent_id: identity.agentId,
+    p_recipient: to
+  });
+  if (claimError) {
+    await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review", p_tx_hash: null,
+      p_error: "submission_claim_unavailable"
+    });
+    return NextResponse.json({ status: "needs_review", requestId, reason: "submission_claim_unavailable" }, { status: 202 });
+  }
+  if (submissionClaim?.claimed !== true) {
+    const submissionBlockReasons = new Set([
+      "recipient_not_authorized", "recipient_not_allowed",
+      "agent_per_transfer_limit", "agent_daily_limit", "agent_weekly_limit",
+      "autonomous_allowance_exceeded", "agent_policy_not_configured",
+      "agent_not_active", "agent_allocation_exceeded", "total_budget_exceeded",
+      "emergency_stop", "policy_blocked"
+    ]);
+    if (submissionBlockReasons.has(submissionClaim?.reason ?? "")) {
+      const reason = submissionClaim?.reason ?? "current_policy_denied";
+      const { error: releaseError } = await db.rpc("finish_agent_spend", {
+        p_request_id: requestId, p_outcome: "failed", p_tx_hash: null,
+        p_error: `policy_blocked_before_submission:${reason}`
+      });
+      await recordSecurityEvent({
+        actorAgentId: identity.agentId,
+        eventType: "transfer_policy_blocked_at_submission",
+        requestId,
+        details: { reason, reservationReleased: !releaseError }
+      });
+      if (releaseError) {
+        return NextResponse.json({
+          status: "needs_review", requestId,
+          reason: "policy_blocked_reservation_release_failed"
+        }, { status: 503 });
       }
+      return NextResponse.json({ status: "blocked", reason, requestId }, { status: 403 });
     }
+    return NextResponse.json({ status: "already_processing", requestId }, { status: 409 });
+  }
 
-    if (providerRequestId && reason === "provider_request_reference_persistence_failed") {
-      outcome="needs_review";
-    } else if (result.httpStatus>=200 && result.httpStatus<300 && txHash) {
-      // A provider response containing a transaction hash proves submission,
-      // not necessarily on-chain finality. Keep the reservation held until
-      // the transaction is independently confirmed.
-      outcome="needs_review";
-      reason="awaiting_onchain_confirmation";
-    } else if (result.httpStatus===422 && result.body.error==="onchain_tx_failed" && txHash) {
-      // OutLayer confirms the transaction was broadcast. Do not release the
-      // reservation until NEAR finality independently confirms the failure.
-      outcome="needs_review";
-      reason="awaiting_onchain_confirmation_after_provider_revert";
-    } else if (result.httpStatus>=200 && result.httpStatus<300 && providerRequestId) {
-      // A request ID is not documented as an async result for native NEAR
-      // transfers. Preserve the reservation and require manual review.
-      outcome="needs_review";
-      reason="unverified_native_transfer_response";
-
+  let txHash: string | null = null;
+  let providerRequestId: string | null = null;
+  let reason = "outlayer_response_unknown";
+  try {
+    const result = await executionProvider.submitNativeTransfer({ recipient: to, amountYocto });
+    txHash = typeof result.body.tx_hash === "string" ? result.body.tx_hash : null;
+    providerRequestId = typeof result.body.request_id === "string"
+      ? result.body.request_id
+      : typeof result.body.requestId === "string" ? result.body.requestId : null;
+    if (result.httpStatus >= 200 && result.httpStatus < 300 && txHash) {
+      reason = "awaiting_onchain_confirmation";
+    } else if (result.httpStatus === 422 && result.body.error === "onchain_tx_failed" && txHash) {
+      reason = "awaiting_onchain_confirmation_after_provider_revert";
+    } else if (result.httpStatus >= 200 && result.httpStatus < 300 && providerRequestId) {
+      reason = "unverified_native_transfer_response";
     } else {
-      reason=`unclassified_outlayer_response_${result.httpStatus}`;
+      reason = `unclassified_outlayer_response_${result.httpStatus}`;
     }
   } catch {
-    // Network timeout is ambiguous: do not release budget or automatically retry.
-    reason="outlayer_timeout_or_connection_error";
+    reason = "outlayer_timeout_or_connection_error";
   }
 
-  const {error:finishError} = await db.rpc("finish_agent_spend",{
-    p_request_id:requestId,p_outcome:outcome,p_tx_hash:txHash,p_error:reason||null
+  let ledgerError: { message: string } | null = null;
+  if (txHash || providerRequestId) {
+    const { error: writeError } = await db.rpc("record_outlayer_submission", {
+      p_request_id: requestId, p_tx_hash: txHash,
+      p_provider_request_id: providerRequestId, p_error: reason
+    });
+    ledgerError = writeError;
+  } else {
+    const { error: writeError } = await db.rpc("finish_agent_spend", {
+      p_request_id: requestId, p_outcome: "needs_review",
+      p_tx_hash: null, p_error: reason
+    });
+    ledgerError = writeError;
+  }
+
+  await recordSecurityEvent({
+    actorAgentId: identity.agentId, eventType: "transfer_auto_submitted",
+    requestId, details: { providerRequestId, txHash, reason }
   });
-  if (finishError) {
-    return NextResponse.json({status:"needs_review",requestId,txHash,providerRequestId,reason:"ledger_finalisation_failed"},{status:202});
-  }
-  if (outcome==="needs_review") {
-    return NextResponse.json({status:outcome,requestId,txHash,providerRequestId,reason},{status:202});
-  }
-  if (outcome==="failed") {
-    return NextResponse.json({status:outcome,requestId,txHash,providerRequestId,reason},{status:422});
-  }
-  return NextResponse.json({status:outcome,requestId,txHash,providerRequestId});
+
+  return NextResponse.json({
+    status: "needs_review",
+    agentId: identity.agentId,
+    requestId,
+    txHash,
+    providerRequestId,
+    reason: ledgerError ? "ledger_finalisation_failed" : reason
+  }, { status: 202 });
 }

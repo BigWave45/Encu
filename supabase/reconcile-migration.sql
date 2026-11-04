@@ -15,7 +15,7 @@ as $$
 declare
   reservation public.spend_reservations%rowtype;
 begin
-  if p_outcome not in ('executed', 'failed', 'needs_review') then
+  if p_outcome is null or p_outcome not in ('executed', 'failed', 'needs_review') then
     raise exception 'invalid_outcome';
   end if;
 

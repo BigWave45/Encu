@@ -25,8 +25,8 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare budget public.agent_budgets%rowtype; existing public.spend_reservations%rowtype; agent_active boolean;
 begin
   if p_request_id is null or length(p_request_id) < 8 then raise exception 'invalid_request_id'; end if;
-  if p_amount_yocto is null or p_amount_yocto <= 0 or p_amount_yocto > 1e78 then raise exception 'invalid_amount'; end if;
-  select active into agent_active from public.agents where id = p_agent_id;
+  if p_amount_yocto is null or p_amount_yocto <= 0 or p_amount_yocto >= 1e78 then raise exception 'invalid_amount'; end if;
+  select active into agent_active from public.agents where id = p_agent_id for share;
   if not coalesce(agent_active, false) then raise exception 'agent_not_active'; end if;
   select * into budget from public.agent_budgets where id = 'default' for update;
   if not found then raise exception 'budget_not_configured'; end if;

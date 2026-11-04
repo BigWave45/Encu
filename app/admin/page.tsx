@@ -1,0 +1,1228 @@
+"use client";
+
+import "../dashboard.css";
+
+import { Fragment, useState } from "react";
+
+type BalanceResult = {
+  status?: string;
+  chain?: string;
+  balance?: unknown;
+  error?: string;
+  providerStatus?: number;
+};
+
+type AgentResult = {
+  status?: string;
+  agent?: { id: string; name: string };
+  token?: string;
+  warning?: string;
+  error?: string;
+};
+
+type OutLayerPolicyResult = {
+  status?: string;
+  network?: string;
+  executorAddress?: string;
+  policy?: { rules?: unknown; capabilities?: unknown; approval?: unknown; updatedAt?: string | null; version?: string | number | null };
+  error?: string;
+  providerHttpStatus?: number;
+};
+
+
+type Dashboard = {
+  status?: string;
+  error?: string;
+  generatedAt?: string;
+  transfersEnabled?: boolean;
+  policies?: Array<{ agentId: string; maxTransferYocto: string | null; dailyLimitYocto: string | null; weeklyLimitYocto: string | null; autoSpendLimitYocto: string | null }>;
+  recipients?: Array<{ agentId: string; accountId: string; label: string | null; status: "active" | "revoked"; authorizedAt: string; authorizedBy: string; expiresAt: string | null; revokedAt: string | null; revokedBy: string | null }>;
+  budget?: {
+    totalLimitYocto: string;
+    spentYocto: string;
+    reservedYocto: string;
+    updatedAt: string;
+  };
+  agents?: Array<{ id: string; name: string; active: boolean; createdAt: string }>;
+  allocations?: Array<{ agentId: string; allocationLimitYocto: string; spentYocto: string; reservedYocto: string; updatedAt: string; updatedBy: string | null }>;
+  reservations?: Array<{
+    requestId: string;
+    agentId: string;
+    recipient: string;
+    amountYocto: string;
+    status: string;
+    txHash: string | null;
+    providerRequestId: string | null;
+    lastError: string | null;
+    createdAt: string;
+    cancelledAt?: string | null;
+    cancelledBy?: string | null;
+    resolvedAt?: string | null;
+    resolvedBy?: string | null;
+    resolutionReason?: string | null;
+    resolutionEvidenceReference?: string | null;
+  }>;
+  audit?: Array<{ id: string; actorAgentId: string; action: string; targetId: string | null; details: unknown; createdAt: string }>;
+  securityEvents?: Array<{ id: string; actorAgentId: string | null; eventType: string; requestId: string | null; details: unknown; createdAt: string }>;
+  reservationPage?: { page: number; pageSize: number; total: number; totalPages: number; status: string; search: string };
+  activityPages?: {
+    pageSize: number;
+    audit: { page: number; total: number; totalPages: number };
+    security: { page: number; total: number; totalPages: number };
+  };
+};
+
+const YOCTO_PER_NEAR = 10n ** 24n;
+const DISPLAY_PRECISION = 10n ** 20n;
+function near(value: string) {
+  try {
+    const amount = BigInt(value);
+    const whole = amount / YOCTO_PER_NEAR;
+    const fraction = ((amount % YOCTO_PER_NEAR) / DISPLAY_PRECISION)
+      .toString()
+      .padStart(4, "0")
+      .replace(/0+$/, "");
+    return fraction
+      ? `${whole.toLocaleString("en-US")}.${fraction}`
+      : whole.toLocaleString("en-US");
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function yoctoToInput(value: string) {
+  try {
+    const amount = BigInt(value);
+    const whole = amount / YOCTO_PER_NEAR;
+    const fraction = (amount % YOCTO_PER_NEAR).toString().padStart(24, "0").replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+  } catch {
+    return "";
+  }
+}
+
+function availableNear(budget: NonNullable<Dashboard["budget"]>) {
+  try {
+    return near(String(
+      BigInt(budget.totalLimitYocto) -
+      BigInt(budget.spentYocto) -
+      BigInt(budget.reservedYocto)
+    ));
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function availableAgentNear(allocation: NonNullable<Dashboard["allocations"]>[number]) {
+  try {
+    return near(String(
+      BigInt(allocation.allocationLimitYocto) -
+      BigInt(allocation.spentYocto) -
+      BigInt(allocation.reservedYocto)
+    ));
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function totalAgentAllocationsNear(allocations?: Dashboard["allocations"]) {
+  try {
+    return near((allocations ?? []).reduce((sum, item) => sum + BigInt(item.allocationLimitYocto), 0n).toString());
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function unallocatedAuthorityNear(budget: NonNullable<Dashboard["budget"]>, allocations?: Dashboard["allocations"]) {
+  try {
+    const allocated = (allocations ?? []).reduce((sum, item) => sum + BigInt(item.allocationLimitYocto), 0n);
+    return near((BigInt(budget.totalLimitYocto) - allocated).toString());
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function parseNearToYocto(value: string): bigint | null {
+  const match = value.trim().match(/^(0|[1-9]\d*)(?:\.(\d{1,24}))?$/);
+  if (!match) return null;
+  const fraction = (match[2] ?? "").padEnd(24, "0");
+  return BigInt(match[1]) * YOCTO_PER_NEAR + BigInt(fraction || "0");
+}
+
+export default function Home() {
+  const [activeView, setActiveView] = useState("setup");
+  const [token, setToken] = useState("");
+  const [adminToken, setAdminToken] = useState("");
+  const [result, setResult] = useState<BalanceResult | null>(null);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState("");
+  const [outLayerPolicy, setOutLayerPolicy] = useState<OutLayerPolicyResult | null>(null);
+  const [outLayerPolicyLoading, setOutLayerPolicyLoading] = useState(false);
+  const [agentId, setAgentId] = useState("research-agent");
+  const [setupAgentId, setSetupAgentId] = useState("research-agent");
+  const [agentName, setAgentName] = useState("Research Agent");
+  const [agentResult, setAgentResult] = useState<AgentResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [rotationResult, setRotationResult] = useState<AgentResult | null>(null);
+  const [rotatingAgent, setRotatingAgent] = useState(false);
+  const [rotationAgentId, setRotationAgentId] = useState("");
+  const [reservationAction, setReservationAction] = useState<string | null>(null);
+  const [reservationActionError, setReservationActionError] = useState("");
+  const [reservationActionMessage, setReservationActionMessage] = useState("");
+  const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [budgetLimit, setBudgetLimit] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
+  const [budgetMessage, setBudgetMessage] = useState("");
+  const [allocationAgent, setAllocationAgent] = useState("primary");
+  const [allocationLimit, setAllocationLimit] = useState("");
+  const [allocationBusy, setAllocationBusy] = useState(false);
+  const [allocationMessage, setAllocationMessage] = useState("");
+  const [agentStatusBusy, setAgentStatusBusy] = useState<string | null>(null);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
+  const [reservationSearch, setReservationSearch] = useState("");
+  const [reservationFilter, setReservationFilter] = useState("all");
+  const [reservationPage, setReservationPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
+  const [securityPage, setSecurityPage] = useState(1);
+  const [controlBusy, setControlBusy] = useState(false);
+  const [controlMessage, setControlMessage] = useState("");
+  const [policyAgent, setPolicyAgent] = useState("primary");
+  const [policyMax, setPolicyMax] = useState("");
+  const [policyDaily, setPolicyDaily] = useState("");
+  const [policyWeekly, setPolicyWeekly] = useState("");
+  const [policyAuto, setPolicyAuto] = useState("");
+  const [recipientAgent, setRecipientAgent] = useState("primary");
+  const [recipientAccount, setRecipientAccount] = useState("");
+  const [recipientLabel, setRecipientLabel] = useState("");
+  const [recipientExpires, setRecipientExpires] = useState("");
+  const [recipientBusy, setRecipientBusy] = useState(false);
+  const [recipientMessage, setRecipientMessage] = useState("");
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [policyMessage, setPolicyMessage] = useState("");
+  const [requestAgentToken, setRequestAgentToken] = useState("");
+  const [requestAgentId, setRequestAgentId] = useState("test-agent-alpha");
+  const [requestRecipient, setRequestRecipient] = useState("");
+  const [requestAmount, setRequestAmount] = useState("");
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [requestResult, setRequestResult] = useState<Record<string, unknown> | null>(null);
+
+
+  async function checkBalance(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setResult(null);
+    try {
+      const response = await fetch("/api/agent/balance", {
+        method: "GET",
+        headers: { authorization: `Bearer ${token.trim()}` },
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setResult(body);
+    } catch {
+      setResult({ error: "Could not reach ENCU. Check your connection and try again." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDashboard(page = reservationPage, status = reservationFilter, search = reservationSearch, nextAuditPage = auditPage, nextSecurityPage = securityPage) {
+    setDashboardLoading(true);
+    setDashboardError("");
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: "20", status, q: search.trim(), auditPage: String(nextAuditPage), securityPage: String(nextSecurityPage) });
+      const response = await fetch(`/api/admin/dashboard?${params.toString()}`, {
+        headers: { authorization: `Bearer ${adminToken.trim()}` },
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      if (!response.ok) {
+        setDashboard(null);
+        setDashboardError(body.error ?? "dashboard_request_failed");
+      } else {
+        setDashboard(body);
+        const rotatableAgents = (body.agents ?? []).filter((agent: NonNullable<Dashboard["agents"]>[number]) => agent.id !== "primary");
+        if (rotatableAgents.length && !rotatableAgents.some((agent: NonNullable<Dashboard["agents"]>[number]) => agent.id === rotationAgentId)) {
+          setRotationAgentId(rotatableAgents[0].id);
+        }
+        setReservationPage(body.reservationPage?.page ?? page);
+        setAuditPage(body.activityPages?.audit?.page ?? nextAuditPage);
+        setSecurityPage(body.activityPages?.security?.page ?? nextSecurityPage);
+        setBudgetLimit(yoctoToInput(body.budget.totalLimitYocto));
+        const selectedAllocation = body.allocations?.find((item: NonNullable<Dashboard["allocations"]>[number]) => item.agentId === allocationAgent);
+        setAllocationLimit(selectedAllocation ? yoctoToInput(selectedAllocation.allocationLimitYocto) : "");
+        const selectedPolicy = body.policies?.find((item: NonNullable<Dashboard["policies"]>[number]) => item.agentId === policyAgent);
+        setPolicyMax(selectedPolicy?.maxTransferYocto ? yoctoToInput(selectedPolicy.maxTransferYocto) : "");
+        setPolicyDaily(selectedPolicy?.dailyLimitYocto ? yoctoToInput(selectedPolicy.dailyLimitYocto) : "");
+        setPolicyWeekly(selectedPolicy?.weeklyLimitYocto ? yoctoToInput(selectedPolicy.weeklyLimitYocto) : "");
+        setPolicyAuto(selectedPolicy?.autoSpendLimitYocto != null ? yoctoToInput(selectedPolicy.autoSpendLimitYocto) : "");
+      }
+    } catch {
+      setDashboard(null);
+      setDashboardError("Could not reach ENCU. Check your connection and try again.");
+    } finally {
+      setDashboardLoading(false);
+    }
+  }
+
+  async function loadOutLayerPolicy() {
+    if (!adminToken.trim()) return;
+    setOutLayerPolicyLoading(true);
+    setOutLayerPolicy(null);
+    try {
+      const response = await fetch("/api/admin/outlayer-policy", {
+        headers: { authorization: `Bearer ${adminToken.trim()}` },
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setOutLayerPolicy(body);
+    } catch {
+      setOutLayerPolicy({ error: "Could not reach ENCU. OutLayer policy was not verified." });
+    } finally {
+      setOutLayerPolicyLoading(false);
+    }
+  }
+
+  async function setTransfersEnabled(enabled: boolean) {
+    if (!adminToken.trim()) return;
+    const action = enabled ? "enable transfers" : "STOP all new transfers";
+    if (!window.confirm(`Confirm: ${action}?`)) return;
+    setControlBusy(true);
+    setControlMessage("");
+    try {
+      const response = await fetch("/api/admin/transfers", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify({ enabled })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setControlMessage(body.error ?? "transfer_control_update_failed");
+      else {
+        setControlMessage(enabled ? "Transfers enabled." : "Emergency stop active. New submissions are blocked.");
+        await loadDashboard();
+      }
+    } catch {
+      setControlMessage("Could not confirm transfer-control state. Refresh the dashboard before relying on it.");
+    } finally {
+      setControlBusy(false);
+    }
+  }
+
+  async function saveAgentPolicy(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const max = policyMax.trim() ? parseNearToYocto(policyMax) : null;
+    const daily = policyDaily.trim() ? parseNearToYocto(policyDaily) : null;
+    const weekly = policyWeekly.trim() ? parseNearToYocto(policyWeekly) : null;
+    const auto = policyAuto.trim() ? parseNearToYocto(policyAuto) : null;
+    if ((policyMax.trim() && (!max || max <= 0n)) || (policyDaily.trim() && (!daily || daily <= 0n)) || (policyWeekly.trim() && (!weekly || weekly <= 0n)) || (policyAuto.trim() && auto === null)) {
+      setPolicyMessage("Enter valid NEAR limits. Leave the rolling 24-hour autonomous allowance blank to disable automatic spending.");
+      return;
+    }
+    setPolicyBusy(true);
+    setPolicyMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/policy", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: policyAgent,
+          maxTransferYocto: max?.toString() ?? null,
+          dailyLimitYocto: daily?.toString() ?? null,
+          weeklyLimitYocto: weekly?.toString() ?? null,
+        })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setPolicyMessage(body.reason ?? body.error ?? "agent_policy_update_failed");
+      else {
+        const autoResponse = await fetch("/api/admin/agents/auto-spend", {
+          method: "PATCH",
+          headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ id: policyAgent, autoSpendLimitYocto: auto?.toString() ?? null })
+        });
+        const autoBody = await autoResponse.json().catch(() => ({}));
+        if (!autoResponse.ok) setPolicyMessage(autoBody.reason ?? autoBody.error ?? "agent_auto_spend_update_failed");
+        else {
+          setPolicyMessage("Agent policy and autonomous allowance saved.");
+          await loadDashboard();
+        }
+      }
+    } catch {
+      setPolicyMessage("Could not confirm policy update.");
+    } finally {
+      setPolicyBusy(false);
+    }
+  }
+
+  async function resolveReservation(requestId: string, action: "cancel_expired" | "failed_final", reason: string, txHash?: string | null) {
+    if (!adminToken.trim() || reason.trim().length < 3) return;
+    const evidenceReference = action === "failed_final" ? txHash : undefined;
+    setReservationAction(requestId + ":resolve");
+    setReservationActionError("");
+    setReservationActionMessage("");
+    try {
+      const response = await fetch("/api/admin/reservations/resolve", {
+        method: "POST",
+        headers: { authorization: `Bearer ${adminToken.trim()}`, "content-type": "application/json" },
+        body: JSON.stringify(action === "cancel_expired"
+          ? { action, requestId, reason: reason.trim() }
+          : { action, requestId, reason: reason.trim(), evidenceReference })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setReservationActionError(body.reason ?? body.error ?? "reservation_resolution_failed");
+      else {
+        setReservationActionMessage("Expired reservation cancelled. Refreshing the budget and transaction history.");
+        await loadDashboard();
+      }
+    } catch {
+      setReservationActionError("Could not confirm the resolution. Refresh the dashboard before retrying.");
+    } finally {
+      setReservationAction(null);
+    }
+  }
+
+  async function loadHealth() {
+    setHealthLoading(true);
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      const body = await response.json().catch(() => ({ status: "invalid_response" }));
+      setHealth(body);
+    } catch {
+      setHealth({ status: "unreachable" });
+    } finally {
+      setHealthLoading(false);
+    }
+  }
+
+  async function updateBudget(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const yocto = parseNearToYocto(budgetLimit);
+    if (yocto === null || yocto <= 0n) {
+      setBudgetMessage("Enter a positive NEAR limit with up to 24 decimal places.");
+      return;
+    }
+    setSavingBudget(true);
+    setBudgetMessage("");
+    try {
+      const response = await fetch("/api/admin/budget", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ limitYocto: yocto.toString() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setBudgetMessage(body.error ?? "budget_update_failed");
+      else {
+        setBudgetMessage("Budget limit updated.");
+        await loadDashboard();
+      }
+    } catch {
+      setBudgetMessage("Could not reach ENCU. Budget update was not confirmed.");
+    } finally {
+      setSavingBudget(false);
+    }
+  }
+
+  async function saveAgentAllocation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = parseNearToYocto(allocationLimit);
+    if (amount === null || amount < 0n) {
+      setAllocationMessage("Enter a valid allocation of zero or more NEAR, with up to 24 decimal places.");
+      return;
+    }
+    setAllocationBusy(true);
+    setAllocationMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/allocation", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ id: allocationAgent, allocationLimitYocto: amount.toString() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setAllocationMessage(body.error ?? "agent_allocation_update_failed");
+      else {
+        setAllocationMessage("Agent allocation updated.");
+        await loadDashboard();
+      }
+    } catch {
+      setAllocationMessage("Could not confirm the allocation update. Refresh the dashboard before retrying.");
+    } finally {
+      setAllocationBusy(false);
+    }
+  }
+
+  async function authorizeRecipient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const accountId = recipientAccount.trim();
+    if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(accountId) || accountId.length < 2 || accountId.length > 64) {
+      setRecipientMessage("Enter an exact NEAR account ID (2–64 lowercase characters).");
+      return;
+    }
+    let expiresAt: string | null = null;
+    if (recipientExpires) {
+      const parsed = new Date(recipientExpires);
+      if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+        setRecipientMessage("Expiry must be a valid future date and time.");
+        return;
+      }
+      expiresAt = parsed.toISOString();
+    }
+    setRecipientBusy(true);
+    setRecipientMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/recipients", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ agentId: recipientAgent, accountId, label: recipientLabel.trim() || null, expiresAt }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setRecipientMessage(body.error ?? "recipient_authorization_failed");
+      else {
+        setRecipientMessage(`Authorized ${accountId} for ${recipientAgent}.`);
+        setRecipientAccount("");
+        setRecipientLabel("");
+        setRecipientExpires("");
+        await loadDashboard();
+      }
+    } catch {
+      setRecipientMessage("Could not confirm recipient authorization. Refresh before retrying.");
+    } finally {
+      setRecipientBusy(false);
+    }
+  }
+
+  async function revokeRecipient(agentId: string, accountId: string) {
+    if (!window.confirm(`Revoke ${accountId} for ${agentId}? Pending requests will remain reserved until rejected or safely cancelled. Already claimed provider submissions cannot be recalled.`)) return;
+    setRecipientBusy(true);
+    setRecipientMessage("");
+    try {
+      const response = await fetch("/api/admin/agents/recipients", {
+        method: "DELETE",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ agentId, accountId, reason: "Revoked by administrator." }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) setRecipientMessage(body.error ?? "recipient_revocation_failed");
+      else {
+        const result = body.recipient ?? {};
+        setRecipientMessage(`Revoked ${accountId}. Pending approvals: ${result.pending_approvals ?? 0}; claimed/in-flight: ${result.claimed_inflight ?? 0}; provider submitted: ${result.provider_submitted ?? 0}. No reservations were automatically released.`);
+        await loadDashboard();
+      }
+    } catch {
+      setRecipientMessage("Could not confirm recipient revocation. Refresh before retrying.");
+    } finally {
+      setRecipientBusy(false);
+    }
+  }
+
+  async function setAgentStatus(id: string, active: boolean) {
+    const action = active ? "activate" : "deactivate";
+    if (!window.confirm(`Are you sure you want to ${action} agent "${id}"? ${active ? "The agent will be allowed to submit requests again." : "New requests from this agent will be rejected."}`)) return;
+    setAgentStatusBusy(id);
+    setDashboardError("");
+    try {
+      const response = await fetch("/api/admin/agents/status", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ id, active }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDashboardError(body.error ?? "agent_status_update_failed");
+      } else {
+        await loadDashboard();
+      }
+    } catch {
+      setDashboardError("Could not reach ENCU. Agent status was not confirmed.");
+    } finally {
+      setAgentStatusBusy(null);
+    }
+  }
+
+
+  async function bulkSetAgentStatus(active: boolean) {
+    const ids = selectedAgentIds.filter(id => id !== "primary");
+    if (!ids.length || !adminToken.trim() || bulkBusy) return;
+    const action = active ? "activate" : "deactivate";
+    if (!window.confirm(action + " " + ids.length + " selected agents? Each agent will be updated and audited separately.")) return;
+    setBulkBusy(true);
+    setBulkMessage("");
+    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    try {
+      for (const id of ids) {
+        try {
+          const response = await fetch("/api/admin/agents/status", {
+            method: "PATCH",
+            headers: { "content-type": "application/json", authorization: "Bearer " + adminToken.trim() },
+            body: JSON.stringify({ id, active }),
+            cache: "no-store"
+          });
+          const body = await response.json().catch(() => ({}));
+          results.push({ id, ok: response.ok, error: response.ok ? undefined : body.error ?? "update_failed" });
+        } catch {
+          results.push({ id, ok: false, error: "network_error" });
+        }
+      }
+      const succeeded = results.filter(item => item.ok).length;
+      const failed = results.filter(item => !item.ok);
+      setSelectedAgentIds(failed.map(item => item.id));
+      setBulkMessage("Agent batch finished: " + succeeded + " updated, " + failed.length + " failed." + (failed.length ? " Failed: " + failed.map(item => item.id + " (" + item.error + ")").join(", ") : ""));
+      await loadDashboard();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function inspectReservation(requestId: string, action: "provider-status" | "reconcile") {
+    if (!adminToken.trim()) {
+      setReservationActionError("Enter the administrator token before checking or reconciling a reservation.");
+      return;
+    }
+    setReservationAction(requestId + ":" + action);
+    setReservationActionError("");
+    try {
+      const response = await fetch(`/api/agent/${action}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${adminToken.trim()}`
+        },
+        body: JSON.stringify({ requestId }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      if (!response.ok && response.status !== 202) {
+        setReservationActionError(body.error ?? body.reason ?? `${action}_failed`);
+      }
+      if (action === "provider-status" && typeof body.providerStatus === "string") {
+        const providerStatus = body.providerStatus;
+        setReservationActionMessage(
+          providerStatus === "pending_approval"
+            ? `${requestId}: OutLayer is waiting for its wallet approver. This is a separate approval gate from ENCU.`
+            : `${requestId}: OutLayer provider status is "${providerStatus}". ENCU will still require independent NEAR finality before settling the reservation.`
+        );
+      }
+      await loadDashboard();
+      if (body.reason && body.status === "needs_review") {
+        const diagnostic = body.checks ? "; checks: " + JSON.stringify(body.checks) : "";
+        setReservationActionError(requestId + ": " + body.reason + diagnostic);
+      }
+    } catch {
+      setReservationActionError(`${requestId}: Could not reach ENCU. The reservation state has not been verified.`);
+    } finally {
+      setReservationAction(null);
+    }
+  }
+
+  async function rotateAgent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedAgent = dashboard?.agents?.find(agent => agent.id === rotationAgentId);
+    if (!selectedAgent || selectedAgent.id === "primary") {
+      setRotationResult({ error: "Select an existing non-primary agent from the loaded dashboard." });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Rotate credentials for "${selectedAgent.name}" (${selectedAgent.id})? The current token will stop working immediately. A replacement token will be shown once. This does not delete the agent.`
+    );
+    if (!confirmed) return;
+
+    setRotatingAgent(true);
+    setRotationResult(null);
+    try {
+      const response = await fetch("/api/agent/agents/rotate", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ id: selectedAgent.id }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setRotationResult({ httpStatus: response.status, ...body });
+    } catch {
+      setRotationResult({ error: "Could not reach ENCU. Rotation outcome is unconfirmed. Refresh the dashboard and check before retrying." });
+    } finally {
+      setRotatingAgent(false);
+    }
+  }
+
+  async function createAgent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreatingAgent(true);
+    setAgentResult(null);
+    try {
+      const response = await fetch("/api/agent/agents", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminToken.trim()}` },
+        body: JSON.stringify({ id: agentId.trim(), name: agentName.trim() }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setAgentResult(body);
+      if (response.ok) {
+        const createdId = body.agent?.id;
+        if (createdId) {
+          setSetupAgentId(createdId);
+          setAllocationAgent(createdId);
+          setPolicyAgent(createdId);
+          setRecipientAgent(createdId);
+        }
+        await loadDashboard();
+      }
+    } catch {
+      setAgentResult({ error: "Could not reach ENCU. Check your connection and try again." });
+    } finally {
+      setCreatingAgent(false);
+    }
+  }
+
+  async function submitAgentRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = parseNearToYocto(requestAmount);
+    if (!amount || amount <= 0n || !requestAgentToken.trim()) {
+      setRequestResult({ error: "Enter a valid positive NEAR amount and agent token." });
+      return;
+    }
+    setRequestBusy(true);
+    setRequestResult(null);
+    try {
+      const response = await fetch("/api/agent/transfer", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${requestAgentToken.trim()}`
+        },
+        body: JSON.stringify({
+          requestId: `ag-${crypto.randomUUID()}`,
+          to: requestRecipient.trim(),
+          amountYocto: amount.toString(),
+          expectedAgentId: requestAgentId
+        }),
+        cache: "no-store"
+      });
+      const body = await response.json().catch(() => ({ error: "Invalid server response" }));
+      setRequestResult({ httpStatus: response.status, ...body });
+    } catch {
+      setRequestResult({ error: "Could not reach ENCU. Request outcome is unconfirmed; check transaction history before retrying." });
+    } finally {
+      setRequestBusy(false);
+      setRequestAgentToken("");
+    }
+  }
+
+
+  const panel = { marginTop: 24, padding: 20, border: "1px solid #e2e8f0", borderRadius: 12 };
+  const inputStyle = { boxSizing: "border-box" as const, width: "100%", padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 16 };
+  const buttonStyle = { marginTop: 12, padding: "11px 18px", border: 0, borderRadius: 8, background: "#0f172a", color: "white", fontSize: 15, cursor: "pointer" as const };
+  const onboardingAgent = dashboard?.agents?.find(agent => agent.id === setupAgentId && agent.id !== "primary")
+    ?? dashboard?.agents?.find(agent => agent.id !== "primary");
+  const onboardingId = onboardingAgent?.id ?? setupAgentId;
+  const onboardingAllocation = dashboard?.allocations?.find(item => item.agentId === onboardingId);
+  const onboardingPolicy = dashboard?.policies?.find(item => item.agentId === onboardingId);
+  const onboardingRecipients = (dashboard?.recipients ?? []).filter(item =>
+    item.agentId === onboardingId && item.status === "active" && (!item.expiresAt || new Date(item.expiresAt).getTime() > Date.now())
+  );
+  const onboardingHealthReady = health?.status === "ok";
+  const onboardingPolicyReady = Boolean(onboardingPolicy && onboardingPolicy.autoSpendLimitYocto !== null
+    && BigInt(onboardingPolicy.autoSpendLimitYocto) > 0n);
+  const onboardingCredentialIssued = Boolean(agentResult?.token && agentResult.agent?.id === onboardingId);
+
+  return (
+    <main className="dashboard-shell encu-v2" style={{ maxWidth: 1440, margin: "0 auto", padding: "28px clamp(14px, 3vw, 44px) 72px", fontFamily: "Arial, sans-serif" }}>
+      <header className="encu-masthead">
+        <div className="encu-brand-lockup">
+          <div className="encu-mark">E<span>·</span></div>
+          <div><div className="encu-wordmark">ENCU</div><div className="encu-product-line">NEAR AGENT CONTROL PLANE</div></div>
+        </div>
+        <div className="encu-header-meta"><span className="encu-network-dot" /> TESTNET ENVIRONMENT <span className="encu-header-divider" /> OPERATOR CONSOLE</div>
+      </header>
+
+      <section className="encu-intro">
+        <div><p className="encu-eyebrow">TREASURY OPERATIONS / 01</p><h1>Control what your agents can move.</h1><p className="encu-lede">One treasury. Independent agent identities. Policy checks before every transfer.</p></div>
+        <div className="encu-intro-note"><span className="encu-note-kicker">EXECUTION MODEL</span><strong>Configured execution backend · NEAR</strong><span>Shared executor with ENCU-enforced agent allocations and recipient controls.</span></div>
+      </section>
+
+      <form className="console-panel credential-panel encu-access-panel" onSubmit={checkBalance}>
+        <div className="encu-access-heading"><div><span className="encu-eyebrow">SECURE ACCESS</span><strong>Connect to the operator console</strong></div><span className="encu-memory-label">Credentials stay in page memory</span></div>
+        <div className="encu-access-grid">
+          <label htmlFor="admin-token">Administrator credential<input id="admin-token" type="password" autoComplete="off" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} placeholder="Paste admin token" /></label>
+          <label htmlFor="agent-token">Agent credential <span>(optional balance check)</span><input id="agent-token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste agent token" /></label>
+          <div className="encu-access-actions"><button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}>{dashboardLoading ? "Connecting…" : dashboard ? "Refresh console" : "Connect console"}</button><button type="submit" disabled={loading || !token.trim()} className="encu-secondary-action">{loading ? "Checking…" : "Check balance"}</button></div>
+        </div>
+        <p className="encu-access-footnote">Admin credentials control policy and treasury settings. Agent credentials authenticate agent requests. Neither is stored in browser storage. Never expose either credential in client-side application code.</p>
+      </form>
+
+      {result && <section aria-live="polite" className="developer-result balance-result" style={panel}>
+        <strong>{result.status === "ok" ? "Balance response" : "Request response"}</strong>
+        <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 12, fontSize: 13 }}>{JSON.stringify(result, null, 2)}</pre>
+      </section>}
+
+      <section className="dashboard-workspace" style={panel}>
+        <div className="dashboard-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div><h2 style={{ fontSize: 21, margin: "0 0 6px" }}>Treasury workspace</h2>
+            <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Shared budget, agent identities and recent payments. Pending payments can be checked and reconciled here.</p></div>
+          <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading}
+            style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || dashboardLoading ? 0.55 : 1 }}>
+            {dashboardLoading ? "Loading…" : dashboard ? "Refresh dashboard" : "Load dashboard"}
+          </button>
+          <button type="button" onClick={() => loadOutLayerPolicy()} disabled={!adminToken.trim() || outLayerPolicyLoading}
+            style={{ ...buttonStyle, marginTop: 0, opacity: !adminToken.trim() || outLayerPolicyLoading ? 0.55 : 1 }}>
+            {outLayerPolicyLoading ? "Reading OutLayer policy…" : "Inspect OutLayer wallet policy"}
+          </button>
+        </div>
+        {dashboardError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{dashboardError}</p>}
+        {dashboard && <section className="encu-live-strip" aria-label="Live treasury status">
+          <div><span className="encu-live-label">CONTROL PLANE</span><strong><i className={dashboard.transfersEnabled ? "encu-state-dot is-live" : "encu-state-dot is-stopped"} />{dashboard.transfersEnabled ? "Transfers enabled" : "Emergency stop active"}</strong></div>
+          <div><span className="encu-live-label">AGENT IDENTITIES</span><strong>{dashboard.agents?.filter(agent => agent.active).length ?? 0} <small>active</small></strong></div>
+          <div><span className="encu-live-label">LAST SNAPSHOT</span><strong>{dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleTimeString() : "Just now"}</strong></div>
+        </section>}
+        {outLayerPolicy && <section aria-label="OutLayer wallet policy" className="console-panel provider-policy-panel" style={{ marginTop: 16, padding: 14, border: "1px solid #cbd5e1", borderRadius: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <strong>OutLayer wallet policy</strong>
+            <span style={{ fontSize: 12, color: "#64748b" }}>{outLayerPolicy.network ?? "Network unavailable"}</span>
+          </div>
+          {outLayerPolicy.error
+            ? <p role="alert" style={{ color: "#b91c1c", marginBottom: 0 }}>{outLayerPolicy.error}{outLayerPolicy.providerHttpStatus ? ` (HTTP ${outLayerPolicy.providerHttpStatus})` : ""}</p>
+            : <><p style={{ fontSize: 12, color: "#64748b" }}>Executor: {outLayerPolicy.executorAddress}</p>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, maxHeight: 360, overflow: "auto" }}>{JSON.stringify(outLayerPolicy.policy, null, 2)}</pre>
+              <p style={{ fontSize: 12, color: "#64748b", marginBottom: 0 }}>Read-only provider response. No wallet policy was changed.</p></>}
+        </section>}
+        {reservationActionError && <p role="alert" style={{ color: "#b91c1c", marginTop: 16 }}>{reservationActionError}</p>}
+        {reservationActionMessage && <p role="status" style={{ color: "#166534", marginTop: 16 }}>{reservationActionMessage}</p>}
+        {dashboard && <nav className="dashboard-nav" aria-label="Dashboard views" style={{ position: "sticky", top: 0, zIndex: 5, display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18, padding: "10px 0", background: "rgba(255,255,255,0.96)", borderBottom: "1px solid #e2e8f0" }}>
+          {[
+            ["setup", "01", "Connect agent"], ["overview", "02", "Overview"], ["treasury", "03", "Treasury"], ["agents", "04", "Agents"], ["recipients", "05", "Recipients"],
+            ["payments", "06", "Transfers"], ["security", "07", "Audit trail"], ["system", "08", "System"], ["developer", "09", "API test"], ["access", "10", "Credentials"]
+          ].map(([view, number, label]) => <button key={view} type="button" aria-current={activeView === view ? "page" : undefined} onClick={() => setActiveView(view)} className={activeView === view ? "dashboard-nav-item is-active" : "dashboard-nav-item"}><span className="nav-index">{number}</span><span>{label}</span></button>)}
+        </nav>}
+        <div hidden={activeView !== "setup"} className="agent-onboarding-panel" style={{ marginTop: 18, padding: 20, border: "1px solid #cbd5e1", borderRadius: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div><span className="encu-eyebrow">FIRST-TIME SETUP</span><h3 style={{ margin: "5px 0", fontSize: 19 }}>Connect an agent</h3>
+              <p style={{ color: "#64748b", fontSize: 13, margin: 0 }}>Configure authority before integrating the agent. This workflow does not submit a transfer.</p></div>
+            <button type="button" onClick={() => loadDashboard()} disabled={!adminToken.trim() || dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>
+              {dashboardLoading ? "Refreshing…" : "Refresh setup status"}
+            </button>
+          </div>
+          <label style={{ display: "block", marginTop: 18, fontSize: 13, fontWeight: 600 }}>Agent being configured
+            <select value={onboardingId} onChange={event => {
+              const id = event.target.value;
+              setSetupAgentId(id); setAllocationAgent(id); setPolicyAgent(id); setRecipientAgent(id);
+              const allocation = dashboard?.allocations?.find(item => item.agentId === id);
+              const policy = dashboard?.policies?.find(item => item.agentId === id);
+              setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
+              setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
+              setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
+              setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
+              setPolicyAuto(policy?.autoSpendLimitYocto != null ? yoctoToInput(policy.autoSpendLimitYocto) : "");
+            }} style={{ ...inputStyle, marginTop: 6 }}>
+              {(dashboard?.agents ?? []).filter(agent => agent.id !== "primary").map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+            </select>
+          </label>
+          {!onboardingAgent && <p style={{ color: "#92400e", fontSize: 13, marginTop: 12 }}>No non-primary agent exists yet. Create one in Agent access before continuing.</p>}
+          <ol style={{ display: "grid", gap: 12, paddingLeft: 22, margin: "18px 0 0" }}>
+            <li>
+              <strong>Verify environment readiness</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Checks Supabase, OutLayer connectivity and signer match, plus the configured NEAR RPC network. Read-only; it does not move funds.</p>
+              <span className={onboardingHealthReady ? "status-pill status-executed" : "status-pill status-cancelled"}>{health ? String(health.status ?? "unknown") : "Not checked"}</span>
+              <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, display: "block" }}>{healthLoading ? "Checking…" : "Run readiness check"}</button>
+            </li>
+            <li>
+              <strong>Create the agent identity</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Provisioning creates the agent and returns its bearer token once. The token is issued at creation, before policy setup, so store it securely and do not give it to an unconfigured agent.</p>
+              <span className={onboardingAgent ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingAgent ? "Agent exists" : "Required"}</span>
+              <button type="button" onClick={() => setActiveView("access")} style={buttonStyle}>{onboardingAgent ? "Manage agent credentials" : "Create agent"}</button>
+            </li>
+            <li>
+              <strong>Assign treasury allocation and spending limits</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Allocation is the agent&apos;s hard sub-limit. Per-transfer and rolling 24-hour/7-day limits are additional caps. Autonomous allowance is a cumulative sub-limit within those ceilings; requests beyond it require administrator approval.</p>
+              <span className={onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingAllocation && BigInt(onboardingAllocation.allocationLimitYocto) > 0n && onboardingPolicyReady ? "Allocation and autonomous allowance configured" : "Incomplete"}</span>
+              <button type="button" disabled={!onboardingAgent} onClick={() => setActiveView("agents")} style={buttonStyle}>Configure allocation and policy</button>
+            </li>
+            <li>
+              <strong>Authorize exact recipient account IDs</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>Only active, unexpired exact NEAR account IDs are eligible. Labels do not affect authorization.</p>
+              <span className={onboardingRecipients.length ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingRecipients.length ? onboardingRecipients.length + " active recipient(s)" : "No active recipient"}</span>
+              <button type="button" disabled={!onboardingAgent} onClick={() => setActiveView("recipients")} style={buttonStyle}>Manage recipients</button>
+            </li>
+            <li>
+              <strong>Store the agent credential and integrate</strong>
+              <p style={{ color: "#64748b", fontSize: 13, margin: "4px 0" }}>The token is displayed once at creation or rotation. Store it in the agent&apos;s server-side secret manager. Never use the administrator token or OutLayer API key in agent code.</p>
+              <span className={onboardingCredentialIssued ? "status-pill status-executed" : "status-pill status-cancelled"}>{onboardingCredentialIssued ? "New token available in credential panel" : "Credential handoff not confirmed in this session"}</span>
+              <button type="button" onClick={() => setActiveView("access")} style={buttonStyle}>Open credential handoff</button>
+            </li>
+          </ol>
+          <section aria-label="Agent API quickstart" style={{ marginTop: 18, padding: 16, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <strong>Agent API quickstart</strong>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`GET /api/health
+GET /api/agent/balance
+
+POST /api/agent/transfer
+Authorization: Bearer <AGENT_TOKEN>
+Content-Type: application/json
+
+{
+  "requestId": "<STABLE_ID_FOR_THIS_PAYMENT>",
+  "to": "<AUTHORIZED_NEAR_ACCOUNT_ID>",
+  "amountYocto": "<POSITIVE_INTEGER_STRING>"
+}`)} style={{ ...buttonStyle, marginTop: 0 }}>Copy request example</button>
+            </div>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>Use the agent token only. Keep it in your server-side secret manager. 1 NEAR = 10²⁴ yoctoNEAR; send amounts as positive integer strings, never floating-point values.</p>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12 }}>{["POST /api/agent/transfer", "Authorization: Bearer <AGENT_TOKEN>", "Content-Type: application/json", "", '{ "requestId": "<STABLE_ID_FOR_THIS_PAYMENT>", "to": "<AUTHORIZED_NEAR_ACCOUNT_ID>", "amountYocto": "<POSITIVE_INTEGER_STRING>" }'].join("\n")}</pre>
+            <p style={{ color: "#64748b", fontSize: 12, marginBottom: 0 }}>Reuse the same request ID only for retries of the same logical payment. A 202 response is not proof of settlement; check the dashboard and wait for NEAR FINAL reconciliation.</p>
+          </section>
+          <p style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginTop: 18, color: "#64748b", fontSize: 12 }}>A completed checklist is not a guarantee that a transfer will execute. The live request path still revalidates current policy and provider state. Do not test with funds until the configured recipient, amount and execution intent have been reviewed.</p>
+        </div>
+        <div hidden={activeView !== "system"}>
+        <div id="system-health" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap", scrollMarginTop: 76 }}>
+          <strong>System health</strong>
+          <button type="button" onClick={loadHealth} disabled={healthLoading} style={{ ...buttonStyle, marginTop: 0 }}>{healthLoading ? "Checking…" : "Check system health"}</button>
+        </div>
+        {health && <div role="status" className="health-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8, marginTop: 12, padding: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13 }}>
+          <div><strong>Overall</strong><div>{String(health.status ?? "unknown")}</div></div>
+          <div><strong>Network</strong><div>{String(health.network ?? "unknown")}</div></div>
+          <div><strong>Supabase</strong><div>{String(health.supabase ?? health.status ?? "unknown")}</div></div>
+          <div><strong>NEAR RPC</strong><div>{String(health.nearRpc ?? "unknown")}</div></div>
+          <div><strong>Execution provider</strong><div>{String(health.outlayer ?? "unknown")}</div></div>
+          <div><strong>Signer match</strong><div>{health.signerMatches === true ? "Yes" : health.signerMatches === false ? "No" : "Unknown"}</div></div>
+        </div>}
+        </div>
+        {dashboard?.budget && <>
+          <div hidden={activeView !== "overview"}>
+          <div id="overview" className="overview-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(175px,1fr))", gap: 12, marginTop: 20, scrollMarginTop: 76 }}>
+            {[
+              ["Treasury limit", near(dashboard.budget.totalLimitYocto)],
+              ["Allocated to agents", totalAgentAllocationsNear(dashboard.allocations)],
+              ["Unallocated authority", unallocatedAuthorityNear(dashboard.budget, dashboard.allocations)],
+              ["Spent", near(dashboard.budget.spentYocto)],
+              ["Reserved", near(dashboard.budget.reservedYocto)],
+              ["Available", availableNear(dashboard.budget)]
+            ].map(([label, value]) => <div key={label} className="metric-card" style={{ padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9 }}>
+              <div style={{ color: "#64748b", fontSize: 12 }}>{label}</div>
+              <div style={{ fontSize: 23, fontWeight: 700, marginTop: 5 }}>{value} <span style={{ fontSize: 12, fontWeight: 400 }}>NEAR</span></div>
+            </div>)}
+          </div>
+          </div>
+          <div hidden={activeView !== "treasury"}>
+          <form id="treasury-settings" className="console-panel" onSubmit={updateBudget} style={{ marginTop: 22, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+            <strong>Shared budget limit</strong>
+            <label style={{ display: "block", fontSize: 13, marginTop: 10 }}>New total limit (NEAR)
+              <input type="number" min="0.000000000000000000000001" step="any" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)} style={{ ...inputStyle, marginTop: 6 }} />
+            </label>
+            <p style={{ color: "#64748b", fontSize: 12 }}>The limit cannot be reduced below spent plus reserved funds or below the sum of agent allocations. Changes are recorded in the admin audit log.</p>
+            <button type="submit" disabled={savingBudget || !adminToken.trim()} style={buttonStyle}>{savingBudget ? "Saving…" : "Update budget limit"}</button>
+            {budgetMessage && <p role="status" style={{ fontSize: 13 }}>{budgetMessage}</p>}
+          </form>
+          <section id="emergency-stop" className="emergency-panel" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div><strong>Global transfer control</strong><p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 0" }}>{dashboard.transfersEnabled ? "Transfers are enabled. The stop blocks new reservations and unclaimed submissions." : "Emergency stop is active. New reservations and unclaimed submissions are blocked."} <span style={{ display: "block", marginTop: 4 }}>The stop cannot recall an OutLayer request already submitted or in flight.</span></p></div>
+              <button type="button" onClick={() => setTransfersEnabled(!dashboard.transfersEnabled)} disabled={controlBusy || !adminToken.trim()} style={{ ...buttonStyle, background: dashboard.transfersEnabled ? "#b91c1c" : "#166534", marginTop: 0 }}>
+                {controlBusy ? "Updating…" : dashboard.transfersEnabled ? "Emergency stop" : "Enable transfers"}
+              </button>
+            </div>
+            {controlMessage && <p role="status" style={{ fontSize: 13 }}>{controlMessage}</p>}
+          </section>
+          <form id="agent-policy" className="console-panel" onSubmit={saveAgentPolicy} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+            <strong>Per-agent spending policy</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Limits include active reservations. Daily and weekly limits use rolling 24-hour and 7-day windows. Blank limits add no per-agent cap; the shared budget and global transfer cap still apply. A null recipient list is unrestricted; an empty list blocks every recipient.</p>
+            <label style={{ display: "block", fontSize: 13 }}>Agent
+              <select value={policyAgent} onChange={e => {
+                const id = e.target.value; setPolicyAgent(id);
+                const policy = dashboard?.policies?.find(item => item.agentId === id);
+                setPolicyMax(policy?.maxTransferYocto ? yoctoToInput(policy.maxTransferYocto) : "");
+                setPolicyDaily(policy?.dailyLimitYocto ? yoctoToInput(policy.dailyLimitYocto) : "");
+                setPolicyWeekly(policy?.weeklyLimitYocto ? yoctoToInput(policy.weeklyLimitYocto) : "");
+                setPolicyAuto(policy?.autoSpendLimitYocto != null ? yoctoToInput(policy.autoSpendLimitYocto) : "");
+              }} style={{ ...inputStyle, marginTop: 5 }}>
+                {dashboard.agents?.map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+              </select>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginTop: 10 }}>
+              <label style={{ fontSize: 13 }}>Max per transfer (NEAR)<input value={policyMax} onChange={e => setPolicyMax(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Rolling 24h limit (NEAR)<input value={policyDaily} onChange={e => setPolicyDaily(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Rolling 7d limit (NEAR)<input value={policyWeekly} onChange={e => setPolicyWeekly(e.target.value)} placeholder="No additional limit" style={{ ...inputStyle, marginTop: 5 }} /></label>
+              <label style={{ fontSize: 13 }}>Autonomous allowance per 24 hours (NEAR)<input inputMode="decimal" value={policyAuto} onChange={e => setPolicyAuto(e.target.value)} placeholder="Disabled" style={{ ...inputStyle, marginTop: 5 }} /></label>
+            </div>
+            <button type="submit" disabled={policyBusy || !adminToken.trim()} style={buttonStyle}>{policyBusy ? "Saving…" : "Save agent policy"}</button>
+            {policyMessage && <p role="status" style={{ fontSize: 13 }}>{policyMessage}</p>}
+          </form>
+          <form id="agent-allocations" className="console-panel" onSubmit={saveAgentAllocation} style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+            <strong>Agent treasury allocation</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>An allocation is a sub-limit inside the global treasury ceiling, not additional funds. Spent and reserved amounts count against it. New agents start at zero and cannot reserve funds until an administrator assigns an allocation.</p>
+            <label style={{ display: "block", fontSize: 13 }}>Agent
+              <select value={allocationAgent} onChange={event => {
+                const id = event.target.value;
+                setAllocationAgent(id);
+                const allocation = dashboard?.allocations?.find(item => item.agentId === id);
+                setAllocationLimit(allocation ? yoctoToInput(allocation.allocationLimitYocto) : "");
+                setAllocationMessage("");
+              }} style={{ ...inputStyle, marginTop: 5 }}>
+                {(dashboard?.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+              </select>
+            </label>
+            {(() => {
+              const allocation = dashboard?.allocations?.find(item => item.agentId === allocationAgent);
+              return allocation ? <p style={{ color: "#64748b", fontSize: 12, margin: "8px 0" }}>
+                Spent: {near(allocation.spentYocto)} NEAR · Reserved: {near(allocation.reservedYocto)} NEAR · Available: {availableAgentNear(allocation)} NEAR
+              </p> : <p style={{ color: "#92400e", fontSize: 12 }}>No allocation ledger row exists for this agent. The allocation migration must be applied before editing.</p>;
+            })()}
+            <label style={{ display: "block", fontSize: 13, marginTop: 8 }}>Allocation limit (NEAR)
+              <input inputMode="decimal" value={allocationLimit} onChange={event => setAllocationLimit(event.target.value)} required style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <button type="submit" disabled={allocationBusy || !adminToken.trim() || !dashboard.allocations?.some(item => item.agentId === allocationAgent)} style={buttonStyle}>
+              {allocationBusy ? "Saving…" : "Save agent allocation"}
+            </button>
+            {allocationMessage && <p role="status" style={{ fontSize: 13 }}>{allocationMessage}</p>}
+          </form>
+          </div>
+          <div hidden={activeView !== "recipients"}>
+          <section id="recipients" className="console-panel" style={{ marginTop: 14, padding: 18, border: "1px solid #e2e8f0", borderRadius: 12, scrollMarginTop: 76 }}>
+            <strong>Authorized recipients</strong>
+            <p style={{ color: "#64748b", fontSize: 12, margin: "5px 0 12px" }}>Only exact NEAR account IDs authorized by an administrator can receive new transfers. Labels are display-only. Revocation blocks future requests and approvals; it does not recall claimed provider submissions or release pending reservations.</p>
+            <form onSubmit={authorizeRecipient} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+              <label style={{ fontSize: 13 }}>Agent
+                <select value={recipientAgent} onChange={e => setRecipientAgent(e.target.value)} style={{ ...inputStyle, marginTop: 5 }}>
+                  {(dashboard?.agents ?? []).map(agent => <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>)}
+                </select>
+              </label>
+              <label style={{ fontSize: 13 }}>Exact NEAR account ID
+                <input value={recipientAccount} onChange={e => setRecipientAccount(e.target.value)} placeholder="recipient.near" required style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <label style={{ fontSize: 13 }}>Label (optional)
+                <input value={recipientLabel} onChange={e => setRecipientLabel(e.target.value)} maxLength={80} placeholder="Treasury wallet" style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <label style={{ fontSize: 13 }}>Expires at (optional)
+                <input type="datetime-local" value={recipientExpires} onChange={e => setRecipientExpires(e.target.value)} style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                <button type="submit" disabled={recipientBusy || !adminToken.trim()} style={buttonStyle}>{recipientBusy ? "Saving…" : "Authorize recipient"}</button>
+              </div>
+            </form>
+            <div style={{ marginTop: 14 }}>
+              {(dashboard.recipients ?? []).filter(item => item.agentId === recipientAgent).length === 0
+                ? <p style={{ color: "#92400e", fontSize: 13 }}>No recipients are authorized for this agent. New transfer requests will be denied until an administrator authorizes an account ID.</p>
+                : (dashboard.recipients ?? []).filter(item => item.agentId === recipientAgent).map(item => {
+                  const expired = item.expiresAt ? new Date(item.expiresAt).getTime() <= Date.now() : false;
+                  const active = item.status === "active" && !expired;
+                  return <div key={item.agentId + ":" + item.accountId} className="recipient-record">
+                    <div style={{ minWidth: 180, flex: 1 }}>
+                      <strong className="record-title">{item.label || item.accountId}</strong>
+                      <code className="record-identifier">{item.accountId}</code>
+                      <div className="record-meta"><span className={`status-pill ${active ? "status-executed" : expired ? "status-cancelled" : "status-rejected"}`}>{active ? "Authorized" : expired ? "Expired" : "Revoked"}</span><span>Authorized by {item.authorizedBy}</span>{item.expiresAt && <span>Expires {new Date(item.expiresAt).toLocaleString()}</span>}</div>
+                    </div>
+                    {active && <button type="button" disabled={recipientBusy} onClick={() => revokeRecipient(item.agentId, item.accountId)} style={buttonStyle}>Revoke</button>}
+                  </div>;
+                })}
+            </div>
+            {recipientMessage && <p role="status" style={{ fontSize: 13 }}>{recipientMessage}</p>}
+          </section>
+          </div>
+          <div hidden={activeView !== "agents"}>
+          <h3 id="agents" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Agents ({dashboard.agents?.length ?? 0})</h3>
+          <div className="bulk-toolbar">
+            <span>{selectedAgentIds.length} agents selected · up to 20 per batch</span>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(true)}>Activate selected</button>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length || !adminToken.trim()} onClick={() => bulkSetAgentStatus(false)}>Deactivate selected</button>
+            <button type="button" disabled={bulkBusy || !selectedAgentIds.length} onClick={() => setSelectedAgentIds([])}>Clear</button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="console-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead><tr><th style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>Select</th>{["Agent","ID","Status"].map(x => <th key={x} style={{ textAlign: "left", padding: 10, borderBottom: "1px solid #cbd5e1" }}>{x}</th>)}</tr></thead>
+              <tbody>{dashboard.agents?.map(agent => <tr key={agent.id}>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}><input type="checkbox" aria-label={"Select agent " + agent.id} disabled={agent.id === "primary" || bulkBusy || (!selectedAgentIds.includes(agent.id) && selectedAgentIds.length >= 20)} checked={selectedAgentIds.includes(agent.id)} onChange={event => setSelectedAgentIds(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /></td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.name}</td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.id}</td>
+                <td style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>{agent.active ? "Active" : "Inactive"} {agent.id !== "primary" && <button type="button" disabled={agentStatusBusy === agent.id || bulkBusy || !adminToken.trim()} onClick={() => setAgentStatus(agent.id, !agent.active)} style={{ marginLeft: 8, padding: "6px 8px", border: "1px solid #cbd5e1", borderRadius: 6 }}>{agentStatusBusy === agent.id ? "Saving…" : agent.active ? "Deactivate" : "Activate"}</button>}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+          {bulkMessage && <p role="status" className="bulk-message">{bulkMessage}</p>}
+          </div>
+          <div hidden={activeView !== "payments"}>
+          <h3 id="payments" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transaction history ({dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} records)</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, marginBottom: 12 }}>
+            <input aria-label="Search transactions" placeholder="Search request, agent, recipient or tx hash" value={reservationSearch} onChange={e => setReservationSearch(e.target.value)} style={inputStyle} />
+            <select aria-label="Filter transaction status" value={reservationFilter} onChange={e => setReservationFilter(e.target.value)} style={inputStyle}>
+              <option value="all">All statuses</option><option value="aged">Aged / ambiguous (15+ min)</option><option value="reserved">Reserved</option><option value="needs_review">Needs review</option><option value="executed">Executed</option><option value="failed">Failed</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option>
+            </select>
+            <button type="button" onClick={() => loadDashboard(1, reservationFilter, reservationSearch)} disabled={dashboardLoading} style={{ ...buttonStyle, marginTop: 0 }}>{dashboardLoading ? "Loading…" : "Apply filters"}</button>
+          </div>
+          {!dashboard.reservations?.length ? <div className="empty-state"><strong>No matching transactions</strong><p>Change the filters or search terms to see other records.</p></div> :
+            <div className="history-table-wrap">
+              <table className="history-table">
+                <thead><tr>
+                  <th>Transaction</th><th>Agent</th><th>Transfer</th><th>Status</th><th>Created</th><th>Network evidence</th><th>Actions</th>
+                </tr></thead>
+                <tbody>{dashboard.reservations.map(item => {
+                  const released = ["failed", "rejected", "cancelled"].includes(item.status);
+                  const providerLabel = item.providerRequestId || item.txHash ? "Reference recorded" : item.status === "needs_review" ? "Outcome ambiguous" : item.status === "reserved" ? "Submission in progress" : ["rejected", "cancelled"].includes(item.status) || (item.status === "failed" && !item.txHash) ? "Not submitted" : "No reference";
+                  const finalityLabel = item.txHash && ["executed", "failed"].includes(item.status) ? "FINAL verified" : item.txHash ? "Awaiting verification" : "No transaction hash";
+                  return <Fragment key={item.requestId}>
+                    <tr className="history-primary-row">
+                      <td><strong className="history-amount">{near(item.amountYocto)} NEAR</strong><span className="history-subline">{item.requestId}</span></td>
+                      <td><strong>{item.agentId}</strong><span className="history-subline">{item.recipient}</span></td>
+                      <td><strong>{near(item.amountYocto)} NEAR</strong><span className="history-subline">Recipient transfer</span></td>
+                      <td><span className={`status-pill status-${item.status.replace(/[^a-z0-9_-]/g, "-")}`}>{item.status.replace(/_/g, " ")}</span></td>
+                      <td><strong>{new Date(item.createdAt).toLocaleDateString()}</strong><span className="history-subline">{new Date(item.createdAt).toLocaleTimeString()} · {Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))}m ago</span></td>
+                      <td><strong>{finalityLabel}</strong><span className="history-subline">Provider: {providerLabel}</span></td>
+                      <td><div className="history-actions">
+                        {item.providerRequestId && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "provider-status")}>{reservationAction === item.requestId + ":provider-status" ? "Checking…" : "Check provider"}</button>}
+                        {item.txHash && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => inspectReservation(item.requestId, "reconcile")}>{reservationAction === item.requestId + ":reconcile" ? "Checking…" : "Reconcile"}</button>}
+                        {item.txHash && (item.status === "needs_review" || item.status === "reserved") && <button type="button" disabled={reservationAction !== null || !adminToken.trim()} onClick={() => resolveReservation(item.requestId, "failed_final", "Provider confirms final failure", item.txHash)}>Resolve failure</button>}
+                      </div></td>
+                    </tr>
+                    <tr className="history-detail-row"><td colSpan={7}>
+                      <div className="history-detail-grid">
+                        <div><span>Request ID</span><code>{item.requestId}</code></div>
+                        <div><span>Treasury ledger</span><strong>{item.status === "executed" ? "Spent" : released ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</strong></div>
+                        <div><span>Agent allocation</span><strong>{item.status === "executed" ? "Spent" : released ? "Reservation released" : "Reserved"} · {near(item.amountYocto)} NEAR</strong></div>
+                        <div><span>Provider request</span><code>{item.providerRequestId ?? "Not recorded"}</code></div>
+                        <div><span>NEAR transaction</span>{item.txHash ? <code>{item.txHash}</code> : <strong>No hash recorded</strong>}</div>
+                        {item.lastError && <div className="history-warning"><span>Review required</span><strong>{item.lastError}</strong></div>}
+                        {item.resolutionReason && <div><span>Resolution</span><strong>{item.resolutionReason} · {item.resolvedBy ?? "unknown"} · {item.resolvedAt ? new Date(item.resolvedAt).toLocaleString() : ""}</strong></div>}
+                        {item.resolutionEvidenceReference && <div><span>Resolution evidence</span><code>{item.resolutionEvidenceReference}</code></div>}
+                      </div>
+                    </td></tr>
+                  </Fragment>;
+                })}</tbody>
+              </table>
+            </div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.reservationPage?.page ?? 1} of {dashboard.reservationPage?.totalPages ?? 1} · {dashboard.reservationPage?.total ?? dashboard.reservations?.length ?? 0} matching records</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) <= 1} onClick={() => loadDashboard(Math.max(1, (dashboard.reservationPage?.page ?? 1) - 1))} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.reservationPage?.page ?? 1) >= (dashboard.reservationPage?.totalPages ?? 1)} onClick={() => loadDashboard((dashboard.reservationPage?.page ?? 1) + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
+          </div>
+          <div hidden={activeView !== "security"}>
+          <h3 id="admin-audit" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Admin activity ({dashboard.activityPages?.audit?.total ?? dashboard.audit?.length ?? 0})</h3>
+          {!dashboard.audit?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No admin actions recorded yet.</p> :
+            <div style={{ display: "grid", gap: 8 }}>{dashboard.audit.map(entry => <div key={entry.id} className="event-record audit-record">
+              <strong>{entry.action}</strong> · {entry.targetId ?? "system"}<div style={{ color: "#64748b", marginTop: 4 }}>By {entry.actorAgentId} · {new Date(entry.createdAt).toLocaleString()}</div>
+              <pre className="event-payload">{JSON.stringify(entry.details, null, 2)}</pre>
+            </div>)}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.audit?.page ?? 1} of {dashboard.activityPages?.audit?.totalPages ?? 1}</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.audit?.page ?? 1) <= 1} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, Math.max(1, auditPage - 1), securityPage)} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.audit?.page ?? 1) >= (dashboard.activityPages?.audit?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage + 1, securityPage)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
+          <h3 id="security-events" style={{ margin: "24px 0 10px", fontSize: 17, scrollMarginTop: 76 }}>Transfer security events ({dashboard.activityPages?.security?.total ?? dashboard.securityEvents?.length ?? 0})</h3>
+          {!dashboard.securityEvents?.length ? <p style={{ color: "#64748b", fontSize: 13 }}>No transfer security events recorded yet.</p> :
+            <div style={{ display: "grid", gap: 8 }}>{dashboard.securityEvents.map(event => <div key={event.id} className="event-record security-record">
+              <strong>{event.eventType}</strong>
+              <div style={{ color: "#64748b", marginTop: 4 }}>Agent: {event.actorAgentId ?? "Unauthenticated"} · {new Date(event.createdAt).toLocaleString()}</div>
+              {event.requestId && <div className="event-reference"><span>Request reference</span><code>{event.requestId}</code></div>}<pre className="event-payload">{JSON.stringify(event.details, null, 2)}</pre>
+            </div>)}</div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Page {dashboard.activityPages?.security?.page ?? 1} of {dashboard.activityPages?.security?.totalPages ?? 1}</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.security?.page ?? 1) <= 1} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage, Math.max(1, securityPage - 1))} style={{ ...buttonStyle, marginTop: 0 }}>Previous</button>
+              <button type="button" disabled={dashboardLoading || (dashboard.activityPages?.security?.page ?? 1) >= (dashboard.activityPages?.security?.totalPages ?? 1)} onClick={() => loadDashboard(reservationPage, reservationFilter, reservationSearch, auditPage, securityPage + 1)} style={{ ...buttonStyle, marginTop: 0 }}>Next</button>
+            </div>
+          </div>
+          <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 18 }}>Updated {dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : "just now"}. Values are read from the ENCU database.</p>
+          </div>
+        </>}
+      </section>
+
+      <section hidden={activeView !== "developer"} id="developer-tools" style={{ ...panel, scrollMarginTop: 76 }}>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Developer tools · Testnet transfer request</h2>
+        <div role="alert" className="history-warning" style={{ margin: "12px 0", padding: 14 }}>
+          <strong>Live execution warning</strong>
+          <p style={{ margin: "6px 0 0", color: "#ffc0b4" }}>This sends a real authenticated transfer request. If ENCU authorizes it under the agent&apos;s current policy, ENCU submits it through the configured execution backend and may initiate a NEAR Testnet transfer. Requests outside policy are rejected. This is not a dry run.</p>
+        </div>
+        <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
+          Use only a testnet agent, an explicitly authorized recipient and an amount you intend to transfer. The agent token is held only in this page&apos;s memory and cleared after submission.
+        </p>
+        <form onSubmit={submitAgentRequest} style={{ display: "grid", gap: 10 }}>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Test agent
+            <select value={requestAgentId} onChange={event => setRequestAgentId(event.target.value)} style={{ ...inputStyle, marginTop: 6 }}>
+              <option value="test-agent-alpha">Alpha · test-agent-alpha</option>
+              <option value="test-agent-beta">Beta · test-agent-beta</option>
+            </select>
+            <span style={{ display: "block", color: "#64748b", fontSize: 12, fontWeight: 400, marginTop: 5 }}>ENCU verifies this selection against the identity in the token. A mismatch is rejected before reserving funds.</span>
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Agent credential
+            <input type="password" autoComplete="off" value={requestAgentToken} onChange={event => setRequestAgentToken(event.target.value)} required placeholder="Paste this agent&apos;s token here" style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Recipient NEAR account
+            <input value={requestRecipient} onChange={event => setRequestRecipient(event.target.value)} required style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>
+            Amount (NEAR)
+            <input inputMode="decimal" value={requestAmount} onChange={event => setRequestAmount(event.target.value)} required style={{ ...inputStyle, marginTop: 6 }} />
+          </label>
+          <button type="submit" disabled={requestBusy || !requestAgentToken.trim()} style={{ ...buttonStyle, opacity: requestBusy || !requestAgentToken.trim() ? 0.6 : 1 }}>
+            {requestBusy ? "Submitting request…" : "Submit live agent request"}
+          </button>
+        </form>
+        {requestResult && <div aria-live="polite" style={{ marginTop: 14, padding: 12, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+          <strong>Request response</strong>
+          <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{JSON.stringify(requestResult, null, 2)}</pre>
+        </div>}
+      </section>
+
+      <section hidden={activeView !== "access"} id="agent-access" style={{ ...panel, scrollMarginTop: 76 }}>
+        <h2 style={{ fontSize: 21, margin: "0 0 8px" }}>Agent access management</h2>
+        <p style={{ color: "#64748b", fontSize: 13 }}>Provisioning and credential rotation are administrator-only operations.</p>
+        <p style={{ color: "#64748b", fontSize: 14, lineHeight: 1.5 }}>Create a separate credential for an agent that shares the same NEAR spending budget. Only the primary admin token can do this.</p>
+        <form onSubmit={createAgent}>
+          <label htmlFor="agent-id" style={{ display: "block", fontWeight: 600, margin: "16px 0 8px" }}>Agent ID</label>
+          <input id="agent-id" value={agentId} onChange={(event) => setAgentId(event.target.value)} required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" style={inputStyle} />
+          <label htmlFor="agent-name" style={{ display: "block", fontWeight: 600, margin: "16px 0 8px" }}>Agent name</label>
+          <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} required minLength={2} maxLength={80} style={inputStyle} />
+          <button type="submit" disabled={creatingAgent || !adminToken.trim()} style={buttonStyle}>{creatingAgent ? "Creating…" : "Create agent credential"}</button>
+        </form>
+
+        <form onSubmit={rotateAgent} style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e2e8f0" }}>
+          <strong>Replace an agent&apos;s access token</strong>
+          <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
+            Select an existing agent below. This replaces only that agent&apos;s credential. The old token becomes invalid immediately; the agent identity, policy, budget and transaction history remain in place. The new token is displayed once.
+          </p>
+          <label htmlFor="rotation-agent" style={{ display: "block", fontWeight: 600, margin: "12px 0 8px" }}>Agent whose token will be replaced</label>
+          <select id="rotation-agent" value={rotationAgentId} onChange={event => { setRotationAgentId(event.target.value); setRotationResult(null); }}
+            disabled={!dashboard?.agents?.some(agent => agent.id !== "primary") || rotatingAgent}
+            style={inputStyle}>
+            {(dashboard?.agents ?? []).filter(agent => agent.id !== "primary").map(agent =>
+              <option key={agent.id} value={agent.id}>{agent.name} · {agent.id} · {agent.active ? "Active" : "Inactive"}</option>
+            )}
+          </select>
+          {!dashboard && <p style={{ color: "#92400e", fontSize: 12 }}>Load the dashboard first so the target is selected from the actual agent list.</p>}
+          {dashboard && !dashboard.agents?.some(agent => agent.id !== "primary") && <p style={{ color: "#92400e", fontSize: 12 }}>There are no rotatable agents. The primary admin identity cannot be rotated here.</p>}
+          <button type="submit" disabled={rotatingAgent || !adminToken.trim() || !rotationAgentId || !dashboard?.agents?.some(agent => agent.id === rotationAgentId && agent.id !== "primary")}
+            style={{ ...buttonStyle, background: "#7f1d1d" }}>
+            {rotatingAgent ? "Replacing token…" : rotationAgentId ? `Replace token for ${dashboard?.agents?.find(agent => agent.id === rotationAgentId)?.name ?? rotationAgentId}` : "Select an agent"}
+          </button>
+        </form>
+        {rotationResult && <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+          {rotationResult.token ? <>
+            <strong>Credential rotated: {rotationResult.agent?.name} ({rotationResult.agent?.id})</strong>
+            <p style={{ color: "#b45309", fontSize: 13 }}>The previous credential is invalid. Save this replacement securely; it is shown once.</p>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#f1f5f9", borderRadius: 6 }}>{rotationResult.token}</pre>
+            <button type="button" onClick={() => navigator.clipboard?.writeText(rotationResult.token!)} style={buttonStyle}>Copy replacement token</button>
+          </> : <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(rotationResult, null, 2)}</pre>}
+        </div>}
+        {agentResult && <div aria-live="polite" style={{ marginTop: 20, padding: 16, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+          {agentResult.token ? <>
+            <strong>Agent created: {agentResult.agent?.name} ({agentResult.agent?.id})</strong>
+            <p style={{ color: "#b45309", fontSize: 13 }}>Copy this token now. It is shown once and cannot be retrieved again.</p>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", padding: 12, background: "#f1f5f9", borderRadius: 6 }}>{agentResult.token}</pre>
+            <button type="button" onClick={() => navigator.clipboard?.writeText(agentResult.token!)} style={buttonStyle}>Copy agent token</button>
+          </> : <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agentResult, null, 2)}</pre>}
+        </div>}
+      </section>
+    </main>
+  );
+}
