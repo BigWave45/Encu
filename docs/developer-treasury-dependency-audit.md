@@ -506,3 +506,40 @@ If OutLayer cannot confirm the required authority boundary, this route fails the
 The V1 database reservation ledger remains mandatory. OutLayer's cumulative policy counters are not atomic across concurrent submissions per its own documentation. Exact per-transaction limits, address checks, capability checks, freeze and approval triggers are described as TEE-enforced, but they do not replace Encu's shared-budget reservation and reconciliation logic.
 
 No key was derived, API endpoint called, wallet created, binding signed, policy changed, transfer submitted, database mutated or deployment performed in this review.
+
+
+## Follow-up: external-NEAR-account delegate registration and deterministic identity (2026-11-04)
+
+A further review of the current Agent Custody documentation adds an alternative to deriving a child wallet from the existing V1 custody wallet.
+
+### Newly documented facts
+
+- OutLayer describes deterministic wallet identity as derived from `(account_id, seed, vault_or_none)`; the same inputs produce the same wallet identity, and different vault scopes can produce independent sub-wallets.
+- Deterministic wallet authentication uses a NEAR ed25519 signature on each request (`Bearer near:<sig>`); the signing key must be a full-access key. OutLayer says it stores no auth credential for this deterministic mode.
+- The Agent Custody documentation says delegate-key registration through `PUT /wallet/v1/api-key` works from both custody wallets (using a Bearer API key) and external NEAR accounts (signature in the request body).
+- The same documentation describes the sub-agent wallet as derived from a NEAR key plus a seed and authenticating with a `wk_` bearer key.
+- The custody policy model says the wallet owner controls the policy, which is encrypted on chain and evaluated inside the TEE. The controller can freeze the wallet through an on-chain transaction.
+
+### Why this changes the candidate design
+
+A developer-owned NEAR account may be able to act as the parent identity for a deterministic executor or delegate wallet, instead of using the existing global V1 custody wallet as parent. This could create a separate wallet identity scoped to a workspace while preserving the existing V1 executor.
+
+The user's Intear Wallet and named Testnet account `agentg.testnet` may be suitable for an owner-signing test, subject to account compatibility and the exact registration flow. This is a candidate only; no transaction has been assembled or signed.
+
+### Remaining questions
+
+1. The public docs do not give a complete exact request schema and signing payload for external-account delegate registration in the reviewed section. Obtain the current schema, canonical message bytes, timestamp rules, signature encoding and a test vector from OutLayer.
+2. Confirm whether the delegate wallet's `account_id` is the developer's named account and how its distinct `wallet_id` / `near_account_id` are derived.
+3. Confirm whether the developer, as the external NEAR account owner, is the sole policy controller for the resulting wallet, and whether the controller can independently inspect, update and freeze its policy.
+4. Confirm whether any parent/delegate relationship grants another credential holder policy-update, freeze, delete, key-rotation or recovery authority.
+5. Confirm whether this deterministic/delegate wallet can be used as the Personal Account Binding executor for the same developer-owned named asset account, and whether the binding contract accepts that executor identity.
+6. Confirm how Intear Wallet performs the required signing operation without exposing a full-access private key to Encu. Do not implement by asking the user to paste a seed phrase or private key.
+7. Confirm whether a developer-signed registration can be completed once, after which Encu can safely hold a revocable `wk_` credential server-side, or whether every request requires the developer's full-access signature. The docs distinguish deterministic per-request `near:` auth from delegate `wk_` auth; the exact transition must be confirmed.
+
+### Updated feasibility status
+
+This external-account path is now the preferred route to investigate before the existing-parent custody-wallet delegate route, because it may anchor the executor identity to the developer's own NEAR account rather than the shared V1 custody wallet. It is not approved for implementation until the signing flow, policy controller, parent authority, binding compatibility and revocation behavior are proven.
+
+Keep the existing V1 `OUTLAYER_API_KEY` and `OUTLAYER_NEAR_ADDRESS` unchanged. Never use the V1 credential to bind `agentg.testnet`. Never store the developer's full-access key in Encu. Do not create a wallet or call registration/binding APIs without explicit approval.
+
+No API call, signature, wallet registration, key derivation, binding, policy update, transfer, database mutation or deployment was performed in this review.
