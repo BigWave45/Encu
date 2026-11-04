@@ -310,8 +310,8 @@ export default function DeveloperPortal() {
           <div className="developer-grid">
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <div><h2>Your agents</h2><p>Signed in as {session.user.email}</p></div>
-<div className="developer-workspace-summary" aria-label="Workspace spending summary">
+                <div><h2>{activeView === "overview" ? "Workspace overview" : activeView === "agents" ? "Your agents" : activeView === "recipients" ? "Recipient permissions" : activeView === "integration" ? "Integration" : activeView === "transactions" ? "Transactions" : activeView === "audit" ? "Audit & Security" : activeView === "tools" ? "Developer tools" : "How ENCU works"}</h2><p>Signed in as {session.user.email}</p></div>
+{activeView === "overview" && <div className="developer-workspace-summary" aria-label="Workspace spending summary">
                 {(() => {
                   const totals = agents.reduce((sum, agent) => ({
                     allocated: sum.allocated + BigInt(agent.allocation?.allocation_limit_yocto ?? "0"),
@@ -326,7 +326,7 @@ export default function DeveloperPortal() {
                     <div><span>Available across agents</span><strong>{available >= 0n ? near(available.toString()) : "Ledger mismatch"}</strong></div>
                   </>;
                 })()}
-              </div>
+              </div>}
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
