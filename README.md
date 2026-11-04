@@ -36,6 +36,25 @@ The product communication design already exists in code. It is not dependent on 
 
 They describe the intended layout and interactions, but several are not present in the current developer dashboard. The current implementation in `app/developers/page.tsx` is still largely one stacked workspace with agent cards and embedded tools. The admin control inventory is a separate administrator-console specification; **do not copy administrator-only controls into the developer dashboard**.
 
+### Current implementation state — 2026-11-04
+
+The developer workspace now has responsive dark V1 navigation for Overview, Agents, Recipients, Integration, Transactions, Audit & Security, Developer tools and How ENCU works. This is a source implementation update, not a verified browser release.
+
+- Overview authority totals are now confined to the Overview destination.
+- Recipient authorization, expiry and revocation have been moved out of agent configuration into a dedicated agent-scoped Recipients destination, using the existing developer configuration API.
+- Integration has a copyable /api/agent/transfer quickstart, integer yoctoNEAR explanation, idempotency guidance and response-state explanations based on the current transfer route.
+- The request payload builder has been moved from Agents to Developer tools and is explicitly described as a live Testnet action, not a dry run.
+- Newly issued/rotated agent credentials are associated with the matching agent playground in page memory. Sign-out clears the credential. Configuration saves refresh the agent list; successful requests refresh transaction and audit activity.
+- The existing execution diagrams remain available in Overview and How ENCU works.
+
+Remaining work:
+1. Add Connect / Setup as the initial signed-in landing destination. Derive checklist states from actual loaded agent, policy, recipient and transaction data. Do not claim a token was securely stored merely because it was displayed.
+2. Add transaction search and request inspection using only persisted fields returned by the current API/database query. Missing signer/action/recipient verification and NEAR finality evidence must be shown as unavailable, never inferred.
+3. Run lint, TypeScript, production build and relevant tests. The latest branch head currently has no reported GitHub Actions run.
+4. Vercel remains blocked by the build-rate-limit failure. No browser/mobile verification is complete. Do not deploy or merge without explicit approval.
+
+The preceding “Known implementation gaps” list and “NEXT WORK SEQUENCE” are historical planning notes. This current-state section supersedes them wherever they conflict.
+
 ### Required developer-facing structure
 
 Implement these as clearly navigable destinations or distinct page sections, not merely more cards stacked into one long page:
