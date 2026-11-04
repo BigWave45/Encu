@@ -35,6 +35,16 @@ The developer dashboard information-architecture slice is in progress on `encu/d
   - The backend reserve function requires an active recipient with no expiry or an expiry later than database time. The pre-submission claim/revalidation function repeats that check, so expiration/revocation between reservation and provider submission is blocked.
 - Agent configuration now clears prior-agent values on agent changes and guards load/save responses against stale agent state.
 
+### Connect / Setup landing destination — current slice
+
+- The signed-in developer workspace now opens at **Connect / Setup**. Overview remains a separate destination; the existing execution explainer remains available in Overview and How ENCU works.
+- The agent-list API now includes an `activeRecipientCount`, computed from each owned agent's active and unexpired recipient records. It does not expose recipient data from agents the developer does not own.
+- The checklist evaluates agent creation, positive allocation, configured transfer limits and recipient authorization against loaded API records. Allocation, limits and recipient checks require coverage for every active agent, not merely one configured agent.
+- Autonomous allowance is shown as optional. A configured allowance is not represented as extra allocation.
+- One-time credential issuance is distinguished from secure storage. The dashboard cannot inspect an external secret manager. The user can make a clearly labelled manual attestation for credential storage and backend integration; those attestations are page-session state, not persisted verification.
+- A persisted request marks the first-request step complete, but the UI explicitly states that request receipt is not proof of payment or NEAR finality.
+- The setup UI uses the existing dark V1 styling and responsive layout. No Figma replacement, light redesign, new provider, schema migration or live transfer was introduced.
+
 ### Latest commits for this slice
 - `aae105b2a1b17255909314961f2ec40a4243ef55` — dark V1 explainer sidebar.
 - `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f` — clear in-memory credentials on auth-session loss.
