@@ -546,13 +546,15 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
 
 function IntegrationGuide({ issuedToken, issuedWarning }: { issuedToken: string; issuedWarning: string }) {
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const request = "curl --request POST \"$ENCU_BASE_URL/api/agent/transfer\" \\\n" +
     "  --header \"Authorization: Bearer $ENCU_AGENT_TOKEN\" \\\n" +
     "  --header \"Content-Type: application/json\" \\\n" +
-    "  --data '{\n" +
-    "    \"requestId\": \"invoice-payment-20261104-001\",\n" +
-    "    \"to\": \"recipient.near\",\n" +
-    "    \"amountYocto\": \"1000000000000000000000000\"\n" +
+    "  --data '{\\n" +
+    "    \"requestId\": \"invoice-payment-20261104-001\",\\n" +
+    "    \"to\": \"recipient.near\",\\n" +
+    "    \"amountYocto\": \"1000000000000000000000000\",\\n" +
+    "    \"expectedAgentId\": \"your-agent-id\"\\n" +
     "  }'";
   async function copyRequest() {
     try { await navigator.clipboard.writeText(request); setCopied(true); }
@@ -562,28 +564,36 @@ function IntegrationGuide({ issuedToken, issuedWarning }: { issuedToken: string;
     <section className="developer-panel developer-integration-workspace">
       <span className="developer-section-kicker">API INTEGRATION</span>
       <h2>Connect your backend to ENCU</h2>
-      <p>Call ENCU from your server using the bearer token assigned to the specific agent. Never expose the agent token in a browser, mobile app or public client.</p>
+      <p>Integrate from a trusted server environment. Each request is authenticated as one agent identity, then evaluated against that agent’s allocation, transfer policy and recipient permissions.</p>
+      <div className="developer-integration-steps">
+        <article><span>01</span><div><strong>Set your server environment</strong><p>Configure the base URL for the ENCU deployment you use and store the agent token in your server-side secret manager.</p></div></article>
+        <article><span>02</span><div><strong>Send the agent-scoped request</strong><p>Use the exact agent token and a unique request ID. Set <code>expectedAgentId</code> to catch accidental token-to-agent mismatches.</p></div></article>
+        <article><span>03</span><div><strong>Reconcile the outcome</strong><p>A successful HTTP response is not proof of payment. Read the returned status and monitor the transaction record until NEAR finality is reconciled.</p></div></article>
+      </div>
       <div className="developer-integration-env">
-        <strong>Backend environment</strong>
-        <code>ENCU_BASE_URL=https://your-encu-host</code>
+        <strong>Server environment variables</strong>
+        <code>ENCU_BASE_URL=https://your-encu-deployment</code>
         <code>ENCU_AGENT_TOKEN=your-agent-scoped-token</code>
+        <small>Do not prefix the token with NEXT_PUBLIC_, embed it in frontend code, or commit it to source control.</small>
       </div>
-      <div className="developer-integration-code-heading"><h3>Submit a native NEAR transfer request</h3><button className="developer-button secondary" type="button" onClick={() => void copyRequest()}>{copied ? "Copied" : "Copy request"}</button></div>
+      <div className="developer-integration-code-heading"><h3>Native NEAR transfer request</h3><button className="developer-button secondary" type="button" onClick={() => void copyRequest()}>{copied ? "Copied" : "Copy cURL"}</button></div>
       <pre className="developer-integration-code"><code>{request}</code></pre>
-      <p>Use a unique request ID for each logical payment. Reuse that same ID only when retrying the exact same payload. The amount is an integer string denominated in yoctoNEAR (10²⁴ yoctoNEAR = 1 NEAR). Recipient authorization and spending limits are checked by ENCU.</p>
-      {issuedToken && <div className="developer-token"><strong>Credential issued in this session</strong><code>{issuedToken}</code><p>{issuedWarning || "Copy this one-time token and store it in your backend secret manager. It is not persisted by ENCU in browser storage."}</p></div>}
-      <div className="developer-integration-responses">
-        <h3>Response states</h3>
-        <ul>
-          <li><strong>202 · needs_review:</strong> provider submission or execution outcome is not yet reconciled. It is not proof of payment.</li>
-          <li><strong>403 · blocked:</strong> current policy, allocation, recipient permission or transfer cap denied the request.</li>
-          <li><strong>409:</strong> identity mismatch, idempotency conflict, replay or an already-processing request.</li>
-          <li><strong>429:</strong> request rate limit reached. Respect the <code>Retry-After</code> header.</li>
-          <li><strong>401 / 503:</strong> agent authentication or service/provider availability problem.</li>
-        </ul>
-        <p>ENCU only settles the reservation after matching execution evidence is reconciled against NEAR finality. A provider request ID or transaction hash alone is not finality.</p>
+      <div className="developer-integration-field-notes">
+        <div><strong><code>requestId</code></strong><span>8–128 characters. Keep it stable only when retrying the exact same logical payload. A conflicting replay returns 409.</span></div>
+        <div><strong><code>to</code></strong><span>Exact NEAR account ID. It must be authorized for this agent before execution.</span></div>
+        <div><strong><code>amountYocto</code></strong><span>Positive integer string in yoctoNEAR. 1 NEAR = 10²⁴ yoctoNEAR. No decimal point or exponent notation.</span></div>
+        <div><strong><code>expectedAgentId</code></strong><span>Optional identity assertion. ENCU returns 409 if it differs from the authenticated agent.</span></div>
       </div>
+      {issuedToken && <div className="developer-token"><strong>Credential issued in this browser session</strong><button className="developer-button secondary" type="button" onClick={() => setShowToken(value => !value)}>{showToken ? "Hide token" : "Reveal token"}</button>{showToken && <code>{issuedToken}</code>}<p>{issuedWarning || "Copy this one-time token and store it in your backend secret manager. It is held in page memory only and is not persisted by ENCU in browser storage."}</p></div>}
+      <div className="developer-integration-responses">
+        <h3>Interpret the API response</h3>
+        <div><strong>202 · needs_review</strong><p>ENCU has accepted the request for follow-up, but the transfer is not confirmed as paid. This includes provider submission awaiting on-chain confirmation and uncertain provider outcomes.</p></div>
+        <div><strong>403 · blocked</strong><p>Policy denied the request, such as a recipient not being authorized, an allocation or transfer limit being exceeded, or the global execution policy blocking submission.</p></div>
+        <div><strong>409 · conflict or already processing</strong><p>Identity assertion mismatch, idempotency conflict, replay, or a request already being processed. Do not generate a new ID to bypass a conflict.</p></div>
+        <div><strong>429 · rate limited</strong><p>Read the <code>Retry-After</code> response header before retrying. The current route applies a per-agent request limit.</p></div>
+        <div><strong>400 / 401 / 503 / 500</strong><p>Invalid payload, missing or invalid agent credential, authentication/provider/rate-limit infrastructure unavailable, or reservation failure. Inspect the returned error field and retry only when safe.</p></div>
+      </div>
+      <div className="developer-integration-warning"><strong>Testnet execution warning</strong><p>This endpoint is not a dry run. Once the request passes policy checks, ENCU can submit a real Testnet transfer automatically. Use a controlled test recipient and small amount. A provider request ID or transaction hash alone is not finality; ENCU settles the reservation only after matching execution evidence is reconciled against NEAR finality.</p></div>
     </section>
   );
 }
-
