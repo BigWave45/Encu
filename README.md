@@ -28,6 +28,14 @@ ENCU is a developer-facing financial authorization and accounting layer for auto
 
 **Release boundaries:** V1 is NEAR Testnet and uses the configured OutLayer test wallet. It is not a production custody service, does not provide isolated customer treasuries or customer wallet provisioning, and is not mainnet-ready. No production deployment or mainnet transfer is authorized by this status note.
 
+## Current UI decision — 2026-11-04
+
+This branch's editorial-light UI is **not the accepted ENCU interface**. It was reviewed and rejected because it hid important controls. Do not merge PR #3 as-is or use this branch as the current UI source.
+
+The accepted reference is https://agentguard-d34uz0iz4-resonances-projects-13e560cd.vercel.app/developers, Vercel deployment `dpl_AduxhCzP2PyE8t6XJj9N46cAoRuG`, built from `agentguard/build-v1` commit `bd911d46796dd80b72e1200de2cb5f2d11ee2939`. Preserve the dark V1 visual design and existing information density. The sign-in button is reported broken and needs diagnosis; do not assume it works merely because a Supabase handler exists in the bundle.
+
+This branch and PR #3 remain unmerged. No merge, Production deployment, database mutation, branch deletion or live transfer is authorized. Audit logging and request payload tools must be re-integrated into the accepted dark interface only after backend and UI behavior are verified.
+
 ---
 # ENCU
 
@@ -644,3 +652,78 @@ The first native contract release is scoped to native NEAR transfers. NEP-141 to
 OutLayer's Agent Custody product already documents NEAR Intents deposits, swaps, withdrawals, cross-chain transfers and limit orders. ENCU does not currently integrate those endpoints. OutLayer also documents that Intents-dependent endpoints are mainnet-only because testnet has no solvers. Our hackathon testnet flow therefore remains the existing native NEAR transfer route.
 
 The planned native ENCU contract is narrower: native NEAR transfers first. It can be extended to call specific NEAR token or payment contracts through audited adapters, but it will not automatically support NEAR Intents or every NEAR payment protocol. Direct Intents signing and settlement require a separate integration and signer security model. See [native NEAR design](docs/native-near-treasury-contract-design.md) and [OutLayer V1 backlog](docs/outlayer-v1-backlog.md).
+
+---
+
+## Latest engineering handoff — 2026-11-04
+
+> **This section supersedes older operational handoff details elsewhere in this README when branch, PR, CI or preview status conflicts.** Historical implementation notes and dated test evidence remain historical; verify current source and environment before relying on them.
+
+### Active integration state
+
+- Repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard)
+- Working integration branch: `encu/submission-integration`
+- Current integration head: `72ef346423a3b2382df1cbad6f7b60bd0fa8e77b`
+- Draft PR: [#3 — ENCU developer workspace integration: editorial UI + V1 controls](https://github.com/BigWave45/agentguard/pull/3)
+- PR base: `agentguard/build-v1`
+- PR head: `encu/submission-integration`
+- PR status at handoff: open, draft, GitHub reports mergeable. **Do not merge without the user's explicit approval.**
+- `main` has not been changed by this integration work.
+
+The integration branch was created from the then-current `agentguard/build-v1` head (`bd911d46796dd80b72e1200de2cb5f2d11ee2939`). It adds the editorial developer page and stylesheet, the execution explainer, and a CI workflow scoped to this integration branch. The existing V1 developer page and stylesheet were replaced on this branch with their editorial-branch versions, while retaining the V1 developer API wiring and payload builder. The backend API routes were not changed in this integration.
+
+### Verified CI result
+
+GitHub Actions run [41778450034](https://github.com/BigWave45/agentguard/actions/runs/41778450034) completed successfully on commit `72ef346423a3b2382df1cbad6f7b60bd0fa8e77b`.
+
+Passed steps:
+- Dependency installation
+- ESLint
+- TypeScript type-check
+- Next.js production build
+- Agent API security and lifecycle tests
+- NEAR finality reconciliation tests
+
+This is automated CI evidence for the integration commit. It is **not** proof that every dashboard interaction has been manually tested in a browser or that the deployed preview works end to end.
+
+### Preview deployment blocker
+
+A Vercel preview deployment was requested for the integration branch and commit above. Vercel cancelled it with the platform's **Ignored Build Step** result. The deployment is not a working preview and must not be shared as one.
+
+The attempted deployment's alias was `agentguard-git-encu-submiss-19fcf8-resonances-projects-13e560cd.vercel.app`, but its deployment state was CANCELED. Do not treat that alias as a verified preview URL. Investigate the Vercel project's Ignored Build Step / `commandForIgnoringBuildStep` configuration and determine why this branch/commit is skipped. Do not change Production settings or deploy Production to work around it. Once corrected, create a **Preview-only** deployment and verify its READY state and actual page behavior.
+
+### Branch and deployment reconciliation
+
+The earlier branches `agentguard/build-v1` and `encu/editorial-light-diagrams` had diverged. The user identified the following as the older URL:
+- `agentguard-git-encu-editori-a4ce9f-resonances-projects-13e560cd.vercel.app/developers`
+
+The user identified the following as the intended latest URL, but it was built from an older `agentguard/build-v1` commit:
+- `agentguard-d9gklz577-resonances-projects-13e560cd.vercel.app/developers`
+- Its source commit was `12cd3f8b32f79c96a595e2cce5ba02aac2fd4e11`, not the then-current `agentguard/build-v1` head.
+
+The editorial URL was built from `encu/editorial-light-diagrams` commit `5a409bd0a747f687b6b6847ea8d317387b593c5f`. Its frontend contained an editorial developer page, a request payload builder, and an execution explainer. The V1 branch had a separate payload-builder/playground implementation. Do not assume that the newest-looking URL corresponds to the newest commit or that two branch implementations are identical.
+
+### Developer workspace audit findings
+
+Source inspection confirmed the developer page calls existing backend endpoints for agent creation, configuration, credential rotation, activation/deactivation and transaction history. The agent configuration component contains controls for allocation, transfer limits, rolling limits, autonomous allowance, recipient authorization and revocation. The integration retained these frontend paths and did not add or modify API routes.
+
+This was a **source-code coverage audit**, not a browser-level proof that each control succeeds. The user's reported payload-button problem remains an explicit manual verification item. Verify both payload generation and copy actions in the preview. A generated request payload is a developer integration aid; generating or copying JSON does not itself submit a transfer.
+
+### Next work — do this in order
+
+1. **Fix Preview deployment eligibility.** Inspect Vercel project's ignored-build-step configuration. Identify the exact skip reason. Keep the target Preview-only; do not change Production settings.
+2. **Get a READY preview for the exact integration commit.** Verify the deployment's Git branch and SHA before sharing its URL.
+3. **Run browser-level developer journey checks** on the preview: access/sign-in, workspace load, create agent, configure authority and policy, authorize/revoke recipient, rotate credential, activate/deactivate agent, inspect transaction history, generate payload, copy payload. Use isolated test data and do not initiate a real transfer unless the user explicitly authorizes it.
+4. **Check developer/admin separation.** Preserve admin-only treasury, emergency-stop, approval and operational controls behind admin authentication. The developer workspace must not imply that developers can self-authorize recipients or administer the shared treasury.
+5. **Reconcile README policy wording against current code.** Older sections in this README contain conflicting descriptions of approval behavior. The current authoritative policy and actual route behavior must be checked before rewriting those sections. In particular, distinguish policy rejection, configured approval gates, and `needs_review` for ambiguous provider/finality outcomes.
+6. **Reconcile the two Supabase environments before any database work.** The user has two Supabase databases. Identify which is isolated/test and which is production using project configuration and environment mapping. Inspect current schema/migration history before applying anything. Do not run migrations or mutate either database without authorization.
+7. **Review PR #3 and its diff after browser verification.** Keep it draft until the user has reviewed the preview. Do not merge to `agentguard/build-v1` or `main` without explicit approval.
+
+### Safety and scope constraints
+
+- No merge to `main`, no production deployment, no Production Supabase mutation, and no new live transfer without explicit user approval.
+- Do not replay migrations or run fresh-database setup SQL against an existing database.
+- Do not rebuild backend functionality merely because a redesigned page does not expose it; first map existing routes and controls.
+- Preserve the current application and working controls. Evolve the existing developer and admin experiences in place.
+- OutLayer remains the only implemented V1 execution provider. Native NEAR treasury contract execution, additional providers, NEAR Intents integration and mainnet are not part of this integration PR.
+- The user wants concise, execution-focused updates and accurate status. Never claim a test, UI interaction, deployment or database action succeeded unless it was actually verified.
