@@ -575,3 +575,40 @@ Do not describe this as â€œdeveloper signs once, then Encu receives a `wk_` keyâ
 - Test the full flow with a disposable Testnet account, explicit owner consent, no valuable assets and no production credential. The existing V1 executor and global key remain unchanged.
 
 No private key was requested or handled, no signature was generated, and no API request, wallet registration, binding, policy update, transfer, database mutation or deployment was performed during this review.
+
+
+## Follow-up: clarified Personal Account Binding authority and credential path (2026-11-04)
+
+Review of the current official Personal Account Binding and Binding API pages clarifies the account and policy model:
+
+- The **asset account** is the developer's named NEAR account and holds the funds being spent.
+- The **executor account** is a separate OutLayer-derived NEAR account. It signs the contract calls and must hold gas.
+- The developer installs the binding by signing the setup transaction on the asset account. The extension set grants the executor the ability to call through the wallet contract; it does not transfer account ownership.
+- The developer's policy on the asset account is the spending policy for the bound lane. The docs explicitly state that the owner's policy is the only limit for a personal binding; unlike a lease, there is no separate on-chain spend grant.
+- The developer can revoke the lane by removing the executor from the asset account's extension set in an owner-signed transaction. OutLayer documents a five-second permission cache window.
+- The Binding API explicitly accepts either `Bearer near:<sig>` for the deterministic wallet owner or `Bearer wk_...` for a wallet API key. It exposes binding-specific transfer and call endpoints, distinct from the existing V1 direct-transfer endpoint.
+
+This means the policy-controller concern should be stated more precisely: the developer retains policy and revocation control over the **bound asset account**. The executor is not the asset account and should not be described as the developer's policy-controlled treasury. The remaining issue is safe delegation of executor API access.
+
+### Credential delegation still unresolved
+
+The Agent Custody docs say `PUT /wallet/v1/api-key` supports both custody-wallet Bearer authentication and external NEAR accounts with a signature in the request body. However, the public example still only shows the custody-wallet request body (`seed`, `key_hash`) and does not document the external-account signature schema or exact signed message. We cannot infer those fields.
+
+The deterministic executor can authenticate directly with `Bearer near:<sig>`, but each request needs a fresh owner signature. That is not autonomous agent execution. A one-time external-account-signed registration of a `wk_` key may bridge this gap, but it is not yet proven.
+
+### Corrected acceptance conditions
+
+1. OutLayer must provide the exact external-account `PUT /wallet/v1/api-key` schema, signed message, canonicalization, timestamp window, public-key/signature encodings and a test vector.
+2. The resulting `wk_` key must identify only the deterministic executor wallet and must be independently revocable.
+3. Confirm the delegate key cannot alter the asset account's policy, add/remove extensions, or bypass the owner's on-chain authority.
+4. The owner must sign the Personal Account Binding setup transaction in Intear Wallet. The account must have no existing contract; OutLayer intentionally refuses accounts already running contract code.
+5. Set and verify a restrictive asset-account policy before binding. Required binding policy settings include `transaction_types: ["call"]`, `allowed_tokens` including `native`, and an address rule that permits the bound asset account itself (or deliberately disables address filtering). These are easy-to-miss requirements; incorrect settings cause refusals or, if policy is absent, unrestricted spending.
+6. Use `POST /wallet/v1/binding/transfer` or the binding call endpoint. Never fall back to the V1 `POST /wallet/v1/transfer`.
+7. Keep Encu's atomic PostgreSQL reservations authoritative for shared agent budgets. OutLayer policy remains a secondary on-chain/TEE guard; it does not replace the ledger.
+8. Verify exact final chain effects and treat ambiguous execution as `needs_review`. Revoke by owner-signed extension removal, then verify binding status and reject new submissions. Allow for the documented five-second cache window.
+
+### Revised feasibility assessment
+
+Personal Account Binding itself now has a clear ownership model and documented Intear Wallet setup path. The remaining hard gate is external-account delegate-key registration and the resulting credential's authority boundary. This is narrower than the earlier broad uncertainty about policy-controller ownership.
+
+No binding, policy update, registration, key creation, transfer, DB mutation or deployment was performed.
