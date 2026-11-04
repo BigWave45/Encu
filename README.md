@@ -8,7 +8,7 @@ This block is the authoritative continuation point if the ChatGPT conversation r
 - Product name: **ENCU**. Internal code and repository identifiers may still say AgentGuard.
 - Current implementation branch: `encu/dashboard-end-to-end`.
 - Current PR: [#5 — ENCU developer dashboard: payload submission, configuration and audit flow](https://github.com/BigWave45/agentguard/pull/5).
-- PR base: `agentguard/build-v1`. PR head at this handoff: `f91db22a4d70f822ef9c7173196c185276630ba2`.
+- PR base: `agentguard/build-v1`. PR head: re-fetch PR #5 and the branch head before continuing; do not rely on a copied SHA in this handoff.
 - PR #5 is open and unmerged. Do not merge it, merge to `main`, deploy Production, change either Supabase project, delete branches, or initiate a Testnet transfer without the user's explicit approval.
 - The accepted interface is the **dark V1 design**. The editorial-light redesign was rejected because it hid important controls. Do not revive it.
 - Vercel Preview is currently blocked by a build-rate-limit failure. No READY Preview has been verified for the current PR head. Continue source work and CI; do not waste attempts repeatedly deploying while rate-limited.
