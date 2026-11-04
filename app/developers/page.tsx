@@ -53,6 +53,8 @@ export default function DeveloperPortal() {
   const [issuedToken, setIssuedToken] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<"connect" | "overview" | "agents">("connect");
+  const [setupRecipientCount, setSetupRecipientCount] = useState<number | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
     setAgentsBusy(true);
@@ -94,6 +96,28 @@ export default function DeveloperPortal() {
       setTransactionsBusy(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!session || agents.length === 0) {
+      setSetupRecipientCount(0);
+      return;
+    }
+    let active = true;
+    Promise.all(agents.map(async agent => {
+      const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agent.id)}`, {
+        headers: { authorization: `Bearer ${session.access_token}` },
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error("Could not verify recipient setup.");
+      const body = await response.json();
+      return (body.recipients ?? []).filter((recipient: { status: string }) => recipient.status === "active").length;
+    })).then(counts => {
+      if (active) setSetupRecipientCount(counts.reduce((total, count) => total + count, 0));
+    }).catch(() => {
+      if (active) setSetupRecipientCount(null);
+    });
+    return () => { active = false; };
+  }, [session, agents]);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -266,6 +290,54 @@ export default function DeveloperPortal() {
           Provision independent agent identities, assign spending authority and manage execution permissions from one workspace.
         </p>
 
+        {session && <nav className="developer-navigation" aria-label="Developer workspace navigation">
+          <button type="button" className={activeView === "connect" ? "active" : ""} onClick={() => setActiveView("connect")}>Connect / Setup</button>
+          <button type="button" className={activeView === "overview" ? "active" : ""} onClick={() => setActiveView("overview")}>Overview</button>
+          <button type="button" className={activeView === "agents" ? "active" : ""} onClick={() => setActiveView("agents")}>Agents</button>
+          <span>Recipients, Integration, Transactions, Audit &amp; Security and Developer Tools follow in the next navigation slice.</span>
+        </nav>}
+
+        {session && activeView === "connect" && <section className="developer-workspace-panel">
+          <div className="developer-workspace-heading">
+            <div><span className="developer-section-kicker">WORKSPACE SETUP</span><h2>Connect your first agent</h2>
+              <p>Each item reflects data ENCU can verify from your current workspace.</p></div>
+            <span className="developer-setup-count">{[
+              true,
+              agents.length > 0,
+              agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n),
+              setupRecipientCount !== null && setupRecipientCount > 0
+            ].filter(Boolean).length}/4 complete</span>
+          </div>
+          <div className="developer-setup-list">
+            <div className="developer-setup-item complete"><span className="developer-setup-mark">✓</span><div><strong>Developer workspace active</strong><p>Authenticated as {session.user.email}</p></div><span className="developer-setup-state">Connected</span></div>
+            <div className={agents.length ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.length ? "✓" : "2"}</span><div><strong>Create an agent identity</strong><p>{agents.length ? `${agents.length} agent identity ${agents.length === 1 ? "is" : "ies"} registered.` : "Create a logical agent with its own machine credential."}</p></div><button type="button" onClick={() => setActiveView("agents")}>{agents.length ? "Manage agents" : "Create agent"}</button></div>
+            <div className={agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "✓" : "3"}</span><div><strong>Assign spending authority</strong><p>{agents.some(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n) ? "At least one agent has a non-zero allocation." : "New agents start with zero allocation and cannot execute transfers."}</p></div><button type="button" onClick={() => setActiveView("agents")}>Configure allocation</button></div>
+            <div className={setupRecipientCount === null ? "developer-setup-item unavailable" : setupRecipientCount > 0 ? "developer-setup-item complete" : "developer-setup-item"}><span className="developer-setup-mark">{setupRecipientCount === null ? "!" : setupRecipientCount > 0 ? "✓" : "4"}</span><div><strong>Authorize a recipient</strong><p>{setupRecipientCount === null ? "Recipient status could not be verified. Retry by reopening this page." : setupRecipientCount > 0 ? `${setupRecipientCount} active recipient authorization(s) found.` : "Transfers remain blocked until an exact recipient account is authorized."}</p></div><button type="button" onClick={() => setActiveView("agents")}>Manage recipients</button></div>
+          </div>
+          <p className="developer-setup-note">Agent credentials are displayed once when created or rotated. ENCU cannot verify whether you have stored a token securely, so credential storage is deliberately not marked complete here.</p>
+        </section>}
+
+        {session && activeView === "overview" && <section className="developer-workspace-panel">
+          <div className="developer-workspace-heading"><div><span className="developer-section-kicker">WORKSPACE OVERVIEW</span><h2>Spending and execution activity</h2><p>Live values from the developer agents and transaction endpoints.</p></div>
+            <button className="developer-button secondary" type="button" disabled={agentsBusy || transactionsBusy} onClick={() => { void loadAgents(session.access_token); void loadTransactions(session.access_token); }}>Refresh overview</button>
+          </div>
+          <div className="developer-overview-metrics">
+            <div><span>Registered agents</span><strong>{agents.length}</strong></div>
+            <div><span>Allocated authority</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.allocation_limit_yocto ?? "0"), 0n).toString())}</strong></div>
+            <div><span>Spent</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.spent_yocto ?? "0"), 0n).toString())}</strong></div>
+            <div><span>Reserved</span><strong>{near(agents.reduce((sum, agent) => sum + BigInt(agent.allocation?.reserved_yocto ?? "0"), 0n).toString())}</strong></div>
+            <div><span>Requests loaded</span><strong>{transactions.length}</strong></div>
+          </div>
+          <div className="developer-overview-activity">
+            <div><h3>Recent execution requests</h3><button className="developer-button secondary" type="button" disabled={transactionsBusy} onClick={() => void loadTransactions(session.access_token)}>{transactionsBusy ? "Refreshing…" : "Refresh activity"}</button></div>
+            {transactionsError && <p className="developer-error" role="alert">{transactionsError}</p>}
+            {transactions.length === 0 && !transactionsBusy ? <p className="developer-empty">No transaction requests have been returned for this workspace.</p> : transactions.slice(0, 8).map(item => <article className="developer-overview-transaction" key={item.requestId}>
+              <div><strong>{near(item.amountYocto)}</strong><span>{item.agentId} · {item.recipient}</span></div><span className={`developer-status status-${item.status.replace(/[^a-z0-9_-]/g, "-")}`}>{item.status.replace(/_/g, " ")}</span>
+            </article>)}
+            <button className="developer-text-link" type="button" onClick={() => setActiveView("agents")}>Open agent management and full activity</button>
+          </div>
+        </section>}
+
         {!session ? (
           <div className="developer-grid">
             <section className="developer-panel">
@@ -293,7 +365,7 @@ export default function DeveloperPortal() {
             </aside>
           </div>
         ) : (
-          <div className="developer-grid">
+          <div className={`developer-grid ${activeView === "agents" ? "" : "developer-view-hidden"}`}>
             <section className="developer-panel">
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                 <div><h2>Your agents</h2><p>Signed in as {session.user.email}</p></div>
