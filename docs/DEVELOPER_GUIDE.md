@@ -1,32 +1,44 @@
 # Encu Developer Guide
 
-This guide is for an engineer integrating an AI agent runtime with an Encu deployment. It covers the agent-to-API contract. It does not describe a public self-service wallet or custody onboarding flow.
+This guide explains how a developer creates a workspace, provisions a logical agent, integrates that agent with the transfer API and reconciles its requests. It does not describe independent wallet provisioning: all V1 logical agents use the deployment's shared OutLayer Testnet execution wallet.
 
-## 1. Integration model
+## 1. Create a developer workspace
 
-Your agent sends a transfer request to Encu using an **agent-scoped bearer token**. Encu derives the logical agent identity from that credential and evaluates the request against configured policy.
+1. Open `/developers`.
+2. Create an account or sign in using Supabase Auth.
+3. Complete email confirmation if it is enabled for the Supabase project.
+4. The workspace uses the authenticated developer identity to scope agent configuration and transaction history.
 
-Before integration, the Encu operator must provide:
-- the Encu base URL;
-- an agent-scoped bearer token;
-- the agent identity associated with that token;
-- confirmation that the agent has an allocation and applicable spending limits;
-- confirmation that the intended exact NEAR recipient is authorized.
+A developer account is a workspace identity. It is separate from an agent bearer token, the platform administrator credential, the Supabase service-role key and the OutLayer API key.
 
-V1 uses one configured OutLayer Testnet wallet and server-side provider credential shared by multiple logical agents. An agent token does not represent a separate custody wallet.
+## 2. Create and configure an agent
 
-## 2. Credential handling
+Create a logical agent from the developer workspace. Supply a unique agent ID and display name. The create operation returns an agent-scoped bearer token **once**. Copy it immediately and store it in the agent runtime's server-side secret manager. Encu stores the token hash; the original token cannot be retrieved later. Rotating the credential invalidates the previous token.
+
+A new agent starts with **zero allocation**. Before it can spend, configure:
+- an allocation within the shared treasury ceiling;
+- a per-transfer maximum;
+- daily and weekly rolling limits;
+- an autonomous spending allowance, if autonomous execution is intended;
+- the exact NEAR recipient account IDs the agent is allowed to use.
+
+The developer workspace scopes these operations to agents owned by the authenticated developer account. An agent's allocation is an application-level ledger limit; it is not a separate on-chain wallet balance.
+
+V1 uses one configured OutLayer Testnet wallet and server-side provider credential shared by multiple logical agents. A developer account or agent token does not create a separate custody wallet.
+
+## 3. Credential handling
 
 | Credential | Purpose | Where it belongs |
 |---|---|---|
-| Agent bearer token | Authenticates one logical agent | Agent backend secret manager |
-| Administrator token | Changes platform-wide controls and agent configuration | Operator secret manager only |
+| Developer Supabase session | Authenticates workspace actions | Browser session managed by Supabase Auth; do not use it as an agent token |
+| Agent bearer token | Authenticates one logical agent for agent APIs | Agent backend secret manager |
+| Administrator token | Platform-wide operator actions | Operator secret manager only |
 | Supabase service-role key | Server-side database access | Encu server environment only |
 | OutLayer API key | Provider custody/signing API access | Encu server environment only |
 
-Never place any of these credentials in browser JavaScript, a mobile app bundle, a public repository, client-side logs or an agent prompt. The agent runtime should receive only its own agent-scoped token.
+Never put the agent token, administrator token, service-role key or OutLayer API key in public source code, browser bundles, client-side logs or an agent prompt. The developer workspace's one-time token display is for copying the credential into your own server-side secret store.
 
-## 3. Transfer request contract
+## 4. Transfer request contract
 
 Endpoint:
 
@@ -52,12 +64,12 @@ Body:
 
 Fields:
 
-- `requestId`: stable identifier for one logical payment. Generate it once and reuse it only when retrying the exact same operation.
-- `to`: exact NEAR account ID. It must already be authorized for the authenticated agent.
-- `amountYocto`: positive integer string in yoctoNEAR. One NEAR equals `10^24` yoctoNEAR. Do not use floating-point arithmetic.
-- `expectedAgentId`: optional assertion. If supplied, it must match the identity derived from the bearer token. It does not select or override the authenticated agent.
+- `requestId`: 8–128 character stable identifier for one logical payment.
+- `to`: exact lowercase NEAR account ID. It must already be authorized for the authenticated agent.
+- `amountYocto`: positive integer string, maximum 78 digits. One NEAR equals `10^24` yoctoNEAR. Do not use floating-point arithmetic.
+- `expectedAgentId`: optional identity assertion. If supplied, it must match the identity derived from the bearer token. It does not select or override the authenticated agent.
 
-Example using curl:
+Example:
 
 ```bash
 curl -X POST "$ENCU_BASE_URL/api/agent/transfer" \
@@ -73,46 +85,65 @@ curl -X POST "$ENCU_BASE_URL/api/agent/transfer" \
 
 The example amount is 0.001 NEAR. Replace the recipient, request ID and expected agent ID with values configured for your environment.
 
-## 4. Idempotency and retry rules
+## 5. Response handling and idempotency
 
-Treat a request ID as the idempotency key for one immutable payment instruction.
+The transfer endpoint returns lifecycle states as well as HTTP status codes. Interpret both.
 
-- Same request ID + same agent + same recipient + same amount: safe identity for a retry of the same logical request.
-- Same request ID with a changed recipient or amount: idempotency conflict; create a new logical payment only after resolving the original.
-- Never generate a new request ID just because the HTTP response timed out.
-- Never blindly retry a request whose provider outcome may be ambiguous.
-- Check the request's current Encu/provider/NEAR status before taking recovery action.
-
-## 5. Response handling
-
-Interpret lifecycle responses conservatively:
-
-| Result | Meaning | Client action |
+| HTTP status | Response / condition | Meaning and action |
 |---|---|---|
-| `202 awaiting_approval` | Exposure is reserved; administrator approval is required before autonomous submission | Wait for operator resolution; do not submit directly to OutLayer |
-| `202 needs_review` | Provider outcome or reconciliation needs operator review | Do not create a new request or blindly retry |
-| `403` | Policy, recipient, allocation, limit or emergency-stop denial | Surface the denial reason; do not retry unchanged |
-| `409` | Request ID reused with a changed payload or conflicting lifecycle | Resolve the original request before creating a new payment |
-| `429` | Rate limit reached | Back off; preserve the same request identity |
-| `401` | Agent authentication failed | Check the agent credential with the operator |
-| `503` | Required service/provider dependency unavailable | Treat as unavailable; do not assume no provider action occurred unless the response establishes that |
+| `202` | `needs_review` | The provider outcome or reconciliation is unresolved. Preserve the request ID; check transaction activity and call reconciliation. Do not submit a new payment. |
+| `403` | `blocked` | A transfer policy, recipient, allocation, per-transfer limit or emergency-stop rule denied the request. Do not retry unchanged. |
+| `409` | `agent_identity_mismatch` | Optional `expectedAgentId` did not match the bearer-token identity. Correct the caller configuration. |
+| `409` | `awaiting_approval`, existing lifecycle state or replay | The request did not create a new provider submission. Inspect the existing request in the workspace; do not treat this as an executed transfer. |
+| `409` | `idempotency_key_conflict` | The request ID was reused with a different agent, recipient or amount. Resolve the original request before creating a distinct payment. |
+| `400` | `invalid_request` | Request body failed schema validation. Correct the fields before retrying. |
+| `401` | `unauthorized` | Agent authentication failed. Check the agent credential with the developer/operator. |
+| `429` | `rate_limit_exceeded` | Per-agent rate limit reached. Respect `Retry-After`; do not change the request ID. |
+| `500` | `reservation_failed` | Reservation persistence failed. Check request activity before attempting recovery. |
+| `503` | Provider/authentication/rate-limit dependency unavailable | Treat the outcome conservatively. A 503 before reservation/provider submission differs from a provider timeout represented as `202 needs_review`. Check activity before retrying. |
 
-A successful HTTP response or provider acceptance does not prove that a payment is final. Encu settles its ledger only after matching NEAR FINAL evidence is verified.
+A repeated request ID does not mean the endpoint will return the original success response. Encu prevents duplicate provider submission; a replay can return HTTP 409 with the existing lifecycle status. Do not blindly retry after a timeout.
 
-## 6. Test safely
+## 6. Reconcile a transfer
+
+Reconciliation is a separate API operation. It is not automatically completed in the same HTTP request as transfer submission.
+
+Endpoint:
+
+`POST /api/agent/reconcile`
+
+Request:
+
+```bash
+curl -X POST "$ENCU_BASE_URL/api/agent/reconcile" \
+  -H "Authorization: Bearer $ENCU_AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"requestId":"payment-2026-000184"}'
+```
+
+The authenticated agent can reconcile its own reservation; the platform administrator can reconcile any reservation. The endpoint queries NEAR using the configured execution signer and checks:
+- NEAR final execution status is `FINAL`;
+- signer matches the configured OutLayer executor account;
+- receiver matches the reserved recipient;
+- exactly one native transfer action is present;
+- the transfer deposit equals the reserved yoctoNEAR amount.
+
+A `200` response with `finality: "FINAL"` and status `executed` or `failed` means the matching transaction was reconciled and the ledger updated. A `202` response means evidence is not yet available or did not match; retain the reservation and investigate. A provider request ID without a transaction hash is not finality evidence.
+
+## 7. Safe integration and testing
 
 - Use NEAR Testnet and a dedicated test agent.
-- Confirm the agent allocation, per-transfer cap, rolling limits and autonomous allowance.
+- Confirm allocation, per-transfer cap, rolling limits and autonomous allowance.
 - Confirm the exact recipient account is authorized.
-- Confirm the global treasury has sufficient headroom and the emergency stop is in the intended state.
-- Use payload generation to inspect request JSON without submitting it.
-- Treat the actual `POST /api/agent/transfer` call as a potentially value-moving action. It can initiate a real Testnet transfer when policy permits.
-- Never use production credentials or a valuable wallet while testing.
+- Confirm the shared treasury has sufficient headroom and the emergency-stop state is intended.
+- Use the payload builder to inspect request JSON without submitting it.
+- Treat `POST /api/agent/transfer` as a potentially value-moving action. It can initiate a real Testnet transfer when policy permits.
+- Never use production credentials or a wallet holding valuable assets.
 
-## 7. Operational references
+## 8. Related documentation
 
-- [Architecture](ARCHITECTURE.md): request and settlement flow.
-- [Security Model](SECURITY_MODEL.md): threat model and implementation boundaries.
+- [Architecture](ARCHITECTURE.md): component boundaries and request/reconciliation sequence.
+- [Security Model](SECURITY_MODEL.md): threat model, evidence and implementation limitations.
 - [Demo Runbook](DEMO_RUNBOOK.md): safe demonstration sequence.
 
-**V1 limitation:** this integration is for logical agents sharing one operator-configured OutLayer Testnet execution wallet. It is not an independent wallet or treasury for each developer.
+**V1 boundary:** developers can manage separate application accounts and logical agent policies. The execution wallet and provider credential remain shared across logical agents.
