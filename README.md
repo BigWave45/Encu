@@ -1,3 +1,23 @@
+## Dashboard navigation implementation handoff — 2026-11-04
+
+**Current action:** first dashboard reorganization slice is committed on `agentguard/build-v1`. This is the current source of truth for the in-progress developer workspace navigation work.
+
+- Frontend commit: `1fac5db9eaea43ada1e3e7978f08b30327e3f527` — adds Connect / Setup, Overview and Agents navigation, a data-backed setup checklist, and workspace overview metrics/activity.
+- Styling commit: `c9b51076cb53ba5d202d64e3a2310787545ba22f` — adds responsive dark-theme navigation, checklist and overview styling.
+- Files changed: `app/developers/page.tsx`, `app/developers/developers.css`.
+- Connect / Setup checks authenticated workspace, whether any agents exist, whether any agent has non-zero allocation, and active recipient authorizations fetched from the existing per-agent config route. Credential storage is intentionally not marked complete because the server cannot verify that a one-time token was safely stored.
+- Overview uses the existing agent and transaction data: agent count, summed allocations, spent and reserved amounts, loaded request count, and latest requests. These are agent-allocation totals, not a new authoritative treasury-wide balance endpoint.
+- Existing agent creation, rotation, activate/deactivate, configuration, recipient allowlist, request payload builder, and transaction activity remain in the existing Agents view. No API, schema, migration or database changes were made.
+- GitHub Actions CI run `41789507656` was still running at handoff; dependency installation had not yet completed, so lint, type-check, build and security/reconciliation tests were not yet verified.
+- Vercel status check reported failure with the existing build-rate-limit message. No deployment was manually initiated. Do not treat the branch as visually verified in a new preview yet.
+- No merge to `main`, production deployment, database mutation, branch deletion or live transfer was performed or authorized.
+
+**Next implementation slice:** extract recipient management into its own Recipients destination; then Integration (quickstart and one-time credential handoff), Transactions (request inspection within fields actually returned), Audit & Security (existing audit endpoint), and Developer Tools (retain the payload builder and execution explainer). Preserve the dark V1 interface and existing behavior. Before adding transaction signer/action/finality details, investigate the actual API and persisted evidence; do not fabricate fields absent from the endpoint.
+
+This section supersedes any older README handoff that describes the developer workspace as a single undifferentiated Agents page or names the rejected editorial-light interface as canonical.
+
+---
+
 ## ENCU UI decision and current reference — 2026-11-04
 
 **The accepted developer interface is the dark V1 interface, not the editorial-light redesign.** The light redesign was reviewed and rejected because it hid or removed important controls and reduced visibility of the working dashboard. Do not reintroduce that design or use it as the implementation target.
