@@ -343,7 +343,7 @@ export default function DeveloperPortal() {
                 const authorizedAgents = activeAgents.filter(agent => agent.activeRecipientCount > 0);
                 const hasIssuedCredential = !!issuedToken && !!issuedTokenAgentId;
                 const hasRequests = transactions.length > 0;
-                const items = [
+                const items: { title: string; detail: string; count?: number; total?: number; done: boolean; action: typeof activeView; actionLabel: string; optional?: boolean; manual?: boolean }[] = [
                   { title: "Create an agent identity", detail: "Provision a separate machine identity for each agent.", count: agents.length, done: agents.length > 0, action: "agents" as const, actionLabel: "Manage agents" },
                   { title: "Assign spending authority", detail: "Active agents need a positive allocation within the shared Testnet pool.", count: allocatedAgents.length, total: activeAgents.length, done: allocatedAgents.length > 0, action: "agents" as const, actionLabel: "Configure allocation" },
                   { title: "Set spending limits", detail: "Configure at least one per-transfer, daily or weekly cap.", count: policyConfiguredAgents.length, total: activeAgents.length, done: policyConfiguredAgents.length > 0, action: "agents" as const, actionLabel: "Set limits" },
