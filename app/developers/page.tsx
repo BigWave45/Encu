@@ -405,7 +405,7 @@ export default function DeveloperPortal() {
           {activeView === "overview" && <ExecutionExplainer />}
           {activeView === "execution" && <ExecutionExplainer />}
           </>
-        )}}
+        )}
       </div>
     </main>
   );
