@@ -4,10 +4,10 @@
 
 ### Verified repository state
 - Public repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard). Default branch: `main`.
-- Current `main` head: `762e7112d904b6010c73972251f1fa5eaeca6379`.
+- Main release merge commit: `762e7112d904b6010c73972251f1fa5eaeca6379`. The README submission handoff was refreshed after that merge; re-fetch the current `main` ref before any subsequent write.
 - ENCU V1 branch head included in main: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
 - PR #6 reconciled the ENCU dashboard into V1 and is merged. PR #7 reconciled V1 into main and is merged.
-- Main post-merge CI passed: [run 41802811462](https://github.com/BigWave45/agentguard/actions/runs/41802811462). Dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests all passed.
+- Main post-merge CI passed: [run 41802811462](https://github.com/BigWave45/agentguard/actions/runs/41802811462). The subsequent README handoff update also passed CI: [run 41803048984](https://github.com/BigWave45/agentguard/actions/runs/41803048984). Both runs passed dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
 - Both original source branches remain in history. No force-push or branch deletion was used.
 
 ### Deployment state — do not misrepresent
