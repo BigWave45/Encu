@@ -1,0 +1,110 @@
+name: Manual Supabase database backup
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agentguard/build-v1
+    paths:
+      - .github/workflows/supabase-manual-backup.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentguard-supabase-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Export and encrypt database
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-backup]')
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.0.0
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Install GPG
+        run: sudo apt-get update && sudo apt-get install -y gnupg
+
+      - name: Validate secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_DB_URL"
+          test -n "$BACKUP_ENCRYPTION_PASSPHRASE"
+
+      - name: Diagnose database URL (safe fields only)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          python3 -c 'import os; from urllib.parse import urlsplit, unquote; u=urlsplit(os.environ["SUPABASE_DB_URL"]); print("Parsed database host:", u.hostname or "<missing>"); print("Parsed database port:", u.port or "<default>"); print("Parsed database username:", unquote(u.username or "") or "<missing>"); print("Scheme:", u.scheme or "<missing>")'
+
+      - name: Test database authentication
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_DB_URL" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --tuples-only \
+            --no-align \
+            --command="select current_user || ' @ ' || current_database();"
+
+      - name: Export database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/roles.sql --role-only
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/data.sql --use-copy --data-only
+          test -s backup/roles.sql
+          test -s backup/schema.sql
+          test -s backup/data.sql
+          cd backup
+          sha256sum roles.sql schema.sql data.sql > SHA256SUMS
+
+      - name: Encrypt backup
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          for file in backup/roles.sql backup/schema.sql backup/data.sql backup/SHA256SUMS; do
+            gpg --batch --yes --pinentry-mode loopback \
+              --passphrase "$BACKUP_ENCRYPTION_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 \
+              --output "$file.gpg" "$file"
+            rm "$file"
+          done
+          test -s backup/roles.sql.gpg
+          test -s backup/schema.sql.gpg
+          test -s backup/data.sql.gpg
+          test -s backup/SHA256SUMS.gpg
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentguard-supabase-backup-${{ github.run_id }}
+          path: backup/*.gpg
+          if-no-files-found: error
+          retention-days: 7
+
+# Trigger diagnostic rerun without changing backup behavior.

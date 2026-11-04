@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { agentRateLimitResponse } from "@/lib/agent-rate-limit";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
-import { authenticateAgent } from "@/lib/agent-auth";
+import { authenticateAdmin, authenticateAgent } from "@/lib/agent-auth";
+import { getNearRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +12,7 @@ const schema = z.object({
   requestId: z.string().min(8).max(128)
 });
 
-// Public NEAR account identifier for the AgentGuard OutLayer testnet wallet.
-const signerId = "6d665ad261fc10ce705e4b10d107b9e8f40177266f937c6dff8f5a178126ae6e";
+
 
 type NearTxResult = {
   final_execution_status?: string;
@@ -37,21 +38,37 @@ type NearRpcResponse = {
 export async function POST(request: NextRequest) {
   let identity: Awaited<ReturnType<typeof authenticateAgent>>;
   try {
-    identity = await authenticateAgent(request.headers.get("authorization"));
+    const authorization = request.headers.get("authorization");
+    identity = authenticateAdmin(authorization) ?? await authenticateAgent(authorization);
   } catch {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
   if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const limited = await agentRateLimitResponse(identity.agentId, "near_finality_reconciliation", 10, 60);
+  if (limited) return limited;
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
+  let signerId: string;
+  let rpcUrl: string;
+  try {
+    const outlayer = getOutLayerConfig();
+    signerId = outlayer.nearAddress;
+    rpcUrl = getNearRpcUrl();
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : "testnet_configuration_invalid"
+    }, { status: 503 });
+  }
+
   const db = getSupabase();
   const { data: reservation, error } = await db
     .from("spend_reservations")
-    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto,agent_id")
+    .select("request_id,status,outlayer_tx_hash,outlayer_request_id,recipient,amount_yocto::text,agent_id")
     .eq("request_id", parsed.data.requestId)
     .maybeSingle();
 
@@ -78,7 +95,7 @@ export async function POST(request: NextRequest) {
 
   let rpc: NearRpcResponse;
   try {
-    const response = await fetch("https://rpc.testnet.near.org", {
+    const response = await fetch(rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -112,20 +129,24 @@ export async function POST(request: NextRequest) {
   }
 
   const result = rpc.result;
-  const transferMatches =
-    result.final_execution_status === "FINAL" &&
-    result.transaction?.signer_id === signerId &&
-    result.transaction?.receiver_id === reservation.recipient &&
-    Array.isArray(result.transaction?.actions) &&
-    result.transaction.actions.some(
-      (action) => action.Transfer?.deposit === String(reservation.amount_yocto)
-    );
+  const actions = result.transaction?.actions;
+  const checks = {
+    finality: result.final_execution_status === "FINAL",
+    signer: result.transaction?.signer_id === signerId,
+    recipient: result.transaction?.receiver_id === reservation.recipient,
+    singleAction: Array.isArray(actions) && actions.length === 1,
+    transferAction: Array.isArray(actions) && actions.length === 1 && Boolean(actions[0]?.Transfer),
+    amount: Array.isArray(actions) && actions.length === 1 &&
+      actions[0]?.Transfer?.deposit === String(reservation.amount_yocto)
+  };
+  const transferMatches = Object.values(checks).every(Boolean);
 
   if (!transferMatches) {
     return NextResponse.json({
       status: "needs_review",
       requestId: reservation.request_id,
-      reason: "final_transaction_does_not_match_reserved_transfer"
+      reason: "final_transaction_does_not_match_reserved_transfer",
+      checks
     }, { status: 202 });
   }
 
