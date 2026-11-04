@@ -1,49 +1,53 @@
 ## RELEASE PUSH — AUTHORITATIVE HANDOFF (2026-11-04)
 
-**Priority: finish end-to-end verification, integrate into V1, then submit. No new feature scope.**
+**Priority: complete the release path and submit. No new feature scope.**
 
-### Current branch state
-- Active feature branch: `encu/dashboard-end-to-end`, head `5c877b5d13e76e0de9d2894a07d3336b45844a8b`.
+### Current branch and PR state
+- Feature branch: `encu/dashboard-end-to-end`, head `5c877b5d13e76e0de9d2894a07d3336b45844a8b`.
 - V1 branch: `agentguard/build-v1`, head `5222c5d535785d07a2761942b92c3107fa6e3588`.
-- PR #5 remains open and unmerged. It is the original feature PR; its branch divergence is handled by the reconciliation candidate below.
-- Reconciliation candidate: `encu/release-reconciliation`, based on the V1 head above. The candidate merge commit uses V1 as first parent and the feature branch as second parent, so both histories remain reachable and neither original branch is rewritten.
-- Common ancestor: `f9ea90f56f2d29d5c464457434b1d4bc52dcce73`. At the last comparison the feature branch had 72 commits beyond the merge base and V1 had 9.
-- No production deployment, Supabase mutation, branch deletion, force-push, or Testnet transfer has been performed.
+- Reconciliation candidate: `encu/release-reconciliation`, current head `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
+- Release PR: [#6 — ENCU release reconciliation](https://github.com/BigWave45/agentguard/pull/6), targeting `agentguard/build-v1`; open, unmerged, GitHub reports mergeable.
+- Original PR #5 remains open and unmerged; PR #6 is the reconciled candidate and supersedes #5 for release integration. Do not merge #5.
+- Candidate merge commit has V1 as first parent and the feature branch as second parent. Both original branches remain unchanged.
+- Common ancestor of feature and V1: `f9ea90f56f2d29d5c464457434b1d4bc52dcce73`; before reconciliation feature was 72 commits ahead of the merge base and V1 9.
+- Main is not a simple ancestor of V1: `main` head `9510b416d7d5881d1a3c585b3ca99ef3b38e25dc`; V1 head `5222c5d535785d07a2761942b92c3107fa6e3588`; V1 is 707 commits ahead and main 2 commits ahead from merge base `534094096eead5f7e9ecbf4d48c485f2c6eae685`. Main's two unique commits add the older `app/developers/page.tsx` and `app/developers/developers.css`; inspect mergeability and reconcile those files before V1 → main. Do not assume a clean merge.
 
 ### Reconciliation decision
-The nine V1 commits since the common ancestor changed four files also changed by the feature branch: `README.md`, `app/developers/page.tsx`, `app/developers/developers.css`, and `app/developers/agent-configuration.tsx`.
+The nine V1 commits since the feature/V1 common ancestor changed four files also changed by the feature branch: `README.md`, `app/developers/page.tsx`, `app/developers/developers.css`, and `app/developers/agent-configuration.tsx`.
 
-The candidate tree adopts the feature branch's newer, broader implementations for those overlapping files, after checking that the target branch's dashboard work is represented:
-- V1's Connect / Setup, Overview, Agents and Recipients destinations are present in the feature workspace and expanded with Integration, Transactions, Audit & Security, Developer tools and How ENCU works.
-- Recipient authorization remains a dedicated destination; it is not reintroduced into Agent Configuration.
-- The feature Agent Configuration retains asynchronous-load race protection and the saved-configuration refresh callback.
-- V1's responsive navigation/setup/overview CSS is superseded by the feature workspace's responsive navigation, setup, overview, integration and tools styling across `developers.css` and `dashboard-workflow.css`.
-- V1's useful handoff details are retained here: its setup checklist is data-backed, recipient status is exposed through the existing agents API, overview figures are per-agent allocation totals rather than a treasury-wide balance, and credential storage is not falsely represented as server-verifiable.
-- The feature tree also retains the audit endpoint/log, execution explainer, request builder, and the wider workspace destinations.
+The candidate adopts the feature branch's newer, broader implementations for those overlapping files after checking that V1's dashboard work is represented:
+- V1's Connect / Setup, Overview, Agents and Recipients destinations are present and expanded with Integration, Transactions, Audit & Security, Developer tools and How ENCU works.
+- Recipient authorization remains a dedicated destination, not part of Agent Configuration.
+- Agent Configuration retains asynchronous-load race protection and the saved-configuration refresh callback.
+- V1 navigation/setup/overview styles are superseded by the feature workspace's responsive destination styles in `developers.css` and `dashboard-workflow.css`.
+- V1 handoff details are retained: setup status is data-backed where possible; recipient counts include active unexpired authorizations; overview figures are per-agent allocation totals, not a treasury-wide balance; credential storage/backend integration confirmations are manual attestations.
+- The candidate retains the audit endpoint/log, execution explainer, request builder and all nine workspace destinations.
 
-This is a deliberate semantic reconciliation, not a claim that all four files had literal Git conflict markers. Both source branches remain unchanged. Candidate CI and functional tests are still required before it can replace PR #5 as the release PR.
+This is semantic reconciliation, not a claim that all four files had literal conflict markers. The merge commit preserves both source histories.
 
 ### Verification status
-- Previous feature-branch CI passed lint, TypeScript, production build, Agent API security/lifecycle tests, and NEAR finality reconciliation tests. Those runs predate the reconciliation candidate and do not validate its merge commit.
-- Browser-level developer sign-in, authenticated request submission, policy-denial behavior, audit isolation and finality refresh remain unverified.
-- Vercel Preview has been rate-limited. The Vercel sandbox API returned HTTP 400 on repeated attempts; stop retrying it. Do not treat a Preview as visually verified unless a current READY deployment is available.
-- Start with non-transfer E2E checks. A real Testnet transfer requires separate explicit user approval and must never be blindly retried after an ambiguous response.
+- **Candidate CI passed** on merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5`: [run 41801249027](https://github.com/BigWave45/agentguard/actions/runs/41801249027). Dependency install/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests all passed.
+- The Vercel status check remains failed with the known build-rate-limit message. This is separate from the passing GitHub Actions CI. No current READY Preview for the candidate is verified.
+- Existing manual test history on the isolated test environment included multi-agent identity separation, spending-limit/global-budget/emergency-stop blocks, recipient authorization/revocation, and a 0.001 NEAR request that was reconciled to execution. These tests predate the current candidate and are not a substitute for fresh browser verification.
+- The older Preview log records successful sign-in on commit `12cd3f8` but an unresolved Agent ID browser-validation discrepancy. See `docs/preview-test-log-2026-11-03.md`; do not claim the current candidate's browser flow is verified.
+- Candidate code has no dedicated browser E2E test script in `package.json`. Current automated coverage is lint/type/build plus API security/lifecycle and finality tests.
+- A real Testnet transfer must not be initiated again without separate explicit user approval. Do not blindly retry an ambiguous submission.
 
 ### Release sequence
-1. Run CI on `encu/release-reconciliation`; resolve only concrete failures.
-2. Complete the available non-transfer end-to-end checks and document any remaining Preview-dependent checks.
-3. Open/refresh the release PR from `encu/release-reconciliation` into `agentguard/build-v1`; merge only after checks pass and user approval.
-4. Re-fetch V1, run V1 CI and smoke tests.
-5. Merge `agentguard/build-v1` into `main` only after V1 validation and user approval.
-6. Verify public demo availability, README/setup accuracy, repository visibility, architecture/security claims, and required hackathon submission materials. Do not claim an unavailable demo is live.
+1. Re-run/confirm CI after this README handoff update.
+2. Merge PR #6 into `agentguard/build-v1` after checks pass. This merge is explicitly part of the user's requested release path; do not merge the superseded PR #5.
+3. Re-fetch V1, confirm its exact head, run V1 CI and smoke tests.
+4. Compare `agentguard/build-v1` against `main`; reconcile main's two unique commits, likely involving the older developer page/CSS, on a candidate branch if needed.
+5. Open a V1 → main release PR, validate CI, then merge after confirming no unrelated changes are lost.
+6. Verify public demo availability, README/setup accuracy, public repository, architecture/security claims, and required hackathon submission materials. Do not claim an unavailable demo is live.
 
 ### Operating rules
 - Optimize for submission: no unrelated features, redesigns or refactors. Fix only E2E, integration, release or submission blockers.
 - Preserve the accepted dark V1 UI and responsive diagrams/explainers. UI name is ENCU; internal AgentGuard identifiers remain.
-- Do not merge, deploy Production, alter Supabase, delete branches, force-push, or initiate a Testnet transfer without explicit approval.
-- After each meaningful milestone, update this handoff with exact branch/head, test run IDs/results, blockers and one immediate next action.
+- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit approval.
+- Update this section after each milestone with exact branch/head, CI run IDs/results, blockers and one immediate next action.
 
-**Immediate next action:** verify the candidate merge commit and trigger/inspect its CI. Then use its actual CI results to decide whether the release PR is ready.
+**Immediate next action:** confirm the CI run triggered by the latest README update. If it passes, merge PR #6 into V1, then begin the separately documented V1 → main reconciliation.
 
 ---
 
