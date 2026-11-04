@@ -45,6 +45,8 @@ The developer dashboard information-architecture slice is in progress on `encu/d
 - A persisted request marks the first-request step complete, but the UI explicitly states that request receipt is not proof of payment or NEAR finality.
 - The setup UI uses the existing dark V1 styling and responsive layout. No Figma replacement, light redesign, new provider, schema migration or live transfer was introduced.
 
+- CI trigger correction: `.github/workflows/ci.yml` now includes `agentguard/build-v1` as a `pull_request` target. Before this correction, PR #5's target branch was excluded because the workflow only listened for PRs targeting `main`. Wait for a new run on the updated PR head before reporting validation results.
+
 ### Latest commits for this slice
 - `aae105b2a1b17255909314961f2ec40a4243ef55` — dark V1 explainer sidebar.
 - `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f` — clear in-memory credentials on auth-session loss.
