@@ -322,3 +322,41 @@ Official references:
 - https://app.outlayer.ai/docs/agent-custody
 - https://app.outlayer.ai/docs/binding-api
 - https://app.outlayer.ai/docs/account-binding
+
+
+## Follow-up against current OutLayer endpoint reference (2026-11-04)
+
+A line-by-line review of the current public pages at `/docs/agent-custody`, `/docs/binding-api` and `/docs/account-binding` sharpens the earlier conclusions.
+
+### Confirmed details
+
+- The binding API explicitly accepts either `Bearer near:<sig>` for a deterministic wallet or `Bearer wk_...` for a randomly-derived wallet. Both identify the same wallet when used as credentials.
+- Deterministic wallet registration is documented as `POST /register` with `account_id`, `seed`, `pubkey`, a timestamped registration message and raw Ed25519 signature. The identity is derived from `(account_id, seed, vault_or_none)`.
+- The deterministic wallet's NEAR key must be a full-access key. Function-call keys and NEP-413 signatures are not accepted for deterministic API authentication. The private key must remain with the developer.
+- OutLayer explicitly documents delegate-key creation for both custody-wallet credentials and external NEAR accounts. For external accounts, the request is authorized by a signature in the request body. The API returns the wallet identity, and the delegate uses a `wk_` Bearer token. DELETE revokes by key hash; a 409 is returned if it is the wallet's last active key.
+- The public docs do not state that delegate keys are method-scoped or endpoint-scoped. Treat a delegate as a wallet-level API credential with potentially broad authority until OutLayer proves otherwise. It is not established as a transfer-only key.
+- The documented owner controls policy through OutLayer's wallet dashboard, including policy editing, approvers and freeze/unfreeze. The public endpoint table documents `GET /wallet/v1/policy`, but not a corresponding policy-write endpoint. Do not invent one or assume Encu can configure policy through the API.
+- OutLayer's personal-binding browser flow accepts a `wk_` key in a URL query parameter. This is a long-lived credential exposure risk if the same key is used by Encu's backend. Do not reuse an Encu backend credential in that URL. Require a separate short-lived/single-use handoff or use a wallet connector that keeps the credential server-side.
+- Binding API docs explicitly distinguish executor gas from asset-account funds and confirm that only binding endpoints operate on the asset account. The plain `/wallet/v1/transfer` endpoint spends the executor account and is not a valid fallback.
+- Binding setup docs explicitly state that the asset account owner signs a three-action transaction and that most NEAR wallets do not support NEP-591 `UseGlobalContract`; Intear Wallet and near-cli are the documented paths.
+- The docs state that one wallet's velocity counters are shared across its HTTPS API and guest-job paths. Encu must treat OutLayer's per-wallet counters as shared provider controls, while its own PostgreSQL ledger remains authoritative for workspace/agent budgets.
+
+### Revised implementation position
+
+The deterministic-wallet + personal-binding composition is better documented than the previous review implied: deterministic registration, external-account delegate-key creation, owner policy dashboard, and personal binding endpoints are all described. However, it is still **not approved for production implementation** because the key permission boundary and policy-controller composition remain unresolved.
+
+A safe test must determine whether the developer can:
+1. register a deterministic executor under their own account and remain the policy controller;
+2. independently set, inspect and freeze that executor's policy;
+3. issue a delegate credential that Encu can use without exposing the full-access key;
+4. prove exactly which API operations the delegate can perform, including policy changes, wallet deletion and freeze controls;
+5. revoke the delegate and verify access is denied after the documented cache window.
+
+If the delegate can invoke unrestricted wallet operations, it may still be acceptable only if the OutLayer policy makes those operations impossible and the developer retains independent freeze/revocation control. If the developer cannot independently control policy or revoke the credential, reject this design.
+
+This remains documentation-only research. No API request, wallet registration, key issuance, policy change, binding, transaction, database mutation or deployment was performed.
+
+Official references:
+- https://app.outlayer.ai/docs/agent-custody
+- https://app.outlayer.ai/docs/binding-api
+- https://app.outlayer.ai/docs/account-binding
