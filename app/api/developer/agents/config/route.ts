@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
   if (owned.response) return owned.response;
   const db = getSupabase();
   const [allocation, policy, recipients] = await Promise.all([
-    db.from("agent_allocations").select("agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto").eq("agent_id", agentId).maybeSingle(),
-    db.from("agent_policies").select("agent_id,max_transfer_yocto,daily_limit_yocto,weekly_limit_yocto,auto_spend_limit_yocto").eq("agent_id", agentId).maybeSingle(),
+    db.from("agent_allocations").select("agent_id,allocation_limit_yocto::text,spent_yocto::text,reserved_yocto::text").eq("agent_id", agentId).maybeSingle(),
+    db.from("agent_policies").select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,auto_spend_limit_yocto::text").eq("agent_id", agentId).maybeSingle(),
     db.from("agent_authorized_recipients").select("account_id,label,status,authorized_at,expires_at,revoked_at").eq("agent_id", agentId).order("created_at", { ascending: false })
   ]);
   if (allocation.error || policy.error || recipients.error) return NextResponse.json({ error: "agent_configuration_read_failed" }, { status: 503 });
