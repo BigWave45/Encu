@@ -131,3 +131,55 @@ A native contract remains a viable longer-term option if Encu needs its own on-c
 Prototype Option A first on Testnet as the shortest path to genuine per-workspace deposit addresses and separate on-chain balances, while explicitly labeling it OutLayer-managed custody. In parallel, assess Option B as the non-custodial alternative. Do not build the native treasury contract merely because it was the initial preference; the documented OutLayer wallet-per-workspace capability changes the trade-off.
 
 Before any live provisioning, confirm with OutLayer (or through a controlled test wallet) registration semantics, wallet/API-key revocation, wallet-level policy configuration, balance consistency, native NEAR deposit finality, transfer response/reconciliation semantics, and whether the API key can be restricted to required operations. Do not create wallets or submit transfers as part of this research pass.
+
+
+## Personal Account Binding feasibility (2026-11-04)
+
+Product decision: prioritize OutLayer Personal Account Binding for developer-controlled NEAR accounts. This is a documented capability, not yet tested in Encu. Do not provision a wallet or implement until this feasibility review is accepted.
+
+### Setup sequence
+
+1. Assign an OutLayer executor wallet to the Encu workspace. The executor is distinct from the developer's asset account. The current Encu deployment has one global OUTLAYER_API_KEY and OUTLAYER_NEAR_ADDRESS and cannot safely represent multiple workspace bindings. The conservative design is a separate executor wallet/API credential per workspace. OutLayer must confirm whether one executor can have more than one active personal binding; its singular binding status endpoint and refusal to silently rebind suggest one active asset binding per executor.
+2. Developer connects a compatible named NEAR account and proves control. The account must not already run contract code because setup references a global wallet contract using NEP-591 UseGlobalContract. OutLayer currently documents Intear Wallet and near-cli as supported signing paths; broad wallet compatibility must not be assumed. Reject existing multisig, 2FA or contract-wallet accounts rather than overwriting them.
+3. Server calls PUT /wallet/v1/binding with asset_account_id and kind=personal_account, authenticated with that workspace executor's OutLayer credential. This records intent only; status remains pending and no authority is granted.
+4. Server calls GET /wallet/v1/binding/setup?kind=personal_account. OutLayer returns the code hash and unsigned setup transaction. Developer reviews and signs it with their own wallet. The transaction is signed by and sent from the asset account and contains three actions: reference the global contract, initialize it, and add the executor to the account extension/control set. Show account, executor ID, network, code hash and actions before wallet confirmation.
+5. Server polls GET /wallet/v1/binding and enables spending only when binding_status=active. A successful PUT or wallet signature is not sufficient.
+6. Configure and verify a restrictive OutLayer wallet policy before enabling agents. Personal binding has no separate leased-account spend grant; the extension plus OutLayer policy governs the executor. For native transfers the docs require transaction_types to include call, the address policy to include the bound asset account (or mode=none), and allowed_tokens to include native or *. Missing policy is unsafe. Limits use smallest-unit decimal strings.
+7. Developer funds the asset account. The executor account separately pays gas. GET /wallet/v1/binding/balance reports asset funds; GET /wallet/v1/binding reports executor gas and gas_balance_low. Never present executor balance as the developer treasury balance.
+8. Submit native transfers using POST /wallet/v1/binding/transfer, or POST /wallet/v1/call for the full envelope. The transfer endpoint creates a contract call against the asset account. It is not the current plain POST /wallet/v1/transfer from the executor's own account. No fallback to plain transfer is permitted when binding is absent or inactive.
+
+### Authorization and revocation
+
+- PUT records the relationship; authority starts only after the developer signs the setup transaction adding the executor extension.
+- The developer retains direct control with their own NEAR keys and can remove the executor extension in an owner-signed on-chain transaction without Encu or OutLayer permission.
+- OutLayer documents up to five seconds of cached allow decisions. Revocation is therefore not instantaneous; treat the cache window as part of the threat model.
+- DELETE /wallet/v1/binding ends OutLayer's record and cancels pending approvals, but does not replace on-chain removal of the executor extension. Disconnect should instruct the owner to revoke on chain and then verify status.
+- GET /wallet/v1/binding statuses are pending, active, suspended and revoked. Only active may submit. Fail closed on unreadable or stale status.
+- Structured refusal classes include executor_not_in_control_set, account_frozen, unsupported_wallet_implementation, unrecognized_wallet_code, chain_status_unreadable and policy violations. Retry only reversible failures; terminal refusals require owner/admin action.
+
+### Required Encu integration changes
+
+Current lib/outlayer.ts uses one global API key and POST /wallet/v1/transfer. ExecutionProvider verifies one configured executor. Current reconciliation expects a direct NEAR Transfer action, signer equal to OUTLAYER_NEAR_ADDRESS, receiver equal to recipient and exact deposit amount. Those assumptions are invalid for binding calls.
+
+A binding-aware provider must carry immutable workspace/treasury context, resolve that workspace's executor credential, require active binding, read both balances and call only the binding transfer/call endpoint. Reconciliation must verify the executor signer, bound asset-account receiver, contract method and arguments, then inspect final receipts/state to prove the intended recipient received the exact native amount. Checking only outer transaction success is insufficient because inner receipt execution may fail. Keep reservations in needs_review until exact inner effects are proven. Update reservation, submission claim, submission recording, settlement, failed-final resolution, approval cancellation and emergency-stop logic together, with workspace authorization checked inside SQL functions.
+
+### Workspace isolation
+
+One personal binding names one asset account. If multiple workspace executors bind to the same developer NEAR account, they spend from the same on-chain balance. That is not isolated workspace funding. Require one dedicated named account per workspace, or explicitly model them as sharing one treasury.
+
+### Credential and browser security
+
+Keep each executor API key server-side, encrypted at rest, never in browser storage, client responses, logs, analytics or query strings. OutLayer's hosted connect example places a wk_ key in a URL query parameter; do not adopt this by default because URLs leak through history, referrers and logs. Prefer server-side setup retrieval and pass only the unsigned transaction payload to an audited NEAR wallet connector. If hosted connect is unavoidable, obtain vendor guidance on short-lived single-use handoff tokens. The current package has no NEAR wallet adapter dependency and the developer portal has no wallet-connect/binding lifecycle. Encrypt credentials using KMS or equivalent envelope encryption and define rotation, revocation, least-privilege access and incident response.
+
+### Open questions before implementation
+
+1. Can one OutLayer executor have multiple active personal bindings? If not, confirm one executor/API credential per workspace.
+2. How are executor wallets provisioned, deleted and API keys rotated/revoked? Can keys be operation-scoped?
+3. Which wallet contract code hashes and extension interfaces are supported on Testnet and Mainnet, including upgrades?
+4. Which browser wallet versions support NEP-591 UseGlobalContract on both networks, and what is the mobile experience?
+5. What exact transaction/receipt fields prove inner native transfer success? Is there a canonical operation/receipt ID for idempotent reconciliation?
+6. How is executor gas funded and replenished, and what happens if Encu is unavailable?
+7. Can policy be set and read back before binding activation, and can Encu verify exact policy values?
+8. Do all binding and agent execution paths share the same wallet policy counters?
+
+Feasibility conclusion: Personal Account Binding is a viable candidate for developer-controlled asset ownership without Encu holding developer private keys. It still depends on OutLayer's executor, signing service and policy engine, and requires executor gas. It is not implementation-ready until the questions above, wallet compatibility, workspace account isolation and receipt-aware reconciliation are verified. No wallet, binding, policy, credential or transfer was created during this research.
