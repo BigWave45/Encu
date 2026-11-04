@@ -822,3 +822,12 @@ Next: review the developer workspace end-to-end for UI consistency and functiona
 
 
 Integration sample correction: the cURL body is now generated with `JSON.stringify` and embedded as a shell single-quoted JSON argument, avoiding escaped-quote corruption when copied. Commit: `cc2cf992e0f516407f5cc3799553027b3896fed9`. Re-fetched source confirms the request payload keys match the live transfer route schema.
+
+
+### Developer workspace audit follow-up (2026-11-04)
+
+The end-to-end review confirmed the existing execution explainer component is mounted on both Overview and How ENCU Works, with responsive diagram styles in `dashboard-workflow.css`. The Overview's right-hand explainer sidebar had retained a light/white treatment inconsistent with the approved dark V1 workspace. Restored its dark surface, border, heading, body and footnote contrast in `developers.css`. Commit: `aae105b2a1b17255909314961f2ec40a4243ef55`.
+
+The auth-state listener previously cleared agents and transactions when the Supabase session became null, but did not clear a newly issued/rotated agent credential held in page memory. It now also clears `issuedToken`, `issuedTokenAgentId` and `issuedWarning` on any null auth-state transition, not only when the user presses Sign out. Commit: `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f`. GitHub re-fetch verified both changes. This closes the session-expiry/sign-out UI state leak; credentials are still not written to browser storage.
+
+PR #5 remains open and GitHub currently reports `mergeable=false`. No merge or deployment was attempted. Build/preview and runtime browser checks remain unverified due the existing Vercel build-rate-limit blocker. Next: continue the screen-by-screen audit of navigation history/mobile overflow, agent configuration validation, recipient expiry edge cases, transaction status presentation and audit refresh behavior. Fix only defects confirmed against the live API/UI code; then request an available CI run before any release action.
