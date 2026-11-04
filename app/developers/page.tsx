@@ -547,15 +547,7 @@ function RecipientManagement({ agents, accessToken, onSaved }: { agents: Develop
 function IntegrationGuide({ issuedToken, issuedWarning }: { issuedToken: string; issuedWarning: string }) {
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
-  const request = "curl --request POST \"$ENCU_BASE_URL/api/agent/transfer\" \\\n" +
-    "  --header \"Authorization: Bearer $ENCU_AGENT_TOKEN\" \\\n" +
-    "  --header \"Content-Type: application/json\" \\\n" +
-    "  --data '{\\n" +
-    "    \"requestId\": \"invoice-payment-20261104-001\",\\n" +
-    "    \"to\": \"recipient.near\",\\n" +
-    "    \"amountYocto\": \"1000000000000000000000000\",\\n" +
-    "    \"expectedAgentId\": \"your-agent-id\"\\n" +
-    "  }'";
+  const request = "curl --request POST \"$ENCU_BASE_URL/api/agent/transfer\" --header \"Authorization: Bearer $ENCU_AGENT_TOKEN\" --header \"Content-Type: application/json\" --data '{\\"requestId\\":\\"invoice-payment-20261104-001\\",\\"to\\":\\"recipient.near\\",\\"amountYocto\\":\\"1000000000000000000000000\\",\\"expectedAgentId\\":\\"your-agent-id\\"}'";
   async function copyRequest() {
     try { await navigator.clipboard.writeText(request); setCopied(true); }
     catch { setCopied(false); }
