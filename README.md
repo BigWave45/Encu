@@ -1,5 +1,10 @@
 ## Dashboard end-to-end work — 2026-11-04
 
+**Latest source update:** `encu/dashboard-end-to-end` now also displays account-scoped allocated, spent, reserved and available authority across the developer's owned agents. Negative computed headroom is shown as a ledger mismatch, not silently clamped. The integration PR is [PR #5](https://github.com/BigWave45/agentguard/pull/5), open against `agentguard/build-v1` and unmerged.
+
+**Preview blocker:** Vercel currently reports the `agentguard` Preview check as failed with a build-rate-limit upgrade target. Recent deployments for this branch were canceled; there is no READY Preview for the current head. Do not treat source changes as browser-tested until Vercel can produce a READY Preview.
+
+
 The active implementation branch for the next developer-dashboard slice is `encu/dashboard-end-to-end`, based directly on `agentguard/build-v1`. This is a separate, unmerged work branch. The accepted UI remains the dark V1 developer workspace; the editorial-light redesign is rejected because it hid important controls.
 
 **Implemented in source on this branch**
