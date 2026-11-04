@@ -543,3 +543,35 @@ This external-account path is now the preferred route to investigate before the 
 Keep the existing V1 `OUTLAYER_API_KEY` and `OUTLAYER_NEAR_ADDRESS` unchanged. Never use the V1 credential to bind `agentg.testnet`. Never store the developer's full-access key in Encu. Do not create a wallet or call registration/binding APIs without explicit approval.
 
 No API call, signature, wallet registration, key derivation, binding, policy update, transfer, database mutation or deployment was performed in this review.
+
+
+## Follow-up: exact deterministic registration and authentication semantics (2026-11-04)
+
+Official OutLayer Agent Custody documentation provides the following concrete deterministic-wallet protocol:
+
+1. The owner chooses a seed and signs the raw UTF-8 message `register:<seed>:<timestamp>` with a NEAR Ed25519 full-access key. This is a raw Ed25519 signature, not NEP-413. The public key is sent with `account_id`, `seed`, `message` and `signature` to `POST /register`. The registration timestamp is accepted within ±5 minutes.
+2. Registration returns `wallet_id` and `near_account_id`; it does not return an API key.
+3. Subsequent deterministic-wallet authentication uses a base64url-encoded JSON bearer payload containing `account_id`, `seed`, `pubkey`, `timestamp` and `signature`. The owner signs `auth:<seed>:<timestamp>` with a ±30-second timestamp window. A vault-scoped variant adds `vault_id` to the JSON and to the signed message, but OutLayer's MPC Vault docs explicitly say deterministic `/register` does not support `vault_id`; do not combine the two paths.
+4. The binding API accepts both `Bearer near:<sig>` and `Bearer wk_...` for the same wallet identity. Binding setup still requires the named asset-account owner to sign the on-chain installation transaction.
+
+This confirms that deterministic registration is not a one-time handoff of a persistent server credential. The `near:` auth method requires a fresh owner signature for each request and a short timestamp window. Encu cannot autonomously execute agent transfers using this method unless it has signing authority, which it must not obtain by collecting or storing the developer's full-access private key.
+
+### Remaining viable credential handoff
+
+The Agent Custody docs state that `PUT /wallet/v1/api-key` can be called from an external NEAR account using a signature in the request body, in addition to the custody-wallet Bearer-key flow. However, the public example reviewed only specifies the custody-wallet form (`seed`, `key_hash`) and does not expose the exact external-account request schema, canonical signed message, timestamp window or authorization semantics.
+
+Therefore, the unresolved narrow question is whether the developer can use Intear Wallet to sign a one-time, clearly scoped authorization that registers a revocable `wk_` delegate key for the deterministic wallet, after which Encu can hold that delegate key server-side. Obtain exact vendor confirmation and test vectors before implementation. The fact that the endpoint accepts a signature in the request body is not enough to infer its format or authority boundary.
+
+### Important correction to prior candidate design
+
+Do not describe this as “developer signs once, then Encu receives a `wk_` key” as an established flow. It is only a candidate pending the external-account registration schema. Also do not assume the deterministic wallet identity, the Personal Account Binding executor identity, and the named asset account are the same account: the docs explicitly distinguish the executor account from the bound asset account.
+
+### Security and compatibility checks still required
+
+- Confirm that the external-account signature authorizes only delegate-key registration and cannot change policy, freeze/delete the wallet or transfer assets.
+- Confirm whether the delegate `wk_` credential can execute binding calls but cannot modify policy, revoke the owner's binding, create further keys, or access unrelated wallet capabilities.
+- Confirm who is the sole policy controller after the developer-owned executor is bound to the named asset account.
+- Confirm whether revoking the delegate key immediately blocks new API submissions and what happens to in-flight approvals/transactions.
+- Test the full flow with a disposable Testnet account, explicit owner consent, no valuable assets and no production credential. The existing V1 executor and global key remain unchanged.
+
+No private key was requested or handled, no signature was generated, and no API request, wallet registration, binding, policy update, transfer, database mutation or deployment was performed during this review.
