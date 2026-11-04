@@ -479,7 +479,7 @@ export default function DeveloperPortal() {
                 </div>}
                 <p className="developer-activity-note">Showing the latest 50 requests across agents in this workspace. Transaction status is reconciled independently against NEAR finality.</p>
               </section>}
-              {activeView === "audit" && <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />
+              {activeView === "audit" && <DeveloperAuditLog accessToken={session.access_token} refreshKey={auditRefreshKey} />}
             </section>
             {activeView === "overview" && <aside className="developer-panel">
               <h2>Configure bounded execution</h2>
