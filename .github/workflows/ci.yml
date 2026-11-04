@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - agentguard/build-v1
+      - encu/dashboard-end-to-end
   pull_request:
     branches:
       - main
