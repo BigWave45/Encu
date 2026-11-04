@@ -40,10 +40,12 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const loadVersion = useRef(0);
+  const currentAgentId = useRef(agentId);
+  currentAgentId.current = agentId;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (requestedAgentId = agentId) => {
     const version = ++loadVersion.current;
-    const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(agentId)}`, {
+    const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(requestedAgentId)}`, {
       headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
     });
     const body = await response.json();
@@ -62,7 +64,8 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
     setConfig(null);
     setAllocation(""); setMaxTransfer(""); setDaily(""); setWeekly(""); setAutoSpend("");
     setError(""); setMessage("");
-    load().catch(e => { if (e instanceof Error) setError(e.message); else setError("Configuration unavailable."); });
+    const version = loadVersion.current + 1;
+    load(agentId).catch(e => { if (loadVersion.current === version) setError(e instanceof Error ? e.message : "Configuration unavailable."); });
     return () => { loadVersion.current += 1; };
   }, [load]);
 
@@ -76,8 +79,9 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.reason ?? body.error ?? "Configuration update failed.");
+      if (currentAgentId.current !== agentId) return;
       setMessage("Saved.");
-      await load();
+      await load(agentId);
       onSaved?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Configuration update failed.");
@@ -122,7 +126,7 @@ export default function AgentConfiguration({ agentId, accessToken, onSaved }: Pr
             <button className="developer-button" disabled={busy}>Save allowance</button>
           </form>
         </> : <div className="developer-config-load-state">
-          {error ? <button className="developer-button secondary" type="button" onClick={() => { setError(""); void load().catch(e => setError(e instanceof Error ? e.message : "Configuration unavailable.")); }}>Retry loading configuration</button> : <p>Loading configuration…</p>}
+          {error ? <button className="developer-button secondary" type="button" onClick={() => { setError(""); const version = loadVersion.current + 1; void load(agentId).catch(e => { if (loadVersion.current === version) setError(e instanceof Error ? e.message : "Configuration unavailable."); }); }}>Retry loading configuration</button> : <p>Loading configuration…</p>}
         </div>}
         {message && <p className="developer-message" role="status">{message}</p>}
         {error && <p className="developer-message developer-error" role="alert">{error}</p>}
