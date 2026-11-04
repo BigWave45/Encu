@@ -275,3 +275,50 @@ OutLayer also documents `PUT /wallet/v1/api-key` and `DELETE /wallet/v1/api-key/
 7. Verify executor gas requirements and safe replenishment.
 
 No wallet was registered, no signature requested, no key generated, no binding or policy changed, and no funds moved during this research.
+
+
+## OutLayer deterministic-wallet and policy-controller review (2026-11-04)
+
+This review uses the current public Agent Custody, Binding API and Personal Account Binding documentation. It is documentation evidence only; no API request was sent and no wallet, key, binding or policy was created.
+
+### What the current docs establish
+
+- A deterministic wallet identity is derived from `(account_id, seed, vault_or_none)`. Reusing the same tuple resolves to the same wallet; use a unique, namespaced seed for each workspace.
+- Deterministic-wallet API authentication uses a raw Ed25519 signature made with a full-access NEAR key on each request. The coordinator stores no authentication credential for this mode. Removing the key revokes access within the documented 60-second cache TTL.
+- OutLayer documents deterministic-wallet registration and delegate-key registration from an external NEAR account. A delegate `wk_` key can be created with `PUT /wallet/v1/api-key` and revoked with `DELETE /wallet/v1/api-key/{key_hash}`.
+- The developer's full-access private key must remain in the developer's wallet. Encu must never request, receive, persist or log it.
+- OutLayer says the wallet owner/controller controls the encrypted on-chain policy; the TEE reads and enforces that policy before signing. Personal Account Binding says the developer's policy is the only spending limit for the bound asset account. No policy means unrestricted spending.
+- Personal binding setup remains an owner-signed transaction. The asset account and executor are distinct: the asset account holds the funds; the executor signs and pays gas.
+- Binding transfers are contract calls against the asset account. They must use binding-specific endpoints and must not fall back to the executor's plain transfer endpoint.
+
+### What remains unproven
+
+1. The docs do not explicitly demonstrate that a deterministic executor derived from the developer's account is recognized as controlled by that developer for every policy-management operation in a personal-binding setup. The identity derivation and authentication mechanism are documented; the exact policy-controller relationship for this composition still needs vendor confirmation or a Testnet proof.
+2. The docs describe delegate keys as sub-agent credentials, but the reviewed API reference does not document granular method/endpoint scopes for them. Until proven otherwise, treat a delegate key as potentially able to invoke the wallet's full API surface, not as a narrowly scoped transfer-only credential.
+3. The docs list policy read and dashboard policy editing, but do not provide a complete documented policy-write API contract for this integration. Do not invent an endpoint or assume Encu can configure policy programmatically.
+4. The exact policy write authority, approval/freeze authority, delegate-key permissions, and key revocation behavior must be demonstrated for the deterministic wallet used by the binding.
+5. The binding docs still do not provide a complete, stable inner-receipt proof schema for reconciling the exact recipient and amount of every binding transfer.
+
+### Security decision
+
+The deterministic-wallet approach is a credible candidate, but it does not yet close the policy-governance gate. It is not sufficient to say "the developer signed registration" and infer that the developer can independently set, inspect, freeze and revoke every permission governing the executor.
+
+Do not build automated workspace provisioning around a delegate key until its permissions and revocation have been verified. Do not enable a personal binding until a restrictive policy is present and its controller is independently established. If policy administration requires the developer to use OutLayer's own dashboard, the product flow must disclose that dependency; if the developer cannot control the executor policy, reject this architecture for the developer-controlled product claim.
+
+### Revised spike acceptance criteria
+
+A disposable Testnet spike must prove, with one developer-owned test account and one isolated workspace:
+
+- Deterministic executor identity is reproducible from the documented account/seed tuple.
+- The developer can independently read and change the executor policy and freeze/unfreeze it, with on-chain evidence identifying the controller.
+- A delegate key can be issued without disclosing the full-access private key to Encu; enumerate every permitted operation and prove revocation.
+- The developer can bind the named asset account, verify active status, and remove the extension without Encu cooperation.
+- A binding transfer's final transaction and receipt tree expose enough evidence to prove the exact asset account, recipient and amount.
+- Revocation blocks new submissions after the documented cache window; Encu fails closed while binding or policy state is unreadable.
+
+No runtime, database, UI, wallet, credential, policy or deployment changes were made in this review.
+
+Official references:
+- https://app.outlayer.ai/docs/agent-custody
+- https://app.outlayer.ai/docs/binding-api
+- https://app.outlayer.ai/docs/account-binding
