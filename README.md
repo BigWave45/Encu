@@ -1,134 +1,87 @@
-## RELEASE STATUS — MAIN INTEGRATION COMPLETE (2026-11-04)
+## RELEASE STATUS — MAIN INTEGRATION COMPLETE, PREVIEW VERIFICATION PENDING (2026-11-04)
 
-**Code integration is complete. The remaining release gate is a current public demo deployment and the submission materials.**
+**The intended ENCU V1 and developer-dashboard code has been merged into `main`. This does not mean every branch/PR was merged, nor that the merged application has been freshly browser-tested or deployed.**
 
-### Verified repository state
-- Public repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard). Default branch: `main`.
-- Main release merge commit: `762e7112d904b6010c73972251f1fa5eaeca6379`. The README submission handoff was refreshed after that merge; re-fetch the current `main` ref before any subsequent write.
-- ENCU V1 branch head included in main: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
-- PR #6 reconciled the ENCU dashboard into V1 and is merged. PR #7 reconciled V1 into main and is merged.
-- Main post-merge CI passed: [run 41802811462](https://github.com/BigWave45/agentguard/actions/runs/41802811462). The subsequent README handoff update also passed CI: [run 41803048984](https://github.com/BigWave45/agentguard/actions/runs/41803048984). Both runs passed dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
-- Both original source branches remain in history. No force-push or branch deletion was used.
+### Exact merge state
+- Repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard), public; default branch: `main`.
+- PR #5 (developer dashboard end-to-end) merged into `agentguard/build-v1`: merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
+- PR #6 (release reconciliation into V1) merged into `agentguard/build-v1`: merge commit `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
+- PR #7 (V1 reconciliation into `main`) merged into `main`: merge commit `762e7112d904b6010c73972251f1fa5eaeca6379`.
+- PR #1 (V1 release into `main`) merged into `main`: merge commit `47b19be8945fff0908485426dce0b302e73269ff`.
+- Current `main` head: `d669c5a8192d5615b729591e7dc721140ce2137c`. The latest commit records the release/CI handoff.
+- Current `agentguard/build-v1` is six commits behind `main` and has no commits ahead of it. Do not describe the branches as identical.
+- These are the intended V1/dashboard integration merges. This does **not** mean every project branch or PR was merged. The rejected editorial-light redesign was not part of the accepted release and must remain excluded.
+
+### CI verification
+- Current `main` head `d669c5a8192d5615b729591e7dc721140ce2137c`: [CI run #1106](https://github.com/BigWave45/agentguard/actions/runs/41803211828) completed successfully on 4 November 2026.
+- Verified steps: dependency installation/audit, lint, TypeScript type-check, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
+- The successful CI run verifies the repository build and automated tests. It does not verify the live hosted UI, external provider configuration, or a new Testnet transfer.
 
 ### Deployment state — do not misrepresent
-- The public alias `agentguard-sable.vercel.app` currently points to a READY Production deployment built from older commit `572e92eac49e6a2c9c5589e3935866cfd632a7d7` (“Add credential rotation control to admin page”), not the current main release.
-- Vercel has no deployment record for current main commit `762e7112d904b6010c73972251f1fa5eaeca6379`.
-- The Vercel check for the main release reports the known build-rate-limit failure. The Vercel check on PR #7 was green, but its associated deployment was actually `CANCELED` by an ignored build step; it did not provide a READY Preview.
-- Therefore the current hosted demo does **not** show the merged release. Do not claim that the new dashboard has been deployed or visually verified.
-- No Production deployment has been initiated. Obtain explicit user approval before deploying the new main commit to Production.
+- The latest inspected Vercel deployment for the main release merge commit was **CANCELED** by the project's Ignored Build Step. It did not build and is not a usable Preview.
+- Other recent Preview attempts were also canceled. The Vercel project has separately reported a build-rate-limit failure.
+- The existing public alias `agentguard-sable.vercel.app` points to an older Production deployment, not the current `main` head.
+- There is no verified READY Preview for current `main`; therefore the merged dashboard has not been freshly browser/mobile verified.
+- No Production deployment has been initiated. Do not deploy Production without the user's explicit approval.
 
-### Verification evidence and limits
-- Automated CI on the release candidate, V1 and main passed: lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation.
-- Historical manual tests in the isolated test environment covered multiple agent identities, spending-limit/global-budget/emergency-stop blocks, recipient authorization/revocation and a 0.001 NEAR request reconciled to execution. These predate the current release and do not establish fresh browser verification.
-- The older Preview log records successful sign-in on commit `12cd3f8`, but agent creation had an unresolved browser-validation discrepancy. See `docs/preview-test-log-2026-11-03.md`.
-- There is no dedicated browser E2E test script in `package.json`. The current hosted UI still needs a fresh READY deployment and a browser walkthrough.
-- Do not initiate another live Testnet transfer without separate explicit approval. A request accepted by the API is not proof of NEAR settlement.
+### What remains
+1. Inspect Vercel project settings and identify the exact ignored-build rule and production-branch configuration. Do not change Production settings.
+2. Establish a dedicated non-production Preview path from the current `main` source. Confirm that Vercel will classify it as Preview before triggering a deployment. If rate-limited, stop retrying and record the blocker.
+3. Once a READY Preview exists, record its exact commit and URL, then perform the browser/mobile walkthrough below.
+4. Verify developer sign-in/onboarding, agent creation, zero initial allocation, allocation and policy configuration, exact recipient authorization/revocation, payload construction, request persistence, transaction/audit views and responsive diagrams/explainers.
+5. Do not submit a live Testnet transfer during this walkthrough without separate explicit user approval. Existing historical manual tests are evidence of earlier behavior, not a fresh E2E pass on the merged release.
+6. After browser verification, capture demo media, prepare the public X post, and complete the hackathon submission. Re-check the official instructions before submitting.
 
-### Judge walkthrough — Testnet
-Use a configured test environment and a funded Testnet account. Never use mainnet credentials or funds.
-
-1. Open `/developers` and create or sign in to a developer account. Expected: an authenticated, developer-owned workspace and the Connect / Setup destination.
-2. Create an agent identity. Expected: the new agent appears with zero allocation and a one-time bearer token is shown. Copy it once into a backend secret manager; ENCU cannot recover it.
-3. Configure a positive allocation and per-transfer/daily/weekly limits. Expected: the agent's authority and policy appear in the workspace; the setup checklist reflects the saved configuration.
-4. Authorize an exact NEAR recipient for that agent. Expected: the recipient appears as active for that agent only. Revoke it and verify a request to that recipient is blocked.
-5. Construct a request using the agent token, a unique `requestId`, the exact recipient and a positive `amountYocto`. Expected: ENCU authenticates the agent and evaluates allocation, spending limits, emergency stop, recipient authorization and replay protection before provider submission.
-6. Inspect Transactions and Audit & Security. Expected: the persisted request and relevant security/audit events are visible. A successful API response alone does not establish payment; wait for the NEAR finality reconciliation state before claiming execution.
-
-### Submission requirements
-Official instructions: [NEAR Hackathon](https://nearhackathon.com/) and [HACKATHON.md](https://nearhackathon.com/HACKATHON.md).
-
-- Keep this repository public.
-- Publish a public demo post on X that says the project was built at **NEAR HACKATHON**, tags `@NEARProtocol` and `#NEARHackathon`, and attaches a demo video or screenshots.
-- Submit both the public repository link and the X demo-post link through the official form.
-- Deadline: **14 November 2026, 23:59 UTC**. The official instructions state one submission per project; verify all details before submitting.
-- ENCU's primary fit is Track 06, **AI Security & Defense**: policy-enforced spending controls and wallet safeguards for AI-controlled funds.
-
-### Remaining release actions
-1. Obtain approval to deploy main commit `762e7112d904b6010c73972251f1fa5eaeca6379` to Vercel Production, or resolve the Vercel build-rate-limit blocker.
-2. Once a current READY deployment exists, run the browser walkthrough above without initiating an unapproved live transfer.
-3. Record the exact deployed commit and demo URL in this README.
-4. Capture a short demo video/screenshots, draft the X post, verify the repository is public, and submit both links only after the post is live.
-5. Re-check the live `HACKATHON.md` before submitting; the submission is not editable after sending.
+### Judge walkthrough — Testnet (only after Preview is ready)
+Use the isolated Testnet environment and a funded Testnet account. Never use mainnet credentials or funds.
+1. Open `/developers` and create or sign in to a developer account. Confirm an authenticated, developer-owned workspace.
+2. Create an agent identity. Confirm zero initial allocation and one-time bearer-token display. Store the token securely; ENCU cannot recover it.
+3. Configure positive allocation and per-transfer/daily/weekly limits. Confirm persisted values in the workspace.
+4. Authorize an exact NEAR recipient for that agent, then revoke it. Confirm a request to the revoked recipient is blocked without provider submission.
+5. Inspect Transactions and Audit & Security for persisted request and security events. Do not infer payment from an API response.
+6. Verify finality only against the chain reconciliation state. Do not initiate a live transfer unless the user separately authorizes that exact test.
 
 ### Operating rules
-- Optimize for submission: no unrelated features, redesigns or refactors.
-- Preserve the accepted dark V1 UI and responsive diagrams/explainers. UI name is ENCU; internal AgentGuard identifiers remain.
-- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit approval.
-- Re-fetch refs and deployment state before any write or release action. This section is the authoritative current handoff; older notes below are retained as historical implementation context.
-
+- Optimize for hackathon submission. No unrelated features, redesigns or refactors.
+- Preserve the accepted dark V1 interface and existing responsive diagrams/explainers. Product name is ENCU; internal AgentGuard identifiers remain.
+- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit user approval.
+- Re-fetch branch, PR, CI and Vercel state before any further write or release action.
+- This block is the current handoff. Older implementation notes below are historical and must not override this release status.
 
 ---
 
 # IMPORTANT HANDOFF — CURRENT ACTION / READ THIS FIRST (2026-11-04)
 
-This block is the authoritative continuation point if the ChatGPT conversation resets. It supersedes older branch, UI, deployment and next-step instructions elsewhere in this README when they conflict. Do not begin by following historical notes below.
+The accepted ENCU V1 and developer-dashboard changes are already merged into `main`. Do not reopen the old PR #5 work or repeat its implementation. The immediate task is Preview deployment and fresh browser verification, not another merge.
 
-## Repository state now
-
+## Repository state
 - Repository: `BigWave45/agentguard`.
 - Product name: **ENCU**. Internal code and repository identifiers may still say AgentGuard.
-- Current implementation branch: `encu/dashboard-end-to-end`.
-- Current PR: [#5 — ENCU developer dashboard: payload submission, configuration and audit flow](https://github.com/BigWave45/agentguard/pull/5).
-- PR base: `agentguard/build-v1`. PR head: re-fetch PR #5 and the branch head before continuing; do not rely on a copied SHA in this handoff.
-- PR #5 is open and unmerged. Do not merge it, merge to `main`, deploy Production, change either Supabase project, delete branches, or initiate a Testnet transfer without the user's explicit approval.
-- The accepted interface is the **dark V1 design**. The editorial-light redesign was rejected because it hid important controls. Do not revive it.
-- Vercel Preview is currently blocked by a build-rate-limit failure. No READY Preview has been verified for the current PR head. Continue source work and CI; do not waste attempts repeatedly deploying while rate-limited.
-- Do not claim browser-level verification until a READY Preview is available and the user-visible flows have actually been tested.
+- Current `main` head: `d669c5a8192d5615b729591e7dc721140ce2137c`.
+- PR #5, #6, #7 and #1 are merged as detailed in the release status above.
+- `agentguard/build-v1` is six commits behind `main`, with no commits ahead. Do not claim branch equality.
+- Do not merge unrelated/rejected branches. The editorial-light redesign remains rejected; preserve the dark V1 interface.
+- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without explicit user approval.
 
-## CURRENT IMPLEMENTATION STATE — 2026-11-04
+## Completed in source and merged
+- Developer workspace navigation and setup flow.
+- Agent configuration, credentials scoped to the matching agent in page memory, and credential clearing on sign-out.
+- Recipient management with agent-scoped loading, stale-response protection, account-ID validation, expiry checks and revoke behavior.
+- Request payload builder and explicit Testnet submission control with warning that permitted requests can initiate real Testnet transfers.
+- Transaction activity, developer-scoped audit feed and execution explainer.
+- Existing responsive diagrams/explainers retained in the accepted dark V1 interface.
 
-The developer dashboard information-architecture slice is in progress on `encu/dashboard-end-to-end`. The accepted interface is the dark V1 UI. Existing execution diagrams and explainers are core product UI and must remain mounted and responsive.
+## Verified
+- Current `main` CI run #1106 passed: dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
+- Historical isolated Testnet exercises covered policy denials, multiple agent identities, recipient authorization/revocation and a small transfer reconciled to execution. They are not fresh browser verification of current `main`.
 
-### Completed in source
-- Eight destinations are wired in the developer workspace: Overview, Agents, Recipients, Integration, Transactions, Audit & Security, Developer tools and How ENCU works.
-- Overview authority totals/activity, dedicated recipient management, integration quickstart and response explanations, developer tools payload builder, and execution explainers are present.
-- Newly issued/rotated credentials are scoped to their matching agent playground in page memory and cleared on sign-out.
-- Agent configuration saves refresh parent agent/workspace state. Successful request submission refreshes transaction activity and audit activity.
-- Overview explainer sidebar was restored to the dark V1 palette.
-- Agent configuration now exposes a retry action after a failed initial load.
-- Recipient management has been audited and hardened:
-  - Recipient records are loaded per selected agent; stale in-flight responses cannot overwrite the newly selected agent's list.
-  - Changing agent clears the previous recipient list and unsaved form state.
-  - Account IDs are normalized to lowercase and validated against the backend's exact account-ID format before submission.
-  - Optional expiry must parse as a future local date/time before conversion to ISO UTC.
-  - Form values are cleared only after a successful authorization response.
-  - Expired active records are displayed as expired, and only effectively active records expose the revoke action.
-  - The backend reserve function requires an active recipient with no expiry or an expiry later than database time. The pre-submission claim/revalidation function repeats that check, so expiration/revocation between reservation and provider submission is blocked.
-- Agent configuration now clears prior-agent values on agent changes and guards load/save responses against stale agent state.
-
-### Connect / Setup landing destination — current slice
-
-- The signed-in developer workspace now opens at **Connect / Setup**. Overview remains a separate destination; the existing execution explainer remains available in Overview and How ENCU works.
-- The agent-list API now includes an `activeRecipientCount`, computed from each owned agent's active and unexpired recipient records. It does not expose recipient data from agents the developer does not own.
-- The checklist evaluates agent creation, positive allocation, configured transfer limits and recipient authorization against loaded API records. Allocation, limits and recipient checks require coverage for every active agent, not merely one configured agent.
-- Autonomous allowance is shown as optional. A configured allowance is not represented as extra allocation.
-- One-time credential issuance is distinguished from secure storage. The dashboard cannot inspect an external secret manager. The user can make a clearly labelled manual attestation for credential storage and backend integration; those attestations are page-session state, not persisted verification.
-- A persisted request marks the first-request step complete, but the UI explicitly states that request receipt is not proof of payment or NEAR finality.
-- The setup UI uses the existing dark V1 styling and responsive layout. No Figma replacement, light redesign, new provider, schema migration or live transfer was introduced.
-
-- CI trigger correction: `.github/workflows/ci.yml` now includes `agentguard/build-v1` as a `pull_request` target and `encu/dashboard-end-to-end` as a `push` target. The push trigger ensures validation runs on this implementation branch even if GitHub evaluates the pull-request workflow definition from the base branch. Wait for a new run on the updated PR head before reporting validation results.
-
-### Latest commits for this slice
-- `aae105b2a1b17255909314961f2ec40a4243ef55` — dark V1 explainer sidebar.
-- `aac209f2e1c5df1d216b4723ef6d8e35e2d4e62f` — clear in-memory credentials on auth-session loss.
-- `b6974bd152e45532dc140eadb46e38643f0a05b8` — agent configuration retry state.
-- `3b411573f64f40dd58de8663642d701545b6dba1` — README handoff at that stage.
-- `4555a75b61178bd38ce84b5779fdf2575b8ead18` — configuration stale-load protection.
-- `856a4a082c9dfb940e321a5fdb44537e492977e5` — recipient expiry validation and agent-switch state.
-- `92d4a11ee8b79e3d8fa1e5816519a07ad95103ac` — import request ref for recipient race protection.
-- `777332a42821b7f09cbca28929145fba869674f8` — configuration save/reload race protection.
-- `5913a508f202679a32168bf766e95773170174f4` — recipient update responses use the current selected agent, not a stale render closure.
-- `c0d634cd37e0dda10d73a79ab905b2d8f6e6c3f2` — stale configuration save errors are ignored after switching agents.
-
-### Remaining work / next action
-1. Run lint, TypeScript, production build and relevant API/concurrency/reconciliation tests against the current branch. Record actual results; do not infer passing CI from source inspection.
-2. Continue the documented Connect / Setup initial landing state, with checklist status derived from real agent, allocation/policy, recipient, credential and transaction state. Do not claim a credential is securely stored because it was merely displayed.
-3. Complete transaction search and request inspection using persisted evidence only. Mark missing signer/action/recipient verification and NEAR finality evidence unavailable.
-4. Reconcile `docs/developer-experience-v1.md` with the current developer-owned account model and keep administrator-only controls out of the developer workspace.
-5. Browser/mobile verification remains blocked until Vercel produces a READY Preview. The last known Vercel blocker is the build-rate-limit failure.
-
-### Release boundary
-PR #5 is open against `agentguard/build-v1`, unmerged, and currently reports `mergeable=false`. Re-fetch the PR and branch head before each continuation. Do not merge, deploy, alter Supabase projects, delete branches or initiate a Testnet transfer without the user's explicit approval. Do not claim browser verification until a READY Preview has been tested.
+## Current blocker and next action
+- No READY Preview has been verified for current `main`.
+- Recent Vercel attempts were canceled by the Ignored Build Step; a build-rate-limit error has also been reported.
+- Inspect the exact Vercel project settings and production branch. Establish a dedicated Preview branch/path only after confirming it cannot trigger Production. Do not change the Production branch or trigger a Production deployment.
+- Once a READY Preview exists, test the developer onboarding and full dashboard workflow on desktop and mobile. Record failures precisely; do not label the E2E complete until tested.
+- Do not initiate a live Testnet transfer without separate explicit approval.
+- After verification, capture demo media and complete the X post and official submission.
 
 ---
 
