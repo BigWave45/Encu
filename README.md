@@ -1,43 +1,61 @@
-## RELEASE PUSH — AUTHORITATIVE HANDOFF (2026-11-04)
+## RELEASE STATUS — MAIN INTEGRATION COMPLETE (2026-11-04)
 
-**Priority: finish the V1 → main release and submission. No new feature scope.**
+**Code integration is complete. The remaining release gate is a current public demo deployment and the submission materials.**
 
-### Verified integration state
-- ENCU feature integration is merged into `agentguard/build-v1`.
-- V1 head: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
-- PR #6 [ENCU release reconciliation](https://github.com/BigWave45/agentguard/pull/6) is merged at `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
-- Original PR #5 is also marked merged by GitHub because its feature-branch history is included in the PR #6 merge commit. Do not reopen or re-merge it.
-- V1 post-merge CI passed: [run 41802232635](https://github.com/BigWave45/agentguard/actions/runs/41802232635). Dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation all passed.
-- Main is still at `9510b416d7d5881d1a3c585b3ca99ef3b38e25dc`. V1 is 785 commits ahead and main 2 commits ahead from merge base `534094096eead5f7e9ecbf4d48c485f2c6eae685`.
-- Main's two unique commits are `f660fda951c3f2780d4e94514565b0150473564b` (“Add distinct developer workspace destinations”) and `9510b416d7d5881d1a3c585b3ca99ef3b38e25dc` (“Style responsive developer workspace navigation”). They only add the older `app/developers/page.tsx` and `app/developers/developers.css`.
-- Main release candidate: `encu/main-release-reconciliation`, created from main. Its merge commit uses main as first parent and V1 as second parent, with the V1 tree. This preserves both histories while replacing the two older main-only dashboard files with V1's expanded implementation.
-- The original `main` and `agentguard/build-v1` refs have not been modified by candidate construction.
+### Verified repository state
+- Public repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard). Default branch: `main`.
+- Current `main` head: `762e7112d904b6010c73972251f1fa5eaeca6379`.
+- ENCU V1 branch head included in main: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
+- PR #6 reconciled the ENCU dashboard into V1 and is merged. PR #7 reconciled V1 into main and is merged.
+- Main post-merge CI passed: [run 41802811462](https://github.com/BigWave45/agentguard/actions/runs/41802811462). Dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests all passed.
+- Both original source branches remain in history. No force-push or branch deletion was used.
 
-### Main reconciliation decision
-The two main-only commits add a basic dark developer portal with Overview, Agents, Transactions, Audit & Security and How ENCU works. V1 contains those destinations and expands them with Connect / Setup, Recipients, Integration and Developer tools, plus the responsive execution explainer. The candidate uses V1's current `page.tsx` and `developers.css`, together with `dashboard-workflow.css`, as the more complete implementation. No unrelated main-only file changes were found in the two-commit comparison.
+### Deployment state — do not misrepresent
+- The public alias `agentguard-sable.vercel.app` currently points to a READY Production deployment built from older commit `572e92eac49e6a2c9c5589e3935866cfd632a7d7` (“Add credential rotation control to admin page”), not the current main release.
+- Vercel has no deployment record for current main commit `762e7112d904b6010c73972251f1fa5eaeca6379`.
+- The Vercel check for the main release reports the known build-rate-limit failure. The Vercel check on PR #7 was green, but its associated deployment was actually `CANCELED` by an ignored build step; it did not provide a READY Preview.
+- Therefore the current hosted demo does **not** show the merged release. Do not claim that the new dashboard has been deployed or visually verified.
+- No Production deployment has been initiated. Obtain explicit user approval before deploying the new main commit to Production.
 
-### Verification and release boundary
-- Candidate and V1 GitHub Actions checks passed, including production build, Agent API security/lifecycle tests and NEAR finality reconciliation.
-- Vercel status still reports the known build-rate-limit failure. There is no verified READY Preview for the current release candidate.
-- Historical Preview log: sign-in succeeded on commit `12cd3f8`, but agent creation had an unresolved browser-validation discrepancy; see `docs/preview-test-log-2026-11-03.md`.
-- Historical manual testing in the isolated test environment covered multiple agents, policy and budget blocks, recipient authorization/revocation, and a 0.001 NEAR request reconciled to execution. That does not prove the current candidate's browser flow.
-- There is no dedicated browser E2E script in `package.json`. Automated coverage currently consists of lint/type/build plus API security/lifecycle and NEAR finality tests.
-- Do not initiate another live Testnet transfer without separate explicit approval. Do not deploy Production without separate explicit approval.
+### Verification evidence and limits
+- Automated CI on the release candidate, V1 and main passed: lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation.
+- Historical manual tests in the isolated test environment covered multiple agent identities, spending-limit/global-budget/emergency-stop blocks, recipient authorization/revocation and a 0.001 NEAR request reconciled to execution. These predate the current release and do not establish fresh browser verification.
+- The older Preview log records successful sign-in on commit `12cd3f8`, but agent creation had an unresolved browser-validation discrepancy. See `docs/preview-test-log-2026-11-03.md`.
+- There is no dedicated browser E2E test script in `package.json`. The current hosted UI still needs a fresh READY deployment and a browser walkthrough.
+- Do not initiate another live Testnet transfer without separate explicit approval. A request accepted by the API is not proof of NEAR settlement.
 
-### Remaining release sequence
-1. Confirm the current head of `encu/main-release-reconciliation` and PR #7 to `main`; run CI on that PR.
-2. If GitHub Actions passes and the PR remains mergeable, merge PR #7 into `main`. If GitHub blocks on the Vercel rate-limit status, do not bypass branch protection.
-3. Verify the resulting `main` head and post-merge CI.
-4. Verify public repository visibility, README/setup accuracy, public demo availability, architecture/security claims, demo flow, hackathon track fit, and required X/demo submission materials.
-5. Report the Preview limitation accurately. Do not claim the current UI was visually/browser verified unless a current READY deployment is tested.
+### Judge walkthrough — Testnet
+Use a configured test environment and a funded Testnet account. Never use mainnet credentials or funds.
+
+1. Open `/developers` and create or sign in to a developer account. Expected: an authenticated, developer-owned workspace and the Connect / Setup destination.
+2. Create an agent identity. Expected: the new agent appears with zero allocation and a one-time bearer token is shown. Copy it once into a backend secret manager; ENCU cannot recover it.
+3. Configure a positive allocation and per-transfer/daily/weekly limits. Expected: the agent's authority and policy appear in the workspace; the setup checklist reflects the saved configuration.
+4. Authorize an exact NEAR recipient for that agent. Expected: the recipient appears as active for that agent only. Revoke it and verify a request to that recipient is blocked.
+5. Construct a request using the agent token, a unique `requestId`, the exact recipient and a positive `amountYocto`. Expected: ENCU authenticates the agent and evaluates allocation, spending limits, emergency stop, recipient authorization and replay protection before provider submission.
+6. Inspect Transactions and Audit & Security. Expected: the persisted request and relevant security/audit events are visible. A successful API response alone does not establish payment; wait for the NEAR finality reconciliation state before claiming execution.
+
+### Submission requirements
+Official instructions: [NEAR Hackathon](https://nearhackathon.com/) and [HACKATHON.md](https://nearhackathon.com/HACKATHON.md).
+
+- Keep this repository public.
+- Publish a public demo post on X that says the project was built at **NEAR HACKATHON**, tags `@NEARProtocol` and `#NEARHackathon`, and attaches a demo video or screenshots.
+- Submit both the public repository link and the X demo-post link through the official form.
+- Deadline: **14 November 2026, 23:59 UTC**. The official instructions state one submission per project; verify all details before submitting.
+- ENCU's primary fit is Track 06, **AI Security & Defense**: policy-enforced spending controls and wallet safeguards for AI-controlled funds.
+
+### Remaining release actions
+1. Obtain approval to deploy main commit `762e7112d904b6010c73972251f1fa5eaeca6379` to Vercel Production, or resolve the Vercel build-rate-limit blocker.
+2. Once a current READY deployment exists, run the browser walkthrough above without initiating an unapproved live transfer.
+3. Record the exact deployed commit and demo URL in this README.
+4. Capture a short demo video/screenshots, draft the X post, verify the repository is public, and submit both links only after the post is live.
+5. Re-check the live `HACKATHON.md` before submitting; the submission is not editable after sending.
 
 ### Operating rules
-- Optimize for submission. No unrelated features, redesigns or refactors.
-- Preserve the accepted dark V1 UI and responsive diagrams/explainers. Product name is ENCU; internal AgentGuard identifiers remain.
+- Optimize for submission: no unrelated features, redesigns or refactors.
+- Preserve the accepted dark V1 UI and responsive diagrams/explainers. UI name is ENCU; internal AgentGuard identifiers remain.
 - No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit approval.
-- Re-fetch branch refs and PR heads before every write. Update this handoff after each milestone with exact commit/test evidence and the next action.
+- Re-fetch refs and deployment state before any write or release action. This section is the authoritative current handoff; older notes below are retained as historical implementation context.
 
-**Immediate next action:** verify PR #7 and the main reconciliation candidate head, then inspect its CI run. Merge to main after checks pass.
 
 ---
 
