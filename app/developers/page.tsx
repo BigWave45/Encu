@@ -58,7 +58,7 @@ export default function DeveloperPortal() {
   const [issuedTokenAgentId, setIssuedTokenAgentId] = useState("");
   const [issuedWarning, setIssuedWarning] = useState("");
   const [auditRefreshKey, setAuditRefreshKey] = useState(0);
-  const [activeView, setActiveView] = useState<"overview" | "agents" | "transactions" | "audit" | "execution">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "agents" | "recipients" | "transactions" | "audit" | "execution">("overview");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const loadAgents = useCallback(async (accessToken: string) => {
@@ -305,7 +305,7 @@ export default function DeveloperPortal() {
         ) : (
           <>
           <nav className="developer-nav" aria-label="Developer workspace sections">
-            {([["overview","Overview"],["agents","Agents"],["transactions","Transactions"],["audit","Audit & Security"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
+            {([["overview","Overview"],["agents","Agents"],["recipients","Recipients"],["transactions","Transactions"],["audit","Audit & Security"],["execution","How ENCU works"]] as const).map(([id,label]) => <button key={id} type="button" className={activeView === id ? "active" : ""} aria-current={activeView === id ? "page" : undefined} onClick={() => setActiveView(id)}>{label}</button>)}
           </nav>
           <div className="developer-grid">
             <section className="developer-panel">
@@ -402,12 +402,108 @@ export default function DeveloperPortal() {
               <div className="developer-footnote">Your login authenticates you as a developer. The agent token authenticates the machine identity. They are separate credentials and must never be interchanged.</div>
             </aside>}
           </div>
+          {activeView === "recipients" && <RecipientManagement agents={agents} accessToken={session.access_token} onSaved={() => void loadAgents(session.access_token)} />}
           {activeView === "overview" && <ExecutionExplainer />}
           {activeView === "execution" && <ExecutionExplainer />}
           </>
         )}
       </div>
     </main>
+  );
+}
+
+
+type RecipientRecord = { account_id: string; label: string | null; status: string; expires_at: string | null };
+
+function RecipientManagement({ agents, accessToken, onSaved }: { agents: DeveloperAgent[]; accessToken: string; onSaved: () => void }) {
+  const [agentId, setAgentId] = useState("");
+  const [recipients, setRecipients] = useState<RecipientRecord[]>([]);
+  const [accountId, setAccountId] = useState("");
+  const [label, setLabel] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const selectedAgent = agents.find(agent => agent.id === agentId) ?? agents[0] ?? null;
+
+  const load = useCallback(async (id: string) => {
+    if (!id) { setRecipients([]); return; }
+    setLoading(true); setError("");
+    try {
+      const response = await fetch(`/api/developer/agents/config?id=${encodeURIComponent(id)}`, {
+        headers: { authorization: `Bearer ${accessToken}` }, cache: "no-store"
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not load recipient permissions.");
+      setRecipients(Array.isArray(body.recipients) ? body.recipients : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load recipient permissions.");
+    } finally { setLoading(false); }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!agents.some(agent => agent.id === agentId) && agents[0]) setAgentId(agents[0].id);
+    if (!agents.length) { setAgentId(""); setRecipients([]); }
+  }, [agents, agentId]);
+
+  useEffect(() => { if (selectedAgent) void load(selectedAgent.id); }, [selectedAgent?.id, load]);
+
+  async function update(payload: Record<string, unknown>) {
+    if (!selectedAgent) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/developer/agents/config", {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ id: selectedAgent.id, ...payload })
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.reason ?? body.error ?? "Recipient permission update failed.");
+      setMessage(payload.action === "authorize_recipient" ? "Recipient authorized." : "Recipient permission revoked.");
+      await load(selectedAgent.id);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Recipient permission update failed.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="developer-panel developer-recipient-workspace">
+      <div className="developer-workspace-heading">
+        <div><span className="developer-section-kicker">RECIPIENT ACCESS</span><h2>Authorized NEAR accounts</h2><p>Transfers are restricted to exact account IDs explicitly authorized for each agent. Permissions do not carry over between agents.</p></div>
+      </div>
+      {agents.length === 0 ? <div className="developer-empty"><strong>Create an agent first</strong><span>Recipient permissions are assigned to an individual agent identity.</span></div> : <>
+        <label className="developer-recipient-agent">Agent identity
+          <select value={selectedAgent?.id ?? ""} onChange={event => setAgentId(event.target.value)}>
+            {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name} · {agent.id}</option>)}
+          </select>
+        </label>
+        <form className="developer-form" onSubmit={event => {
+          event.preventDefault();
+          if (!accountId.trim()) return;
+          void update({ action: "authorize_recipient", accountId: accountId.trim(), label: label.trim() || undefined, expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null });
+          setAccountId(""); setLabel(""); setExpiresAt("");
+        }}>
+          <h3>Authorize a recipient</h3>
+          <label>Exact NEAR account ID<input value={accountId} onChange={event => setAccountId(event.target.value)} required placeholder="recipient.near" /></label>
+          <label>Label (optional)<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} placeholder="Vendor or service name" /></label>
+          <label>Expiry (optional)<input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} /></label>
+          <button className="developer-button" type="submit" disabled={busy || !accountId.trim()}>{busy ? "Saving…" : "Authorize recipient"}</button>
+        </form>
+        <div className="developer-recipient-list">
+          <div className="developer-activity-head"><h3>Agent allowlist</h3><button className="developer-button secondary" type="button" disabled={loading} onClick={() => selectedAgent && void load(selectedAgent.id)}>Refresh</button></div>
+          {loading && <p>Loading recipient permissions…</p>}
+          {!loading && recipients.length === 0 && <p>No recipients authorized. Transfers to all recipients remain blocked.</p>}
+          {recipients.map(recipient => <div className="developer-recipient" key={recipient.account_id}>
+            <div><strong>{recipient.label || recipient.account_id}</strong><code>{recipient.account_id}</code><span>{recipient.status}{recipient.expires_at ? ` · expires ${new Date(recipient.expires_at).toLocaleString()}` : " · no expiry"}</span></div>
+            {recipient.status === "active" && <button type="button" disabled={busy} onClick={() => void update({ action: "revoke_recipient", accountId: recipient.account_id, reason: "Revoked by developer" })}>Revoke</button>}
+          </div>)}
+        </div>
+      </>}
+      {message && <p className="developer-message" role="status">{message}</p>}
+      {error && <p className="developer-message developer-error" role="alert">{error}</p>}
+    </section>
   );
 }
 
