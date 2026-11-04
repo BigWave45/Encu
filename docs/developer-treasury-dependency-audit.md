@@ -360,3 +360,52 @@ Official references:
 - https://app.outlayer.ai/docs/agent-custody
 - https://app.outlayer.ai/docs/binding-api
 - https://app.outlayer.ai/docs/account-binding
+
+
+## Release-branch feasibility gate — source verification (2026-11-04)
+
+This section compares the research findings against the actual release branch `agentguard/build-v1`. It is a source-level compatibility check, not a live OutLayer or Testnet integration test.
+
+### Branch relationship
+
+- The research branch `encu/developer-funded-treasuries` is 31 commits ahead of `agentguard/build-v1`, with the V1 head as its merge base and no commits unique to V1 relative to the research branch at the time of comparison.
+- The 31-commit difference is documentation/research scope in the comparison result: README changes and three documentation files, plus package metadata. It does not establish implementation of workspace treasuries or Personal Account Binding.
+- No research commits have been merged into the release branch by this review.
+
+### Direct source evidence from `agentguard/build-v1`
+
+1. `lib/outlayer.ts` reads one global `OUTLAYER_API_KEY`, `OUTLAYER_NEAR_ADDRESS` and network configuration. Its native transfer function calls only `POST /wallet/v1/transfer`.
+2. `lib/execution-provider.ts` exposes `verifyExecutionAccount()` and `submitNativeTransfer()` without a workspace, treasury, asset-account or executor-credential context. The OutLayer adapter verifies one configured address.
+3. `app/api/agent/transfer/route.ts` reserves through `reserve_agent_spend`, claims through `claim_agent_auto_submission`, verifies the one global executor and then calls the provider adapter. The provider is selected without resolving an owned workspace treasury.
+4. `app/api/agent/reconcile/route.ts` queries NEAR transaction finality using the configured global signer and accepts only a single direct `Transfer` action whose signer, receiver and deposit match the reservation. A Personal Account Binding transfer is a contract-call path; this reconciliation predicate cannot prove the inner asset-account transfer.
+5. `scripts/test-reconciliation.mjs` fixtures model direct NEAR Transfer transactions. They do not model binding contract calls, receipt trees, inner transfer effects, bound asset-account identity or binding revocation.
+6. `scripts/test-agent-api.mjs` mocks the global executor address and direct transfer integration. It does not establish workspace-specific OutLayer credentials or asset-account routing.
+
+### Feasibility verdict
+
+**The current V1 cannot safely enable Personal Account Binding by configuration alone.** The adapter, request context, ledger lifecycle and finality proof all assume a single executor account and direct transfer action. A binding implementation requires a separately versioned provider and treasury architecture.
+
+The current code does have a useful seam: policy reservation and provider submission are separated behind an `ExecutionProvider` interface. However, the interface must carry an immutable, server-resolved treasury execution context. It must not accept a client-supplied account ID or credential. The reservation must bind to that same treasury identity, and reconciliation must resolve the same immutable binding before it can settle.
+
+### Binding spike: pass/fail protocol
+
+Use a disposable Testnet developer account and a separate disposable executor identity. Do not use the existing operator executor, test Supabase project, production secrets or any account holding meaningful funds.
+
+| Gate | Required evidence | Fail condition |
+|---|---|---|
+| Developer control | Developer signs the documented setup transaction from the named asset account; chain confirms the expected contract/extension state | Setup can be completed without owner authorization, or the account has an incompatible contract-wallet implementation |
+| Binding activation | OutLayer binding status is independently read as `active`; pending/suspended/revoked/unreadable states block spending | Encu enables spending on the basis of a successful setup request or stale cached state |
+| Policy authority | Developer can independently inspect, set and freeze the exact executor policy; controller identity and policy state are verified | Controller is ambiguous, policy cannot be made restrictive, or Encu alone can silently weaken it |
+| Credential boundary | Encu uses a delegate credential; full-access developer key never reaches Encu; all delegate operations and revocation are enumerated | Delegate can bypass policy/revocation, or its scope cannot be established well enough to accept the risk |
+| Revocation | Developer removes the on-chain extension; new submissions fail closed after the documented cache window; provider record cleanup is separately verified | A DELETE API call is mistaken for on-chain revocation, or submissions continue beyond the documented cache window |
+| Transfer source | Binding transfer spends only the named asset account; executor gas is accounted separately | Any fallback spends the executor's own account or a different workspace's account |
+| Exact reconciliation | Final transaction/receipt evidence proves asset account, recipient and exact amount delivered; ambiguous effects remain `needs_review` | Outer transaction success alone settles the reservation |
+| Isolation | A second workspace cannot read, reserve against or submit from the first workspace's treasury/account | Any cross-workspace balance, credential, allocation or reservation path exists |
+
+### Test execution boundary
+
+No Testnet account, executor wallet, API key, delegate key, binding, policy, transaction, database record or deployment was created or changed during this source review. The live spike is not yet run. It requires a disposable developer-owned Testnet account, a compatible signing path (currently documented by OutLayer as Intear Wallet or near-cli), and explicit approval before any wallet provisioning or transaction submission.
+
+### Implementation decision
+
+Do not add Personal Account Binding to the existing V1 adapter or alter the release branch yet. First complete the isolated provider proof above. If policy-controller authority or delegate permissions cannot be proven, stop this path rather than weakening the custody claim. If the proof passes, design a new workspace-scoped treasury migration and binding-aware provider/reconciler as one coordinated feature branch. Keep the existing global operator treasury as an explicitly separate legacy backend until all old reservations and writers are safely accounted for.
