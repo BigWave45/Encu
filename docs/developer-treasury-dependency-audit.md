@@ -86,3 +86,48 @@ Read-only inspection was performed against the Supabase project named `AgentGuar
 The current test database has two developer-owned agents but no workspace relation. We cannot infer that each user should receive one treasury solely from `owner_user_id` until membership and workspace semantics are decided. The safe migration needs an explicit mapping table and a reviewed backfill plan. Existing owner-null agents and their historical reservations remain attached to the legacy operator treasury unless an operator explicitly migrates them.
 
 This live inspection used read-only project, migration, table and SELECT/function-definition operations. No data, schema, migration, wallet, secret, Preview or Production state was changed.
+
+
+## OutLayer capability research (2026-11-04)
+
+The earlier statement that OutLayer compatibility was wholly unproven is too broad. Current public OutLayer documentation describes two relevant capabilities. This is documentation research, not a live API integration test.
+
+### Option A — one OutLayer custody wallet per workspace
+
+OutLayer's Agent Custody documentation describes `POST /register` creating a wallet and returning a wallet API key, wallet ID and NEAR account ID. Its Vault documentation says each registration creates a fresh wallet; distinct wallet IDs derive distinct NEAR implicit-account keys, including when multiple wallets are under one customer vault. The API key is resolved server-side to its wallet ID and vault scope; a client-supplied vault header cannot change that scope.
+
+This appears to provide a practical isolated-funding route:
+- Provision one OutLayer wallet for each Encu workspace.
+- Store that workspace's API key encrypted server-side and bind the wallet ID, network and NEAR account ID to the workspace record.
+- Show the returned NEAR account ID as the funding destination.
+- Verify incoming native NEAR deposits on chain and credit only after finality.
+- Submit workspace transfers using that workspace's API key and its wallet-specific OutLayer address.
+- Read and verify the wallet's own balance; never use the global `OUTLAYER_NEAR_ADDRESS` as the source of truth for every workspace.
+
+OutLayer documents wallet-level policies, address whitelists, spend limits, approvals and freeze controls. The Encu database policy still needs to be enforced independently. A per-workspace OutLayer wallet has a distinct on-chain account/key, but the key custody is provided by OutLayer's TEE/MPC system. Do not describe this as developer-held private-key self-custody. If using an OutLayer customer vault, document the parent/recovery trust model and the unilateral/cessation recovery path.
+
+The public docs state that wallet registration, address, balance and transfer endpoints work on Testnet. NEAR Intents deposit/withdraw routes are explicitly mainnet-only and return 503 on Testnet; they are not part of the Testnet native-NEAR funding MVP.
+
+### Option B — bind a developer-owned NEAR account
+
+OutLayer Personal Account Binding lets the developer retain their named NEAR account and keys while authorizing the OutLayer executor through an installed wallet contract and extension set. The developer must sign the setup transaction. The bound account's funds are spent through `/wallet/v1/binding/transfer` or `/wallet/v1/call`, not the existing plain `/wallet/v1/transfer` endpoint. Binding is a capability, not ownership transfer. The owner can revoke the executor extension on chain.
+
+This is closer to developer-controlled/non-custodial ownership, but has onboarding and integration costs:
+- Developer must own a compatible named NEAR account and sign the binding setup.
+- Encu must verify the binding is active on chain before enabling spending.
+- OutLayer requires an appropriate owner policy; the binding lane is a contract call and its policy must permit `call`, include the bound account in address rules where applicable, and permit native NEAR.
+- The executor account needs separate gas funding.
+- The app must use binding balance/transfer endpoints and handle structured refusals, approval state and binding revocation.
+- The current transfer/reconciliation flow assumes the executor account as signer; it must be updated to verify the actual bound asset account and transaction signer.
+
+This is a viable alternative if developer-held account ownership is a non-negotiable product requirement. It is not a drop-in replacement for the current adapter.
+
+### Option C — native Encu treasury contract
+
+A native contract remains a viable longer-term option if Encu needs its own on-chain workspace ledger, agent identities and policy enforcement independent of OutLayer. It is more work and is not justified until the first two approaches are evaluated against custody, recovery, user experience and integration constraints.
+
+### Updated recommendation for evaluation
+
+Prototype Option A first on Testnet as the shortest path to genuine per-workspace deposit addresses and separate on-chain balances, while explicitly labeling it OutLayer-managed custody. In parallel, assess Option B as the non-custodial alternative. Do not build the native treasury contract merely because it was the initial preference; the documented OutLayer wallet-per-workspace capability changes the trade-off.
+
+Before any live provisioning, confirm with OutLayer (or through a controlled test wallet) registration semantics, wallet/API-key revocation, wallet-level policy configuration, balance consistency, native NEAR deposit finality, transfer response/reconciliation semantics, and whether the API key can be restricted to required operations. Do not create wallets or submit transfers as part of this research pass.
