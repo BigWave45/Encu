@@ -7,90 +7,97 @@ This document describes the implemented V1 architecture. It distinguishes applic
 ```mermaid
 flowchart LR
     subgraph External["External actors and services"]
+      DEV["Developer workspace user"]
       AG["Agent runtime"]
-      OP["Operator / administrator"]
       OL["OutLayer Testnet wallet"]
       RPC["NEAR Testnet RPC"]
     end
     subgraph ENCU["Encu application boundary"]
-      API["Next.js API"]
-      AUTH["Agent authentication"]
+      AUTH["Supabase Auth + developer API"]
+      API["Transfer API"]
       POLICY["Policy evaluation"]
       LEDGER["Reservation and accounting"]
+      RECON["Reconciliation API"]
       AUDIT["Audit and security events"]
-      RECON["Finality reconciler"]
     end
     DB[("Supabase / PostgreSQL")]
-    AG -->|"Bearer token + transfer request"| API
-    OP -->|"Administrative configuration"| API
-    API --> AUTH
-    AUTH --> POLICY
+    DEV -->|"Developer session"| AUTH
+    AUTH -->|"Owned logical agents + policy"| DB
+    AG -->|"Agent bearer token + transfer request"| API
+    API --> POLICY
     POLICY <--> LEDGER
     POLICY <--> DB
     LEDGER <--> DB
     API --> AUDIT
     AUDIT --> DB
     LEDGER -->|"Authorized submission"| OL
-    OL -->|"Transaction reference"| RECON
+    OL -->|"Transaction hash / provider reference"| AG
+    AG -->|"Separate reconcile request + request ID"| RECON
     RECON <--> RPC
-    RECON -->|"Verified finality result"| LEDGER
+    RECON -->|"Verified FINAL evidence"| LEDGER
 ```
 
 ### Component responsibilities
 
 | Component | Responsibility |
 |---|---|
-| Agent runtime | Requests a payment using its agent-scoped bearer credential. It does not choose its trusted identity or policy result. |
-| Encu API | Validates request shape, authenticates the caller, applies rate limits and coordinates the transfer lifecycle. |
+| Developer workspace | Supabase Auth signup/sign-in; provisions and manages developer-owned logical agents, allocations, policies and recipient permissions. |
+| Agent runtime | Requests a payment using its agent-scoped bearer credential. The credential, not request-body data, establishes the logical agent identity. |
+| Transfer API | Validates request shape, authenticates the agent, applies rate limits and coordinates policy reservation and provider submission. |
 | Policy and reservation logic | Evaluates agent and treasury authority, recipient permission, emergency state, idempotency and autonomous allowance. |
-| PostgreSQL | Persists policies, allocations, treasury exposure, reservations, audit and security events. Atomic database functions protect exposure invariants. |
-| OutLayer | Supplies the configured Testnet wallet custody, signing and transaction-submission path. |
-| NEAR RPC | Supplies transaction and finality evidence used to reconcile the submitted transfer. |
-| Reconciler | Compares chain evidence with the reserved transfer and settles the ledger only on a match. |
+| PostgreSQL | Persists developer ownership, policies, allocations, treasury exposure, reservations, audit and security events. Atomic database functions protect exposure invariants. |
+| OutLayer | Supplies the configured Testnet wallet custody, signing and transaction-submission path shared by logical agents in V1. |
+| Reconciliation API and NEAR RPC | A separate reconciliation request queries NEAR transaction evidence and verifies finality and transfer details before ledger settlement. |
 
 ## 2. Authorization and execution sequence
+
+The transfer endpoint and reconciliation endpoint are separate requests. The first may submit through OutLayer and return a `needs_review` lifecycle state with a transaction hash or provider request reference. The agent or operator then calls the reconciliation endpoint with the same request ID.
 
 ```mermaid
 sequenceDiagram
     participant Agent as Agent runtime
-    participant API as Encu API
+    participant API as POST /api/agent/transfer
     participant DB as PostgreSQL
     participant OL as OutLayer
-    participant RPC as NEAR RPC
-    Agent->>API: POST transfer + agent bearer token
+    participant Reconcile as POST /api/agent/reconcile
+    participant RPC as NEAR Testnet RPC
+    Agent->>API: Transfer request + agent bearer token
     API->>API: Authenticate, validate and rate-limit
     API->>DB: Atomic policy evaluation and reservation
     DB->>DB: Check allocation, treasury, recipient, limits, stop and replay
-    DB-->>API: Denied, review required, or authorized reservation
+    DB-->>API: Denied, awaiting approval, or authorized reservation
     alt Denied
-        API-->>Agent: Policy denial; no provider submission
-    else Review required
-        API-->>Agent: awaiting_approval; reservation held
+        API-->>Agent: 403 policy denial
+    else Awaiting approval / replay
+        API-->>Agent: 409 with lifecycle status; no new provider submission
     else Authorized
         API->>DB: Revalidate policy and claim submission
         DB-->>API: Submission claim granted
         API->>OL: Submit native NEAR transfer
         OL-->>API: Provider response / transaction reference
-        API-->>Agent: Submission lifecycle response
-        API->>RPC: Query transaction and finality evidence
-        RPC-->>API: Transaction evidence
-        API->>API: Verify signer, recipient, action and exact amount
-        API->>DB: Settle reservation exactly once
+        API-->>Agent: 202 needs_review + request / provider reference
+        Agent->>Reconcile: POST requestId + agent bearer token
+        Reconcile->>DB: Load reserved transfer and provider reference
+        Reconcile->>RPC: Query transaction with wait_until FINAL
+        RPC-->>Reconcile: NEAR transaction evidence
+        Reconcile->>Reconcile: Verify signer, receiver, single transfer action, amount and FINAL
+        Reconcile->>DB: Settle reservation exactly once
+        Reconcile-->>Agent: executed / failed, or 202 needs_review
     end
 ```
 
-A provider response is not proof of payment. The ledger remains reserved while the provider outcome is ambiguous. Settlement requires matching NEAR FINAL evidence.
+A provider response is not proof of payment. The reconciliation endpoint may return a pending/review result while a transaction hash is unavailable or NEAR evidence cannot yet be verified. Settlement requires matching NEAR FINAL evidence.
 
 ## 3. Policy model
 
-A request is evaluated against several independent constraints:
+A transfer request is evaluated against several independent constraints:
 
 - **Identity:** the bearer token resolves to one active logical agent. An optional `expectedAgentId` must match that authenticated identity.
 - **Agent authority:** the agent's allocation, per-transfer cap, rolling limits and autonomous allowance.
 - **Recipient authority:** the exact NEAR account ID must be authorized for that agent.
 - **Treasury authority:** aggregate spent plus reserved exposure must remain within the global treasury ceiling.
 - **Global controls:** emergency stop and persistent request rate limits.
-- **Replay control:** the same request ID and same payload are idempotent; reuse with a changed payload is rejected.
+- **Replay control:** request IDs bind a logical payment instruction. A changed payload under the same ID is rejected; an already processed or pending request does not trigger a second provider submission.
 
 A newly created reservation is required before provider submission. Policy and recipient state are revalidated at the submission boundary to reduce time-of-check/time-of-use risk.
 
@@ -110,8 +117,9 @@ A reservation is settled at most once. Unknown provider outcomes remain held for
 
 ## 5. Trust boundaries and key handling
 
-- Agent tokens identify logical agents and should be stored by the agent operator in a server-side secret manager.
-- The administrator credential controls global configuration and must never be given to an agent.
+- Developer accounts authenticate through Supabase Auth. Developer session tokens authorize workspace operations; they are not agent payment credentials.
+- Each logical agent has a separate bearer token. The developer workspace shows a newly issued token once; it must be stored in the agent runtime's server-side secret manager.
+- The administrator credential controls platform-wide operations and must never be given to an agent.
 - The Supabase service-role key and OutLayer API key remain server-side.
 - Multiple logical agents share one configured OutLayer execution wallet and provider credential in V1. They do not have isolated custody or independent provider principals.
 - OutLayer wallet-level policy is separate from Encu's application-level agent policy. The current integration does not manage or independently verify every provider-side policy setting.
@@ -119,6 +127,6 @@ A reservation is settled at most once. Unknown provider outcomes remain held for
 
 ## 6. Implemented boundary
 
-V1 supports native NEAR transfers on Testnet through OutLayer. It does not implement mainnet execution, independent customer custody, per-customer wallets, a native NEAR treasury contract, additional execution providers or independent TEE attestation verification.
+V1 supports native NEAR transfers on Testnet through OutLayer. Developers can have separate application accounts and own logical agent configurations, but those agents still share the configured OutLayer execution wallet. V1 does not implement independent customer custody, per-customer wallets, a native NEAR treasury contract, additional execution providers, mainnet execution or independent TEE attestation verification.
 
 Automated API and reconciliation suites use mocks. They establish behavior under their fixtures, not live provider semantics. See [Security Model](SECURITY_MODEL.md) for the evidence classification and threat analysis.
