@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
   if (!ids.length) return NextResponse.json({ agents: [] }, { headers: { "Cache-Control": "no-store, private" } });
 
   const [allocations, policies, recipients] = await Promise.all([
-    db.from("agent_allocations").select("agent_id,allocation_limit_yocto,spent_yocto,reserved_yocto").in("agent_id", ids),
-    db.from("agent_policies").select("agent_id,max_transfer_yocto,daily_limit_yocto,weekly_limit_yocto,auto_spend_limit_yocto").in("agent_id", ids),
+    db.from("agent_allocations").select("agent_id,allocation_limit_yocto::text,spent_yocto::text,reserved_yocto::text").in("agent_id", ids),
+    db.from("agent_policies").select("agent_id,max_transfer_yocto::text,daily_limit_yocto::text,weekly_limit_yocto::text,auto_spend_limit_yocto::text").in("agent_id", ids),
     db.from("agent_authorized_recipients").select("agent_id,status,expires_at").in("agent_id", ids)
   ]);
   if (allocations.error || policies.error || recipients.error) return NextResponse.json({ error: "developer_agent_details_read_failed" }, { status: 503 });
