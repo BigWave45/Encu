@@ -797,3 +797,9 @@ PR #5 remains open and GitHub currently reports `mergeable=false`. No merge or d
 
 
 Agent configuration load-state fix: when the authenticated configuration GET fails, the component previously remained on a permanent “Loading configuration…” placeholder even though an error was shown below. Added a retry action to re-fetch the selected agent's configuration without changing any values or backend behavior. Commit: `b6974bd152e45532dc140eadb46e38643f0a05b8`. GitHub re-fetch confirms the retry control is present.
+
+### CI lint and type-check remediation (2026-11-04)
+
+The first CI run after adding Connect / Setup failed in lint. The job log identified a missing closing JSX expression brace in the Audit view, two unescaped apostrophes in the agent request builder, and a missing `agentId` effect dependency. These were corrected on `encu/dashboard-end-to-end`. The next run passed lint but exposed a TypeScript inference issue in the setup checklist action type (the state initializer had been inferred too narrowly in that run) and a recipient-effect dependency warning. The checklist now declares its full workspace-view union explicitly, and the recipient effect uses a stable selected-agent ID dependency. Latest remediation commit: `e4e9846a8d8cee9f32a100a001fb1560c5d4a71b`. CI run `41799008076` is currently in progress; do not mark the branch validated until lint, type-check, production build, and both test suites complete successfully. Vercel preview remains blocked by the existing build-rate-limit issue. No merge, deployment, database change, or live transfer was performed.
+
+Next: inspect the result of CI run `41799008076`; fix any remaining concrete failures and rerun. Once checks pass, continue the developer workspace audit and update this handoff. Do not merge or deploy without explicit approval.
