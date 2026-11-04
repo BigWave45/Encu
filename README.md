@@ -42,6 +42,16 @@
 - No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit user approval.
 - For further code changes, branch from the latest `main`, verify changes in CI and Preview, then merge by reviewed PR. Do not assume `agentguard/build-v1` and `main` are identical.
 
+### Dependency audit update — 2026-11-04
+
+A read-only source audit is recorded in [Developer treasury dependency audit](docs/developer-treasury-dependency-audit.md).
+
+Key finding: developer accounts currently own agents, but they do not own funded treasuries. Developer policy/allocation RPCs, transfer reservations, submission claims, settlement and emergency controls still bind to the single global `agent_budgets.default` row. The transfer provider and finality reconciler also use the single configured OutLayer execution address.
+
+This is why adding a deposit screen alone would be incorrect. Workspace treasury resolution, reservation, provider routing, finality settlement, allocations and emergency controls must become treasury-aware as one coordinated change. Preserve the current OutLayer operator treasury as a separate legacy path. Do not route developer agents into it or credit shared-wallet deposits to individual developer balances.
+
+The audit was read-only. No migrations, application code, live database, wallet or deployment were changed.
+
 ## Developer-funded treasury architecture work — 2026-11-04
 
 A separate architecture workstream has started on branch `encu/developer-funded-treasuries`, created from `main`. It does not change the live Preview, Production, current OutLayer configuration or Supabase data.
