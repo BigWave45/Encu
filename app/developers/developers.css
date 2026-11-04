@@ -131,8 +131,7 @@
   color:#9eafb7; font-size:11px; line-height:1.65;
 }
 .developer-config { margin-top:15px; padding-top:14px; border-top:1px solid #2c3c47; }
-.developer-config summary { color:var(--dev-accent); font-size:12px; font-weight:750; cursor:pointer; }
-.developer-config-body { padding-top:10px; }
+.developer-config > button { margin-top:2px; }.developer-config-body { padding-top:10px; }
 .developer-config-body .developer-footnote { margin:8px 0 13px; padding:0; border:0; }
 .developer-config-body .developer-meta { grid-template-columns:repeat(3,minmax(0,1fr)); }
 .developer-config-body .developer-form { padding-top:15px; border-top:1px solid #2c3c47; }
