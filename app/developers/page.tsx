@@ -330,6 +330,42 @@ export default function DeveloperPortal() {
                 <button className="developer-button secondary" type="button" onClick={signOut}>Sign out</button>
               </div>
 
+              {activeView === "overview" && (() => {
+                const activeAgents = agents.filter(agent => agent.active);
+                const configuredAgents = agents.filter(agent => agent.active && BigInt(agent.allocation?.allocation_limit_yocto ?? "0") > 0n);
+                const inactiveAgents = agents.filter(agent => !agent.active);
+                const unallocatedAgents = agents.filter(agent => BigInt(agent.allocation?.allocation_limit_yocto ?? "0") === 0n);
+                const pendingTransactions = transactions.filter(item => ["pending", "submitted", "processing", "needs_review", "awaiting_approval"].includes(item.status));
+                const failedTransactions = transactions.filter(item => ["failed", "rejected", "cancelled", "expired", "blocked"].includes(item.status));
+                const recentTransactions = transactions.slice(0, 5);
+                return <section className="developer-overview-detail" aria-label="Developer workspace status">
+                  <div className="developer-overview-heading"><span className="developer-section-kicker">WORKSPACE STATUS</span><span>{agentsBusy || transactionsBusy ? "Updating live records…" : "Based on your current workspace records"}</span></div>
+                  <div className="developer-overview-metrics">
+                    <article><span>Agents</span><strong>{agents.length}</strong><small>{activeAgents.length} active · {inactiveAgents.length} inactive</small></article>
+                    <article><span>Allocated agents</span><strong>{configuredAgents.length}</strong><small>{unallocatedAgents.length} with zero allocation</small></article>
+                    <article><span>In-flight requests</span><strong>{pendingTransactions.length}</strong><small>Across the latest 50 requests</small></article>
+                    <article><span>Blocked or failed</span><strong>{failedTransactions.length}</strong><small>Across the latest 50 requests</small></article>
+                  </div>
+                  <div className="developer-overview-columns">
+                    <div className="developer-overview-panel">
+                      <div className="developer-activity-head"><h3>Agent readiness</h3><button className="developer-button secondary" type="button" disabled={agentsBusy || !session} onClick={() => session && void loadAgents(session.access_token)}>Refresh</button></div>
+                      {agentError && <p className="developer-error" role="alert">{agentError}</p>}
+                      {agents.length === 0 ? <p className="developer-overview-empty">No agents yet. Create an agent to begin configuring bounded execution.</p> : agents.slice(0, 6).map(agent => {
+                        const allocation = BigInt(agent.allocation?.allocation_limit_yocto ?? "0");
+                        const ready = agent.active && allocation > 0n;
+                        return <div className="developer-overview-agent" key={agent.id}><div><strong>{agent.name}</strong><code>{agent.id}</code></div><span className={ready ? "is-ready" : "is-attention"}>{!agent.active ? "Inactive" : allocation === 0n ? "No allocation" : "Allocated"}</span></div>;
+                      })}
+                      {agents.length > 6 && <p className="developer-overview-empty">Showing 6 of {agents.length} agents. Open Agents to manage the full list.</p>}
+                    </div>
+                    <div className="developer-overview-panel">
+                      <div className="developer-activity-head"><h3>Recent requests</h3><button className="developer-button secondary" type="button" disabled={transactionsBusy || !session} onClick={() => session && void loadTransactions(session.access_token)}>Refresh</button></div>
+                      {transactionsError && <p className="developer-error" role="alert">{transactionsError}</p>}
+                      {transactions.length === 0 ? <p className="developer-overview-empty">{transactionsBusy ? "Loading requests…" : "No transaction requests recorded yet."}</p> : recentTransactions.map(item => <div className="developer-overview-request" key={item.requestId}><div><strong>{near(item.amountYocto)}</strong><span>{item.agentId} → {item.recipient}</span></div><span className={failedTransactions.includes(item) ? "is-attention" : pendingTransactions.includes(item) ? "is-pending" : "is-ready"}>{item.status.replace(/_/g, " ")}</span></div>)}
+                      <button className="developer-overview-link" type="button" onClick={() => setActiveView("transactions")}>View transaction history</button>
+                    </div>
+                  </div>
+                </section>;
+              })()}
               {activeView === "agents" && <>
               <form className="developer-form" onSubmit={createAgent}>
                 <label>Agent ID<input required minLength={2} maxLength={48} pattern="[a-z0-9_-]+" value={agentId} onChange={event => setAgentId(event.target.value)} placeholder="e.g. research-agent" /></label>
