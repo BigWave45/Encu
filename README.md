@@ -1,89 +1,52 @@
-## RELEASE STATUS — MAIN INTEGRATION COMPLETE, PREVIEW VERIFICATION PENDING (2026-11-04)
+## RELEASE STATUS — PREVIEW LIVE, LOGIN-PAGE SMOKE TEST REPORTED (2026-11-04)
 
-**The intended ENCU V1 and developer-dashboard code has been merged into `main`. This does not mean every branch/PR was merged, nor that the merged application has been freshly browser-tested or deployed.**
+**The intended Encu V1 and developer-dashboard code is merged into `main`. A READY Vercel Preview is available, and the user reports opening its login page and observing the buttons working. This is a manual smoke-test report, not evidence that every authenticated workflow or transfer path has passed end-to-end testing.**
+
+### Product identity
+- Public product name: **Encu**.
+- Repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard). The repository slug remains `agentguard`.
+- Internal identifiers such as `AgentGuard`, `agentguard`, `AGENTGUARD_*`, database names, API paths and migration identifiers remain unchanged where they are part of the implementation.
 
 ### Exact merge state
-- Repository: [BigWave45/agentguard](https://github.com/BigWave45/agentguard), public; default branch: `main`.
-- PR #5 (developer dashboard end-to-end) merged into `agentguard/build-v1`: merge commit `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
-- PR #6 (release reconciliation into V1) merged into `agentguard/build-v1`: merge commit `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
-- PR #7 (V1 reconciliation into `main`) merged into `main`: merge commit `762e7112d904b6010c73972251f1fa5eaeca6379`.
-- PR #1 (V1 release into `main`) merged into `main`: merge commit `47b19be8945fff0908485426dce0b302e73269ff`.
-- Current `main` head: `d669c5a8192d5615b729591e7dc721140ce2137c`. The latest commit records the release/CI handoff.
-- Current `agentguard/build-v1` is six commits behind `main` and has no commits ahead of it. Do not describe the branches as identical.
-- These are the intended V1/dashboard integration merges. This does **not** mean every project branch or PR was merged. The rejected editorial-light redesign was not part of the accepted release and must remain excluded.
+- PR #5 (developer dashboard end-to-end) merged into `agentguard/build-v1`: `64c6f72e1d8fe3c155480d6e78f35897d07166e5`.
+- PR #6 (release reconciliation into V1) merged into `agentguard/build-v1`: `b8ab7cd526cab00b965198d6bee7d96c5921c7ed`.
+- PR #7 (V1 reconciliation into `main`) merged into `main`: `762e7112d904b6010c73972251f1fa5eaeca6379`.
+- PR #1 (V1 release into `main`) merged into `main`: `47b19be8945fff0908485426dce0b302e73269ff`.
+- Do not infer that every branch or PR was merged. The rejected editorial-light redesign remains excluded.
 
 ### CI verification
-- Current `main` head `d669c5a8192d5615b729591e7dc721140ce2137c`: [CI run #1106](https://github.com/BigWave45/agentguard/actions/runs/41803211828) completed successfully on 4 November 2026.
-- Verified steps: dependency installation/audit, lint, TypeScript type-check, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
-- The successful CI run verifies the repository build and automated tests. It does not verify the live hosted UI, external provider configuration, or a new Testnet transfer.
+- The code-bearing `main` commit `d669c5a8192d5615b729591e7dc721140ce2137c` passed [CI run #1106](https://github.com/BigWave45/agentguard/actions/runs/41803211828) on 4 November 2026.
+- Verified steps included dependency installation/audit, lint, TypeScript type-check, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
+- This verifies the source build and automated tests, not every live hosted interaction.
 
-### Deployment state — do not misrepresent
-- The latest inspected Vercel deployment for the main release merge commit was **CANCELED** by the project's Ignored Build Step. It did not build and is not a usable Preview.
-- Other recent Preview attempts were also canceled. The Vercel project has separately reported a build-rate-limit failure.
-- The existing public alias `agentguard-sable.vercel.app` points to an older Production deployment, not the current `main` head.
-- There is no verified READY Preview for current `main`; therefore the merged dashboard has not been freshly browser/mobile verified.
-- No Production deployment has been initiated. Do not deploy Production without the user's explicit approval.
+### Current Preview and manual check
+- READY Preview: https://agentguard-t8q8sxmu9-resonances-projects-13e560cd.vercel.app
+- Deployment ID: `dpl_5ce1uq4aHWiVHgTAT2GDpHAnB7zr`.
+- Source commit: `6bd7603e1aa677c2e8f355edab0084d3f07e2d4d`.
+- Vercel target: Preview. No Production deployment was initiated.
+- Read-only HTTP checks returned 200 for `/developers`, `/admin` and `/api/health`. Health reported Supabase connected, budget configured, NEAR Testnet RPC connected, OutLayer connected and signer match true.
+- **User-reported manual smoke test (4 November 2026):** user opened the Preview at the login page and reported that the buttons appeared to work. The exact buttons and resulting actions were not itemized in the report. Record this as a positive login-page/UI smoke test only; do not infer successful account creation, authenticated dashboard operations, persistence, agent provisioning or transfer execution from it.
+- No account creation, agent mutation, credential submission or live Testnet transfer is recorded as part of the automated HTTP checks. No new live transfer is authorized by this documentation update.
 
-### What remains
-1. Inspect Vercel project settings and identify the exact ignored-build rule and production-branch configuration. Do not change Production settings.
-2. Establish a dedicated non-production Preview path from the current `main` source. Confirm that Vercel will classify it as Preview before triggering a deployment. If rate-limited, stop retrying and record the blocker.
-3. Once a READY Preview exists, record its exact commit and URL, then perform the browser/mobile walkthrough below.
-4. Verify developer sign-in/onboarding, agent creation, zero initial allocation, allocation and policy configuration, exact recipient authorization/revocation, payload construction, request persistence, transaction/audit views and responsive diagrams/explainers.
-5. Do not submit a live Testnet transfer during this walkthrough without separate explicit user approval. Existing historical manual tests are evidence of earlier behavior, not a fresh E2E pass on the merged release.
-6. After browser verification, capture demo media, prepare the public X post, and complete the hackathon submission. Re-check the official instructions before submitting.
+### Remaining verification
+1. Confirm developer sign-in/account creation and authenticated session persistence.
+2. Confirm agent creation, zero initial allocation, one-time bearer-token display and credential clearing on sign-out.
+3. Confirm allocation/policy persistence and exact recipient authorization/revocation.
+4. Confirm payload construction, request persistence, transaction/audit views and responsive diagrams/explainers.
+5. Exercise policy denials and provider/finality handling without initiating a live transfer unless the user explicitly authorizes that exact test.
+6. Capture demo media, prepare the public X post and complete the hackathon submission. Re-check official submission instructions before submitting.
 
-### Judge walkthrough — Testnet (only after Preview is ready)
-Use the isolated Testnet environment and a funded Testnet account. Never use mainnet credentials or funds.
-1. Open `/developers` and create or sign in to a developer account. Confirm an authenticated, developer-owned workspace.
-2. Create an agent identity. Confirm zero initial allocation and one-time bearer-token display. Store the token securely; ENCU cannot recover it.
-3. Configure positive allocation and per-transfer/daily/weekly limits. Confirm persisted values in the workspace.
-4. Authorize an exact NEAR recipient for that agent, then revoke it. Confirm a request to the revoked recipient is blocked without provider submission.
-5. Inspect Transactions and Audit & Security for persisted request and security events. Do not infer payment from an API response.
-6. Verify finality only against the chain reconciliation state. Do not initiate a live transfer unless the user separately authorizes that exact test.
-
-### Operating rules
-- Optimize for hackathon submission. No unrelated features, redesigns or refactors.
-- Preserve the accepted dark V1 interface and existing responsive diagrams/explainers. Product name is ENCU; internal AgentGuard identifiers remain.
+### Release boundaries
+- V1 is a NEAR Testnet prototype using the configured OutLayer execution wallet. It is not mainnet-ready or a production custody service.
+- Preserve the accepted dark V1 interface and its responsive diagrams/explainers. Do not reintroduce the rejected editorial-light redesign.
 - No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without separate explicit user approval.
-- Re-fetch branch, PR, CI and Vercel state before any further write or release action.
-- This block is the current handoff. Older implementation notes below are historical and must not override this release status.
+- For further code changes, branch from the latest `main`, verify changes in CI and Preview, then merge by reviewed PR. Do not assume `agentguard/build-v1` and `main` are identical.
 
 ---
 
-# IMPORTANT HANDOFF — CURRENT ACTION / READ THIS FIRST (2026-11-04)
+# Historical implementation notes
 
-The accepted ENCU V1 and developer-dashboard changes are already merged into `main`. Do not reopen the old PR #5 work or repeat its implementation. The immediate task is Preview deployment and fresh browser verification, not another merge.
-
-## Repository state
-- Repository: `BigWave45/agentguard`.
-- Product name: **ENCU**. Internal code and repository identifiers may still say AgentGuard.
-- Current `main` head: `d669c5a8192d5615b729591e7dc721140ce2137c`.
-- PR #5, #6, #7 and #1 are merged as detailed in the release status above.
-- `agentguard/build-v1` is six commits behind `main`, with no commits ahead. Do not claim branch equality.
-- Do not merge unrelated/rejected branches. The editorial-light redesign remains rejected; preserve the dark V1 interface.
-- No Production deployment, Supabase mutation, branch deletion, force-push or live Testnet transfer without explicit user approval.
-
-## Completed in source and merged
-- Developer workspace navigation and setup flow.
-- Agent configuration, credentials scoped to the matching agent in page memory, and credential clearing on sign-out.
-- Recipient management with agent-scoped loading, stale-response protection, account-ID validation, expiry checks and revoke behavior.
-- Request payload builder and explicit Testnet submission control with warning that permitted requests can initiate real Testnet transfers.
-- Transaction activity, developer-scoped audit feed and execution explainer.
-- Existing responsive diagrams/explainers retained in the accepted dark V1 interface.
-
-## Verified
-- Current `main` CI run #1106 passed: dependency installation/audit, lint, TypeScript, production build, Agent API security/lifecycle tests and NEAR finality reconciliation tests.
-- Historical isolated Testnet exercises covered policy denials, multiple agent identities, recipient authorization/revocation and a small transfer reconciled to execution. They are not fresh browser verification of current `main`.
-
-## Current blocker and next action
-- No READY Preview has been verified for current `main`.
-- Recent Vercel attempts were canceled by the Ignored Build Step; a build-rate-limit error has also been reported.
-- Inspect the exact Vercel project settings and production branch. Establish a dedicated Preview branch/path only after confirming it cannot trigger Production. Do not change the Production branch or trigger a Production deployment.
-- Once a READY Preview exists, test the developer onboarding and full dashboard workflow on desktop and mobile. Record failures precisely; do not label the E2E complete until tested.
-- Do not initiate a live Testnet transfer without separate explicit approval.
-- After verification, capture demo media and complete the X post and official submission.
-
----
+The sections below preserve implementation decisions and earlier verification records. Their dated status snapshots are historical; the release status above governs the current branch, deployment and verification state.
 
 ## Dashboard end-to-end work — 2026-11-04
 
@@ -114,7 +77,7 @@ A source implementation is not evidence of an end-to-end pass. Test with an auth
 **Release boundary:** do not merge to `agentguard/build-v1` or `main`, deploy Production, change either Supabase project, delete branches or initiate a live transfer without explicit user authorization. PR review and Preview validation only.
 
 
-## ENCU UI decision and current reference — 2026-11-04
+## Encu UI decision and current reference — 2026-11-04
 
 **The accepted developer interface is the dark V1 interface, not the editorial-light redesign.** The light redesign was reviewed and rejected because it hid or removed important controls and reduced visibility of the working dashboard. Do not reintroduce that design or use it as the implementation target.
 
@@ -130,26 +93,26 @@ A source implementation is not evidence of an end-to-end pass. Test with an auth
 This decision supersedes earlier README handoffs that incorrectly named the editorial-light integration as canonical. When continuing work, start from the accepted `agentguard/build-v1` source and compare every proposed change against the reference above.
 
 
-# ENCU — current product and implementation status (2026-11-03)
+# Encu — current product and implementation status (2026-11-03)
 
 > This block is authoritative. The remainder of this README contains historical V1 notes and may describe superseded approval workflows, operator setup or provider coupling. Do not treat those older passages as current behavior.
 
-ENCU is a developer-facing financial authorization and accounting layer for autonomous agents. Developers create their own workspace, provision logical agents, receive agent-scoped bearer credentials and configure allocations, transfer limits, rolling limits, autonomous allowances and exact recipient permissions. End users of a developer's application do not need ENCU accounts.
+Encu is a developer-facing financial authorization and accounting layer for autonomous agents. Developers create their own workspace, provision logical agents, receive agent-scoped bearer credentials and configure allocations, transfer limits, rolling limits, autonomous allowances and exact recipient permissions. End users of a developer's application do not need ENCU accounts.
 
 **Execution model:** valid requests that satisfy current policy are automatically reserved and submitted. Requests that violate policy are rejected. Ambiguous provider outcomes and finality exceptions enter the `needs_review` state for reconciliation; this is not a human approval queue. Humans configure policy and can deactivate agents or invoke platform emergency controls, but do not approve every transaction.
 
-**Provider boundary:** OutLayer is the V1 NEAR Testnet execution adapter only. The transfer route now calls the `ExecutionProvider` interface in `lib/execution-provider.ts`; the V1 adapter delegates signing/submission to OutLayer. ENCU's identity, policy evaluation, shared-budget reservations, agent allocations, idempotency, audit and NEAR finality accounting are separate from the provider. This is the first provider seam, not a completed multi-provider abstraction: some persisted transaction columns and diagnostic routes still carry OutLayer-specific names. Those records must be normalized and provider-specific lifecycle behavior implemented before another provider is production-ready. A future native NEAR treasury contract or alternative signer/provider must implement the execution interface and its security/finality requirements; setting an environment variable alone does not create another supported provider. Only OutLayer is currently implemented.
+**Provider boundary:** OutLayer is the V1 NEAR Testnet execution adapter only. The transfer route now calls the `ExecutionProvider` interface in `lib/execution-provider.ts`; the V1 adapter delegates signing/submission to OutLayer. Encu's identity, policy evaluation, shared-budget reservations, agent allocations, idempotency, audit and NEAR finality accounting are separate from the provider. This is the first provider seam, not a completed multi-provider abstraction: some persisted transaction columns and diagnostic routes still carry OutLayer-specific names. Those records must be normalized and provider-specific lifecycle behavior implemented before another provider is production-ready. A future native NEAR treasury contract or alternative signer/provider must implement the execution interface and its security/finality requirements; setting an environment variable alone does not create another supported provider. Only OutLayer is currently implemented.
 
 **Frontend:** `/` redirects to the developer workspace at `/developers`. The platform operations console is separated at `/admin` and remains administrator-authenticated. The developer workspace is the primary product interface.
 
 **Release boundaries:** V1 is NEAR Testnet and uses the configured OutLayer test wallet. It is not a production custody service, does not provide isolated customer treasuries or customer wallet provisioning, and is not mainnet-ready. No production deployment or mainnet transfer is authorized by this status note.
 
 ---
-# ENCU
+# Encu
 
-ENCU is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
+Encu is an application-level transaction authorization and control layer for AI agents making native NEAR transfers. It authenticates logical agents, enforces operator-defined spending and recipient policies, reserves shared budget atomically, gates execution, and independently reconciles transactions against NEAR finality.
 
-**Naming note:** ENCU is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product.
+**Naming note:** Encu is the product name. The repository, branch, API paths, environment variables, database objects and some historical CI references retain `AgentGuard` / `agentguard` identifiers. These are internal implementation names, not a separate product.
 
 ## Current project handoff — 2026-11-03
 
@@ -218,7 +181,7 @@ The current implementation includes:
 
 **Current funding and custody boundary:** OutLayer supplies the configured wallet and signing/custody infrastructure. ENCU does not bankroll transfers and is not itself a custody provider. The long-term product direction is a managed service in which each developer funds their own treasury and ENCU enforces that treasury's policies. Customer-specific wallet provisioning, isolated customer treasuries, self-service funding/deposits, withdrawals and multi-tenant onboarding are not implemented in this V1. Do not interpret the shared test wallet as customer-level fund segregation.
 
-**Current enforcement boundary:** ENCU independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current ENCU adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native ENCU treasury contract. Therefore V1 does not claim that ENCU's policy is enforced by an ENCU smart contract on-chain.
+**Current enforcement boundary:** ENCU independently enforces its application-level agent identity, allocation, shared-budget, recipient, approval/autonomy, idempotency and ledger rules. OutLayer supplies the execution/signing boundary and its own wallet-level policy. The current ENCU adapter uses OutLayer's native NEAR transfer endpoint; it does not yet use a native ENCU treasury contract. Therefore V1 does not claim that Encu's policy is enforced by an ENCU smart contract on-chain.
 
 ## Architecture
 
@@ -595,7 +558,7 @@ A successful health check confirms service connectivity, not that a transfer lif
 
 ### Product direction
 
-ENCU is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass ENCU to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that ENCU replaces.
+Encu is being designed as an application-level financial authorization layer for autonomous agents, paired with OutLayer's independent TEE wallet custody and owner-policy enforcement. The agent can request an action, but it must not hold the OutLayer execution credential or be able to bypass ENCU to spend from the configured wallet. OutLayer policy is a second enforcement boundary, not a missing capability that ENCU replaces.
 
 The current implementation supports **bounded policy-authorized autonomous execution** for requests that fit within an administrator-configured per-agent cumulative allowance. Requests beyond that allowance enter the administrator approval queue. Both paths remain subject to the treasury ceiling, agent allocation, transfer and rolling limits, emergency stop, exact-recipient authorization and one-time submission controls. OutLayer may impose an additional wallet-level approval, so ENCU authorization does not guarantee unattended provider execution. The autonomous path is implemented in the current branch. Its API and reconciliation suites are included in CI; the latest recorded workflow run [41630184507](https://github.com/BigWave45/agentguard/actions/runs/41630184507) passed.
 
@@ -649,7 +612,7 @@ The overview should make four things immediately visible: how much authority exi
 
 ### Threat model and mandatory safeguards
 
-Prioritize these attack surfaces because failure would invalidate ENCU's core security promise:
+Prioritize these attack surfaces because failure would invalidate Encu's core security promise:
 
 - **Provider bypass / credential compromise:** agents must not possess OutLayer credentials; only the trusted server can call the provider.
 - **Concurrent overspending:** treasury and agent reservations must be atomic against shared authoritative records. Application-side read-then-write checks are insufficient.
@@ -705,7 +668,7 @@ These results are scoped to the tested commit and isolated environment. Re-check
 
 ### Execution architecture and provider independence
 
-OutLayer remains the only implemented execution provider. ENCU's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates ENCU policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
+OutLayer remains the only implemented execution provider. Encu's authorization layer is designed to remain independent of the provider: it authenticates the logical agent, evaluates ENCU policy, reserves treasury and agent exposure, binds the request to an exact recipient and amount, gates execution, records the outcome and reconciles NEAR finality. The OutLayer adapter submits the approved transfer. OutLayer independently applies its own wallet owner policy inside its TEE before signing. The current repository does not configure or verify the OutLayer owner policy through code. Its Preview policy was inspected separately and read-only on 2026-11-03; the observed settings are summarized in the V1 scope section. See [`docs/outlayer-v1-backlog.md`](docs/outlayer-v1-backlog.md).
 
 The native backend specification is documented in [`docs/native-near-treasury-contract-design.md`](docs/native-near-treasury-contract-design.md). The next execution backend is planned as a **dedicated ENCU treasury contract on NEAR testnet**, not as a server-held unrestricted treasury key. The contract would hold its own treasury funds and enforce on-chain authorization for narrowly scoped spending calls. A restricted NEAR function-call access key may call only the contract's permitted methods; it must not have direct unrestricted transfer authority. The contract must independently validate caller authority, agent allocation, recipient, amount, nonce/replay protection and emergency pause.
 
