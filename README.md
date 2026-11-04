@@ -1,3 +1,27 @@
+## Dashboard end-to-end work — 2026-11-04
+
+The active implementation branch for the next developer-dashboard slice is `encu/dashboard-end-to-end`, based directly on `agentguard/build-v1`. This is a separate, unmerged work branch. The accepted UI remains the dark V1 developer workspace; the editorial-light redesign is rejected because it hid important controls.
+
+**Implemented in source on this branch**
+- The payload builder is extracted into `app/developers/agent-playground.tsx`.
+- NEAR decimal parsing uses a correctly escaped decimal-point regex and converts NEAR to yoctoNEAR using integer arithmetic.
+- Payload generation and JSON copying remain separate from submission.
+- An explicit, separately confirmed testnet submission action posts the generated payload to `POST /api/agent/transfer` with the selected agent bearer token. The UI warns that a permitted request can initiate a real NEAR testnet transfer. It does not use the developer's Supabase session token as the agent credential.
+- The agent token is held in component state only; it is not persisted by this component.
+- The developer-scoped audit endpoint/feed and execution-flow explainer are mounted in the existing V1 workspace, with dark V1 styling in `dashboard-workflow.css`.
+- After a successful submission response, the dashboard refreshes transaction activity.
+
+**Not yet verified**
+- Vercel Preview build and browser-level interaction.
+- Supabase sign-in on the actual preview, agent-token submission, policy-denial cases, provider response handling and subsequent NEAR finality reconciliation.
+- Audit feed results and cross-developer isolation under authenticated browser sessions.
+- Full responsive layout and every existing configuration action.
+
+A source implementation is not evidence of an end-to-end pass. Test with an authorized test agent and a deliberately small amount only after confirming its allocation, autonomous allowance, recipient authorization and the configured testnet wallet. Never blindly retry an ambiguous transfer response.
+
+**Release boundary:** do not merge to `agentguard/build-v1` or `main`, deploy Production, change either Supabase project, delete branches or initiate a live transfer without explicit user authorization. PR review and Preview validation only.
+
+
 ## ENCU UI decision and current reference — 2026-11-04
 
 **The accepted developer interface is the dark V1 interface, not the editorial-light redesign.** The light redesign was reviewed and rejected because it hid or removed important controls and reduced visibility of the working dashboard. Do not reintroduce that design or use it as the implementation target.
