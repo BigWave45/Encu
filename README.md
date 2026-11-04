@@ -48,3 +48,7 @@ Do not merge to `main`, deploy Production, modify Supabase environments, delete 
 
 ---
 
+
+
+### Exact yoctoNEAR API serialization
+Developer agent list and configuration reads explicitly cast numeric(78,0) yoctoNEAR columns to PostgreSQL text before returning JSON. This prevents JavaScript/PostgREST numeric coercion from introducing floating-point precision loss in displayed allocations and policy limits. No existing database values were modified.
