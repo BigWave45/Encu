@@ -3,6 +3,8 @@ import { agentRateLimitResponse } from "@/lib/agent-rate-limit";
 import { z } from "zod";
 import { getSupabase } from "@/lib/supabase";
 import { authenticateAdmin, authenticateAgent } from "@/lib/agent-auth";
+import { authenticateDeveloper } from "@/lib/developer-auth";
+import { consumeRateLimit } from "@/lib/rate-limit";
 import { getNearRpcUrl, getOutLayerConfig } from "@/lib/outlayer";
 
 export const runtime = "nodejs";
@@ -36,17 +38,37 @@ type NearRpcResponse = {
 };
 
 export async function POST(request: NextRequest) {
-  let identity: Awaited<ReturnType<typeof authenticateAgent>>;
+  let agentIdentity: Awaited<ReturnType<typeof authenticateAgent>> = null;
+  let developerIdentity: Awaited<ReturnType<typeof authenticateDeveloper>> = null;
   try {
     const authorization = request.headers.get("authorization");
-    identity = authenticateAdmin(authorization) ?? await authenticateAgent(authorization);
+    agentIdentity = authenticateAdmin(authorization) ?? await authenticateAgent(authorization);
+    if (!agentIdentity) developerIdentity = await authenticateDeveloper(authorization);
   } catch {
     return NextResponse.json({ error: "authentication_unavailable" }, { status: 503 });
   }
-  if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!agentIdentity && !developerIdentity) {
+    return NextResponse.json({ error: "authentication_required" }, { status: 401 });
+  }
 
-  const limited = await agentRateLimitResponse(identity.agentId, "near_finality_reconciliation", 10, 60);
-  if (limited) return limited;
+  if (developerIdentity) {
+    const rate = await consumeRateLimit(
+      `developer:${developerIdentity.userId}`,
+      "near_finality_reconciliation",
+      10,
+      60
+    );
+    if (!rate) return NextResponse.json({ error: "rate_limit_unavailable" }, { status: 503 });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "rate_limit_exceeded", retryAfterSeconds: rate.retryAfterSeconds },
+        { status: 429 }
+      );
+    }
+  } else if (agentIdentity) {
+    const limited = await agentRateLimitResponse(agentIdentity.agentId, "near_finality_reconciliation", 10, 60);
+    if (limited) return limited;
+  }
 
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -78,8 +100,22 @@ export async function POST(request: NextRequest) {
   if (!reservation) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
   }
-  if (!identity.isAdmin && reservation.agent_id !== identity.agentId) {
+  if (agentIdentity && !agentIdentity.isAdmin && reservation.agent_id !== agentIdentity.agentId) {
     return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+  }
+  if (developerIdentity) {
+    const { data: ownedAgent, error: ownershipError } = await db
+      .from("agents")
+      .select("id")
+      .eq("id", reservation.agent_id)
+      .eq("owner_user_id", developerIdentity.userId)
+      .maybeSingle();
+    if (ownershipError) {
+      return NextResponse.json({ error: "reservation_ownership_check_failed" }, { status: 503 });
+    }
+    if (!ownedAgent) {
+      return NextResponse.json({ error: "reservation_not_found" }, { status: 404 });
+    }
   }
   if (reservation.status === "executed" || reservation.status === "failed") {
     return NextResponse.json({ status: reservation.status, requestId: reservation.request_id });
