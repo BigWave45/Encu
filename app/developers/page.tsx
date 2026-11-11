@@ -49,6 +49,8 @@ export default function DeveloperPortal() {
   const [transactions, setTransactions] = useState<DeveloperTransaction[]>([]);
   const [transactionsBusy, setTransactionsBusy] = useState(false);
   const [transactionsError, setTransactionsError] = useState("");
+  const [reconcilingRequestId, setReconcilingRequestId] = useState<string | null>(null);
+  const [reconciliationMessages, setReconciliationMessages] = useState<Record<string, string>>({});
   const [agentsBusy, setAgentsBusy] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [agentName, setAgentName] = useState("");
@@ -104,6 +106,39 @@ export default function DeveloperPortal() {
       setTransactionsBusy(false);
     }
   }, []);
+
+  async function reconcileTransaction(requestId: string) {
+    if (!session || reconcilingRequestId) return;
+    setReconcilingRequestId(requestId);
+    setReconciliationMessages(current => ({ ...current, [requestId]: "" }));
+    try {
+      const response = await fetch("/api/agent/reconcile", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ requestId }),
+        cache: "no-store"
+      });
+      const body = await response.json();
+      if (!response.ok && response.status !== 202) {
+        throw new Error(body.error ?? "Could not verify NEAR finality.");
+      }
+      const message = body.finality === "FINAL"
+        ? `NEAR finality confirmed: ${body.status}.`
+        : `Still needs review: ${body.reason ?? body.status ?? "finality not confirmed"}.`;
+      setReconciliationMessages(current => ({ ...current, [requestId]: message }));
+      await loadTransactions(session.access_token);
+    } catch (error) {
+      setReconciliationMessages(current => ({
+        ...current,
+        [requestId]: error instanceof Error ? error.message : "Finality verification failed."
+      }));
+    } finally {
+      setReconcilingRequestId(null);
+    }
+  }
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -478,6 +513,23 @@ export default function DeveloperPortal() {
                     </div>
                     <div className="developer-transaction-meta"><span>To {item.recipient}</span><time>{new Date(item.createdAt).toLocaleString()}</time></div>
                     {item.txHash && <code className="developer-tx-reference">TX {item.txHash}</code>}
+                    {(item.status === "needs_review" || item.status === "reserved" || item.status === "submitted") && (
+                      <div className="developer-reconciliation-action">
+                        <button
+                          className="developer-button secondary"
+                          type="button"
+                          disabled={!!reconcilingRequestId}
+                          onClick={() => void reconcileTransaction(item.requestId)}
+                        >
+                          {reconcilingRequestId === item.requestId ? "Checking NEAR…" : "Verify finality"}
+                        </button>
+                        {reconciliationMessages[item.requestId] && (
+                          <p className="developer-transaction-error" role="status">
+                            {reconciliationMessages[item.requestId]}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {item.lastError && <p className="developer-transaction-error">{item.lastError}</p>}
                   </article>)}
                 </div>}
