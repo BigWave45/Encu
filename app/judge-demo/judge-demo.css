@@ -164,3 +164,17 @@
 .blocked-evidence code{font:10px "DM Mono",monospace;color:#f0b1a2}
 .blocked-code{font:9px "DM Mono",monospace;color:#e7a293;white-space:nowrap}
 @media(max-width:700px){.blocked-evidence{align-items:flex-start;flex-direction:column}.blocked-code{white-space:normal;overflow-wrap:anywhere}}
+
+
+.evidence-register{margin-top:18px;padding:22px;border:1px solid var(--j-line);background:#101511;border-radius:8px}
+.register-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:13px}
+.register-heading h3{font-size:17px;margin:7px 0 0}
+.register-asof{font:9px "DM Mono",monospace;color:var(--j-muted)}
+.register-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 0;border-top:1px solid var(--j-line)}
+.register-row b{font-size:11px;color:#e7e9e4}
+.register-row p{font-size:10px;line-height:1.7;color:var(--j-muted);margin:5px 0 0;max-width:720px}
+.register-state{flex:0 0 auto;font:9px "DM Mono",monospace;letter-spacing:.04em;padding:6px 8px;border:1px solid;border-radius:3px}
+.register-state.done{color:#9dcba9;border-color:#466d50;background:#18271c}
+.register-state.pending{color:#e0bd7f;border-color:#705d38;background:#292315}
+.register-footnote{font-size:9px;line-height:1.7;color:var(--j-muted);margin:13px 0 0}
+@media(max-width:700px){.register-heading{align-items:flex-start;flex-direction:column}.register-row{align-items:flex-start;flex-direction:column;gap:9px}.evidence-register{padding:17px}}
