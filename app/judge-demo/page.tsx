@@ -183,6 +183,15 @@ export default function JudgeDemoPage() {
           <div className="test-status-list"><div><b>PASS</b><span>API security & lifecycle tests</span></div><div><b>PASS</b><span>NEAR finality reconciliation tests</span></div><div><b>PASS</b><span>Lint, typecheck & production build</span></div><div><b>SEPARATE</b><span>Disposable-database reservation concurrency test</span></div></div>
         </div>
         <p className="judge-note">Automated tests use mocks unless explicitly identified otherwise. The concurrency script requires a dedicated disposable Supabase project and was not part of the CI workflow. It must not be run against production data.</p>
+        <div className="evidence-register">
+          <div className="register-heading"><div><span className="model-label">TEST EVIDENCE REGISTER</span><h3>One record for every kind of proof.</h3></div><span className="register-asof">UPDATED WITH THIS BUILD</span></div>
+          <div className="register-row"><div><b>Real Testnet · policy rejection</b><p>Autonomous allowance missing; request blocked before reservation or provider submission.</p></div><span className="register-state done">OBSERVED</span></div>
+          <div className="register-row"><div><b>Real Testnet · successful transfer</b><p>0.001 NEAR to twat.testnet; request reconciled from needs_review to EXECUTED after operator-triggered NEAR finality verification.</p></div><span className="register-state done">OBSERVED</span></div>
+          <div className="register-row"><div><b>Automated API and reconciliation suite</b><p>Mocked policy, authentication, lifecycle and NEAR finality cases. CI passed on this demo branch.</p></div><span className="register-state done">CI PASS</span></div>
+          <div className="register-row"><div><b>Shared-budget concurrency invariant</b><p>Dedicated script checks competing reservations against a disposable Supabase database. Not part of CI; run separately and never against the primary database.</p></div><span className="register-state pending">SEPARATE RUN</span></div>
+          <div className="register-row"><div><b>Additional operator-led Testnet checks</b><p>Further policy rejection and execution/reconciliation checks will be added here only after they are actually run and their results are recorded.</p></div><span className="register-state pending">AWAITING RUN</span></div>
+          <p className="register-footnote">OBSERVED means a result was reported from the running Testnet prototype. CI PASS means automated checks completed successfully. These labels are not interchangeable.</p>
+        </div>
       </section>
 
       <section className="judge-section architecture-section" id="architecture">
