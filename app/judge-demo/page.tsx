@@ -51,7 +51,7 @@ export default function JudgeDemoPage() {
   }
 
   return (
-    <main className="judge-page">
+    <main className="judge-page" id="top">
       <header className="judge-nav">
         <Link href="/judge-demo" className="judge-wordmark"><span className="judge-mark">E</span> ENCU</Link>
         <nav aria-label="Main navigation">
