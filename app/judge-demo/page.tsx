@@ -174,6 +174,10 @@ export default function JudgeDemoPage() {
           <a className="judge-button primary" href={EXPLORER} target="_blank" rel="noreferrer">Open transaction on NEAR explorer ↗</a>
           <p className="evidence-footnote">The request first returned <code>needs_review</code> with <code>awaiting_onchain_confirmation</code>. The operator then used ENCU’s Verify finality action. The activity record subsequently changed to <code>EXECUTED</code>. The hash alone was not treated as settlement evidence.</p>
         </div>
+        <div className="blocked-evidence">
+          <div><span className="blocked-mark">×</span><div><span className="model-label">OBSERVED POLICY ENFORCEMENT</span><h3>Unauthorized spend blocked before execution.</h3><p>The first Testnet request was rejected because the agent had no autonomous spending allowance configured. ENCU returned <code>autonomous_allowance_exceeded</code>, with <code>created: false</code>. No reservation was created for that request.</p></div></div>
+          <span className="blocked-code">status: blocked · reason: autonomous_allowance_exceeded · created: false</span>
+        </div>
         <div className="test-coverage">
           <div><span className="model-label">AUTOMATED VERIFICATION</span><h3>Failure paths are tested, too.</h3><p>Mocked API and RPC tests cover authentication, policy enforcement, recipient permissions, emergency stop, replay handling, invalid finality data, signer/recipient/amount mismatches, non-final transactions and idempotent reconciliation.</p></div>
           <div className="test-status-list"><div><b>PASS</b><span>API security & lifecycle tests</span></div><div><b>PASS</b><span>NEAR finality reconciliation tests</span></div><div><b>PASS</b><span>Lint, typecheck & production build</span></div><div><b>SEPARATE</b><span>Disposable-database reservation concurrency test</span></div></div>
